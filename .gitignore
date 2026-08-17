@@ -27,3 +27,7 @@ out/
 # editor/OS noise
 *.swp
 .DS_Store
+
+# live supervisor log
+steemer-live.log
+*.log
