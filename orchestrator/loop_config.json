@@ -1,13 +1,13 @@
 {
-  "mode": "conserve",
+  "mode": "normal",
   "cadence_seconds": 2400,
   "reaper_gate": true,
   "ui_upgrades": true,
   "usage_checkin_every_ticks": 3,
   "last_usage": {
-    "pct": 97,
-    "reported_at": "2026-08-17 01:12",
-    "note": "near cap; resets ~19 min after report"
+    "pct": 1,
+    "reported_at": "2026-08-17 01:47",
+    "note": "fresh window; resets in ~4h43m"
   },
   "usage_to_mode": {
     "normal": "usage < 85%",
