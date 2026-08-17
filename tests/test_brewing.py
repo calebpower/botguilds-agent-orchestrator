@@ -58,12 +58,11 @@ def test_declines_rather_than_curdle():
     assert picks is None and ess is None and healing is False
 
 
-def test_undecoded_herbs_brew_as_a_learning_batch():
+def test_undecoded_singletons_of_different_kinds_do_not_brew():
+    # v0.8.0: three DIFFERENT undecoded kinds, one each, form no same-kind pair,
+    # so nothing brews (mixing them curdled in 0.7.0). They get sold as stranded.
     brewables = [_herb("glimmerweed", 1), _herb("frostmoss", 2), _herb("sungrass", 3)]
-    picks, ess, healing = Explorer._choose_brew(brewables)
-    assert ess is None and healing is False           # essence not yet decoded
-    assert len(picks) >= BREW_MIN and set(_kinds(picks)) <= {
-        "glimmerweed", "frostmoss", "sungrass"}
+    assert Explorer._choose_brew(brewables) == (None, None, False)
 
 
 def test_decoded_essence_preferred_over_a_guess():
@@ -85,3 +84,33 @@ def test_respects_brew_max():
 def test_single_ingredient_is_not_enough():
     picks, ess, healing = Explorer._choose_brew([_herb("bone")])
     assert picks is None and BREW_MIN == 2       # a brew needs at least two
+
+
+# --- v0.8.0: same-kind learning batches + selling stranded singletons ---
+
+def test_undecoded_batch_is_same_kind_not_mixed():
+    # two different undecoded kinds must NOT brew together (that curdled in
+    # 0.7.0); a pair of the SAME kind may (it shares an essence).
+    mixed = Explorer._choose_brew([_herb("glimmerweed", 1), _herb("frostmoss", 2)])
+    assert mixed == (None, None, False)
+    picks, ess, healing = Explorer._choose_brew(
+        [_herb("frostmoss", 1), _herb("frostmoss", 2), _herb("glimmerweed", 3)])
+    assert ess is None and healing is False
+    assert set(_kinds(picks)) == {"frostmoss"}      # same kind only, never mixed
+
+
+def test_brew_keep_ids_keeps_batchable_drops_singletons():
+    keep = Explorer._brew_keep_ids([
+        _herb("bone", 1), _herb("embercap", 2),   # 2 vigor (different kinds) -> batch
+        _herb("frostmoss", 3), _herb("frostmoss", 4),  # 2 same undecoded kind -> batch
+        _herb("moonbell", 5),                       # lone venom -> stranded
+        _herb("glimmerweed", 6)])                   # lone undecoded -> stranded
+    assert keep == {"bone-1", "embercap-2", "frostmoss-3", "frostmoss-4"}
+
+
+def test_should_sell_sells_stranded_brewable_keeps_batchable():
+    exp = Explorer()
+    lone = _herb("moonbell", 1)
+    assert exp._should_sell(lone, {}, brew_keep=set()) is True        # stranded -> sell
+    keep_item = _herb("bone", 2)
+    assert exp._should_sell(keep_item, {}, brew_keep={"bone-2"}) is False  # batchable -> keep

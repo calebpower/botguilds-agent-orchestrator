@@ -57,6 +57,15 @@ essence and brew a *single-essence* batch — never a mix — preferring ``vigor
 (which brews ``potion_red``, the field heal). Ingredients we haven't decoded are
 brewed only among themselves, as a learning batch, so discovery continues
 without poisoning the healing supply.
+
+v0.8.0 — 0.7.0 lifted brew success 49%->87% but regressed carry: declining to
+brew minority/singleton herbs left them hoarded (never sold), so avg brewables
+held rose 0.49->1.83, carry filled (0%->14.5% of field chars full), and full
+chars spammed failed move-home steps (move/not_enough_stamina 7%->17%). Two
+fixes: (1) SELL stranded brewables — a herb that can't form a no-curdle batch is
+banked for gold, not hoarded; (2) learn undecoded herbs with same-KIND batches
+(can't curdle) instead of mixing different unknowns (which caused 0.7.0's only
+curdles). Keeps the brew win, unclogs carry, and cleans up the learning path.
 """
 
 from __future__ import annotations
@@ -85,7 +94,7 @@ BREW_MIN_GOLD = 10         # keep a little gold buffer before buying bottles
 
 
 class Explorer:
-    version = "explorer/0.7.0"
+    version = "explorer/0.8.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -123,15 +132,22 @@ class Explorer:
                 continue                    # busy crafting; don't disturb or embark it
             inv = char.get("inventory", [])
             eqp = char.get("equipment", {}) or {}
+            # Brewables we can actually make a no-curdle batch from — the rest are
+            # "stranded" (lone herbs that can't pair) and are sold, not hoarded
+            # (v0.8.0: hoarding them filled carry and stalled chars in the field).
+            brewables = [i for i in inv
+                         if "brew" in (i.get("uses") or []) and i["kind"] not in KEEP]
+            brew_keep = self._brew_keep_ids(brewables)
             # 1) EQUIP carried gear into empty slots — BEFORE selling, or we sell
             #    the weapons/armor we ought to be wearing (the original bug: 0
             #    equips ever, everyone bare-handed and unarmored).
             eq = self._equip_action(uid, inv, eqp)
             if eq is not None:
                 return [self._village_act(bot, uid, eq, eq.pop("_why"))]
-            # 2) sell only what we can't use: loot, and gear that won't fit.
+            # 2) sell what we can't use: loot, gear that won't fit, and brewables
+            #    that can't form a batch (stranded singletons).
             for item in inv:
-                if self._should_sell(item, eqp):
+                if self._should_sell(item, eqp, brew_keep):
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "sell",
                                    "item_id": item["item_id"]},
@@ -152,10 +168,9 @@ class Explorer:
             #     (v0.7.0). Group brewables by their DECODED essence and brew a
             #     single-essence batch — never a vigor+venom mix, which curdles —
             #     preferring vigor (-> potion_red healing). Undecoded herbs brew
-            #     only among themselves, as a learning batch. KEEP items
-            #     (potion_red/bottle_empty) are never spent as ingredients.
-            brewables = [i for i in inv
-                         if "brew" in (i.get("uses") or []) and i["kind"] not in KEEP]
+            #     only as same-KIND batches (v0.8.0: a same-kind batch shares an
+            #     essence so it can't curdle, and its product reveals that kind's
+            #     essence cleanly). KEEP items are never spent as ingredients.
             bottles = sum(1 for i in inv if i["kind"] == "bottle_empty")
             picks, ess, healing = self._choose_brew(brewables)
             if picks and bottles == 0 and gold >= BREW_MIN_GOLD:
@@ -355,20 +370,48 @@ class Explorer:
             g = groups[ess]
             if len(g) >= BREW_MIN:
                 return g[:BREW_MAX], ess, ess == "vigor"
-        unknown = groups.get(None) or []
-        if len(unknown) >= BREW_MIN:
-            return unknown[:BREW_MAX], None, False
+        # No decoded batch. Learn undecoded herbs with a same-KIND batch (shares
+        # an essence -> can't curdle -> product cleanly reveals that kind's
+        # essence). Never mix different unknowns (that curdled in 0.7.0).
+        by_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for it in groups.get(None) or []:
+            by_kind[it["kind"]].append(it)
+        for kind in sorted(by_kind):
+            g = by_kind[kind]
+            if len(g) >= BREW_MIN:
+                return g[:BREW_MAX], None, False
         return None, None, False
 
-    def _should_sell(self, item: dict[str, Any], eqp: dict[str, Any]) -> bool:
+    @staticmethod
+    def _brew_keep_ids(brewables: list[dict[str, Any]]) -> set[str]:
+        """Item_ids of brewables that can currently form a no-curdle batch — a
+        decoded-essence group of >=2 (any kinds) or a same-kind group of >=2
+        undecoded herbs. Everything else is a stranded singleton: worth more as
+        banked gold than as carry-clogging clutter that stalls the character."""
+        by_ess: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        by_unknown_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for it in brewables:
+            e = knowledge.essence_of(it["kind"])
+            (by_ess[e] if e is not None else by_unknown_kind[it["kind"]]).append(it)
+        keep: set[str] = set()
+        for g in list(by_ess.values()) + list(by_unknown_kind.values()):
+            if len(g) >= BREW_MIN:
+                keep.update(it["item_id"] for it in g[:BREW_MAX])
+        return keep
+
+    def _should_sell(self, item: dict[str, Any], eqp: dict[str, Any],
+                     brew_keep: set[str]) -> bool:
         """Sell only what we can't use. Keep: field supplies (KEEP), consumables
-        and food (`drink` — potions/elixirs/food for sustain), brew ingredients
-        (`brew` — to craft potions), and gear we might still equip. Everything
-        else (pure loot: ore/forge stock/junk) is banked for gold."""
+        and food (`drink`), brew ingredients that can still form a batch
+        (`brew_keep`), and gear we might still equip. Everything else — pure loot
+        AND stranded singleton brewables (v0.8.0) — is banked for gold, so lone
+        herbs don't hoard up and clog carry."""
         kind = item["kind"]
         uses = item.get("uses") or []
-        if kind in KEEP or "drink" in uses or "brew" in uses:
+        if kind in KEEP or "drink" in uses:
             return False
+        if "brew" in uses:
+            return item["item_id"] not in brew_keep   # sell stranded brewables
         if "equip" not in uses:
             return True                     # pure loot -> bank it
         if kind in self.wont_fit:

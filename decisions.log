@@ -331,3 +331,27 @@ conflict) — a lossy way to learn. Motivates a v0.8.0 refinement (below). death
 deferred to a longer window; not enough deaths yet for an honest rate.
 Next: let 0.7.0 accumulate ~1h for survival signal, then either v0.8.0
 (learn-by-taste / same-kind batches) or M3a forging (armor).
+
+## 2026-08-17 11:35 — v0.8.0: fix the stranded-brewable carry regression 0.7.0 introduced
+Diagnosis (run #9 vs #8, sampled field frames): 0.7.0 lifted brew success
+49%->87% but declining to brew minority/singleton herbs left them HOARDED
+(_should_sell kept all 'brew' items). avg brewables held 0.49->1.83, chars at
+full carry 0%->14.5%, avg carry frac 0.124->0.367. Full chars then repeatedly
+tried (and failed on stamina) to walk home -> move/not_enough_stamina rose
+7.5%->17.7% of actions (action-error rate 0.144->0.27). This is the exact
+"minority-essence stranding" watch-item logged at 0.7.0.
+Fix: (1) SELL stranded brewables — any herb that can't currently form a
+no-curdle batch is banked for gold, not hoarded (new _brew_keep_ids marks the
+batchable ones; _should_sell sells the rest). (2) Learn undecoded herbs with
+same-KIND batches (share an essence -> can't curdle) instead of mixing different
+unknowns — which also removes 0.7.0's only curdle source (its 3 failures were
+mixed-unknown learning batches).
+Expected effect: avg brewables held + full-carry% back toward the 0.6.0 floor;
+move/not_enough_stamina rate back down; brew success stays high (now ~100% on
+attempted batches, since only no-curdle batches are attempted); deaths/1k should
+improve as chars stop stalling at full carry.
+Falsified if: full-carry% or the move-stamina error rate does NOT fall vs run #9.
+Verify: pytest 101 green + both fixes mutation-checked + bounded replay clean.
+Next after measuring: v0.9.0 taste-to-learn (turn stranded undecoded singletons
+into essence discoveries via `taste` instead of just selling them), then M3a
+forging (armor).
