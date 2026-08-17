@@ -31,6 +31,7 @@ import argparse
 import json
 import os
 import sqlite3
+import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -87,12 +88,30 @@ def _db_ready(db_path: str) -> bool:
         return False
 
 
+# The KPI snapshot is a non-trivial aggregate over a large log; cache it briefly
+# so the dashboard's ~1s polling coalesces onto one recompute every few seconds
+# instead of stacking, and so /api/snapshot and /api/observed share one compute.
+# Sub-TTL staleness is irrelevant for a dashboard.
+_SNAP_TTL = 3.0
+_snap_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _snapshot_cached(db_path: str) -> dict:
+    now = time.monotonic()
+    cached = _snap_cache.get(db_path)
+    if cached is not None and now - cached[0] < _SNAP_TTL:
+        return cached[1]
+    snap = metrics.snapshot(db_path)
+    _snap_cache[db_path] = (now, snap)
+    return snap
+
+
 def api_snapshot(db_path: str) -> dict:
-    """KPI overview — reuse :func:`steemer.metrics.snapshot` verbatim."""
+    """KPI overview — reuse :func:`steemer.metrics.snapshot`, cached briefly."""
     if not _db_ready(db_path):
         return {"ok": False, "reason": "no_db"}
     try:
-        snap = metrics.snapshot(db_path)
+        snap = _snapshot_cached(db_path)
         snap["ok"] = True
         return snap
     except sqlite3.Error as exc:  # empty/partial DB: degrade, don't crash
@@ -301,9 +320,10 @@ def api_observed(db_path: str) -> dict:
                 "SELECT reason, COUNT(*) FROM action_errors "
                 "GROUP BY reason ORDER BY 2 DESC")
         ]
-        # Exploration frontier: reuse the snapshot's per-world exploration block.
+        # Exploration frontier: reuse the *cached* snapshot's exploration block
+        # (was a full second snapshot() compute on every Findings-tab poll).
         try:
-            out["exploration"] = metrics.snapshot(db_path).get("exploration", {})
+            out["exploration"] = _snapshot_cached(db_path).get("exploration", {})
         except sqlite3.Error:
             out["exploration"] = {}
         return out

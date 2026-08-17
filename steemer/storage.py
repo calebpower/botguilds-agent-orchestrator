@@ -67,6 +67,16 @@ CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind);
 CREATE INDEX IF NOT EXISTS idx_events_tick ON events(tick);
 CREATE INDEX IF NOT EXISTS idx_decisions_tick ON decisions(tick);
 CREATE INDEX IF NOT EXISTS idx_actionerr_reason ON action_errors(reason);
+-- run_id / grouping indexes: the metrics snapshot does per-run COUNT(*) and a
+-- first/last-village-frame gold lookup; without these it full-scans the largest
+-- tables on every poll (the /api/snapshot slowness). run_id is low-cardinality
+-- so the write-path cost is negligible.
+CREATE INDEX IF NOT EXISTS idx_frames_run ON frames(run_id);
+CREATE INDEX IF NOT EXISTS idx_frames_run_world_seq ON frames(run_id, world, seq);
+CREATE INDEX IF NOT EXISTS idx_actions_run ON actions_sent(run_id);
+CREATE INDEX IF NOT EXISTS idx_actionerr_run ON action_errors(run_id);
+CREATE INDEX IF NOT EXISTS idx_actions_action ON actions_sent(action);
+CREATE INDEX IF NOT EXISTS idx_decisions_action ON decisions(action);
 """
 
 

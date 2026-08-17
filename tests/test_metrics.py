@@ -73,6 +73,31 @@ def test_snapshot_current_state_from_latest_village(tmp_path):
     assert cur["chars_by_world"] == {"vale": 1}
 
 
+def test_gold_delta_reads_first_and_last_village_only(tmp_path):
+    # A misleading middle value must be ignored — the delta is last minus first
+    # village gold, read via the MIN/MAX-seq query (not a scan of every frame).
+    s = Storage(str(tmp_path / "g.db"), commit_every=1)
+    s.begin_run("sha", "explorer/x")
+    s.record_frame(_village_frame(1, gold=100))
+    s.record_frame(_village_frame(2, gold=999))   # spike in the middle
+    s.record_frame(_map_frame(3, y=5))
+    s.record_frame(_village_frame(4, gold=130))
+    s.end_run()
+    s.close()
+    snap = snapshot(str(tmp_path / "g.db"))
+    assert snap["runs"][0]["gold_delta"] == 30      # 130 - 100, ignores 999
+
+
+def test_storage_creates_run_id_indexes(tmp_path):
+    # These indexes are what keep /api/snapshot from full-scanning the log.
+    s = Storage(str(tmp_path / "i.db"))
+    idx = {r[0] for r in s.conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index'")}
+    assert {"idx_frames_run", "idx_frames_run_world_seq",
+            "idx_actions_run", "idx_actionerr_run"} <= idx
+    s.close()
+
+
 def test_run_summary_reports_gold_delta(tmp_path):
     db, rid = _build(tmp_path)
     snap = snapshot(db)

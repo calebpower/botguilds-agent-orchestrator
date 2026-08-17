@@ -165,3 +165,22 @@ share / only send leveled chars to spire.
 Expected effect: deaths/recruit down (target ~0.18-0.22), poisoned-death % and
 rested-while-hurt % down, longer ticks-alive-from-embark. Falsify: next window's
 deaths/recruit not materially below 0.31. Deployed as run #5.
+
+## 2026-08-17 02:31 — UI perf fix: /api/snapshot ~25s -> ~instant (RCA)
+Symptom (operator): /api/snapshot ~30s per call, polled ~1s, response only ~3KiB
+-> dashboard unusable. RCA (subagent, read-only over the live DB): the log has
+grown to 121k frames / 193k events / 302k decisions (~916 MiB), and
+metrics._run_summaries was ~90% of the time because (a) there is NO index on
+run_id, so per-run COUNT(*) did 15 full table scans over the biggest tables, and
+(b) _run_gold_delta fetched + zlib-decompressed ALL 31,366 village frames on
+every call. Both scale with log size.
+Fix (verified pytest 73 + mutation-checked + reaper gate):
+- run_id / grouping indexes: applied to the LIVE db immediately (25s->4.5s) and
+  added to storage SCHEMA so restarts/new DBs have them.
+- metrics._run_gold_delta made O(1): decompress only the first+last village frame
+  per run (MIN/MAX seq via idx_frames_run_world_seq); gold values unchanged.
+- ui/server.py: a ~3s TTL cache so 1s polling coalesces onto one recompute
+  instead of stacking, and the Findings tab no longer runs a second snapshot().
+Result: /api/snapshot 25s -> 1.78s cold / ~1.5ms warm (cache hit). UI restarted.
+Follow-up: the frames table grows unbounded (~916 MiB); indexes keep it fast
+regardless, so this is a disk concern, not a speed one — see findings.

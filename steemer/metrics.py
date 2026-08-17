@@ -143,10 +143,20 @@ def _run_summaries(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def _run_gold_delta(conn: sqlite3.Connection, run_id: int) -> int | None:
-    """First vs last observed guild gold within a run (village frames only)."""
+    """First vs last observed guild gold within a run (village frames only).
+
+    Decompress only the first and last village frame — the min/max seq rows,
+    found via idx_frames_run_world_seq — instead of every village frame in the
+    run. That turns this from O(frames-in-run) (tens of thousands of blob reads +
+    zlib per snapshot) into O(1), which was the bulk of the /api/snapshot cost.
+    """
     rows = conn.execute(
-        "SELECT json FROM frames WHERE run_id=? AND world='village' "
-        "ORDER BY seq", (run_id,)).fetchall()
+        "SELECT json FROM frames WHERE seq IN ("
+        "  SELECT MIN(seq) FROM frames WHERE run_id=? AND world='village' "
+        "  UNION "
+        "  SELECT MAX(seq) FROM frames WHERE run_id=? AND world='village'"
+        ") ORDER BY seq",
+        (run_id, run_id)).fetchall()
     golds = []
     for (blob,) in rows:
         g = json.loads(zlib.decompress(blob)).get("guild", {}).get("gold")
