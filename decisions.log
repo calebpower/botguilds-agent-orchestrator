@@ -5,12 +5,13 @@ last. Each entry: what was decided, why, and — for strategy/metric changes —
 expected effect and how it would be falsified. This is the audit trail for an
 autonomous loop; read it to understand why the bot is the way it is.
 
-Reaper-framework bugs are NOT logged here — they go to /home/cal/reaper_bugs.md.
-BotGuilds server bugs go to server_bugs.md.
+Entries are headed `## YYYY-MM-DD HH:MM — title` (local time). Reaper-framework
+bugs are NOT logged here — they go to /home/cal/reaper_bugs.md. BotGuilds server
+bugs go to server_bugs.md.
 
 ---
 
-## 2026-08-16 — Language & runtime: Python 3.15 + uv + pyzmq
+## 2026-08-16 23:43 — Language & runtime: Python 3.15 + uv + pyzmq
 Decision: implement the bot in Python with uv for env/deps; talk to the server
 with pyzmq.
 Why: the game server, reference kit, and docs all use pyzmq (libzmq); matching
@@ -19,42 +20,14 @@ uv is the operator's chosen tool on this box.
 Effect/verify: verified live — our fresh pyzmq DEALER completed the handshake
 and received frames from the real server (guild Stanley_Steemer, tick ~3045).
 
-## 2026-08-16 — Storage: single SQLite file (WAL), our own schema
+## 2026-08-16 23:43 — Storage: single SQLite file (WAL), our own schema
 Decision: one guild_log.db with raw mirror (frames/events/tiles) + verbose
 decisions + run windows; WAL for concurrent readers.
 Why: lets the live writer, the web UI, and the analysis loop read concurrently;
 SQL makes metrics cheap. Server offers no history export, so this is the guild's
 memory.
 
-## 2026-08-16 — System deps (approved server-level installs)
-Decision: installed cmake, libzmq4, pkgconf (for pyzmq build), then py315-sqlite3.
-Why: FreeBSD has no prebuilt pyzmq wheel, so pyzmq compiles from source and needs
-cmake + libzmq; and the pkg Python 3.15 ships sqlite3 as a separate package that
-wasn't installed. Both approved by the operator before installing.
-
-## 2026-08-16 — requires-python floor = 3.12 (found by the reaper gate)
-Decision: set requires-python ">=3.12" (was ">=3.15"); regenerated uv.lock.
-Why: `reaper test` failed in the container — uv cannot provision Python 3.15 (an
-unreleased beta) on Linux. The code uses nothing 3.15-specific. Locally uv keeps
-the existing 3.15 venv (3.15 satisfies >=3.12), so the workstation still runs
-3.15 while the container uses a stable interpreter — extra version coverage.
-Effect/verify: local pytest green on 3.15; reaper container build re-run to confirm.
-
-## 2026-08-16 — Reaper image pinned by digest (no tag)
-Decision: build image = ghcr.io/astral-sh/uv@sha256:22334efe… (bookworm-slim's
-digest, tag dropped).
-Why: reaper rejects tags outright, even repo:tag@sha256. The digest alone
-identifies the image. Verified: `reaper up` pulled it cleanly.
-
-## 2026-08-16 — Zero-downtime redeploy via the game's supersede
-Decision: redeploy = start a fresh runner; its hello supersedes the old session,
-which exits cleanly. Rollback = check out a known-good sha (from the runs table)
-and redeploy.
-Why: BotGuilds allows one session per guild, so supersede is a built-in ~zero-
-downtime cutover. Each runner opens/closes a run window in the `runs` table,
-which doubles as the version timeline and before/after attribution.
-
-## 2026-08-16 — Baseline strategy: explorer/0.1.0 (explore-first)
+## 2026-08-16 23:43 — Baseline strategy: explorer/0.1.0 (explore-first)
 Decision: ship a broad explore-first baseline — recruit a roster, spread evenly
 across all three maps to discover content, fight/loot/open/explore, retreat to
 heal and sell when hurt or full.
@@ -63,7 +36,35 @@ baseline maximizes what the metrics reveal before specializing.
 Effect/verify: to be measured live (gold/hr, xp/hr, deaths, exploration depth,
 action-error rate). This is the baseline the loop improves against.
 
-## 2026-08-17 — Went live (autonomous operation begins)
+## 2026-08-17 00:01 — System deps (approved server-level installs)
+Decision: installed cmake, libzmq4, pkgconf (for pyzmq build), then py315-sqlite3.
+Why: FreeBSD has no prebuilt pyzmq wheel, so pyzmq compiles from source and needs
+cmake + libzmq; and the pkg Python 3.15 ships sqlite3 as a separate package that
+wasn't installed. Both approved by the operator before installing.
+
+## 2026-08-17 00:02 — requires-python floor = 3.12 (found by the reaper gate)
+Decision: set requires-python ">=3.12" (was ">=3.15"); regenerated uv.lock.
+Why: `reaper test` failed in the container — uv cannot provision Python 3.15 (an
+unreleased beta) on Linux. The code uses nothing 3.15-specific. Locally uv keeps
+the existing 3.15 venv (3.15 satisfies >=3.12), so the workstation still runs
+3.15 while the container uses a stable interpreter — extra version coverage.
+Effect/verify: local pytest green on 3.15; reaper container build re-run to confirm.
+
+## 2026-08-17 00:02 — Reaper image pinned by digest (no tag)
+Decision: build image = ghcr.io/astral-sh/uv@sha256:22334efe… (bookworm-slim's
+digest, tag dropped).
+Why: reaper rejects tags outright, even repo:tag@sha256. The digest alone
+identifies the image. Verified: `reaper up` pulled it cleanly.
+
+## 2026-08-17 00:02 — Zero-downtime redeploy via the game's supersede
+Decision: redeploy = start a fresh runner; its hello supersedes the old session,
+which exits cleanly. Rollback = check out a known-good sha (from the runs table)
+and redeploy.
+Why: BotGuilds allows one session per guild, so supersede is a built-in ~zero-
+downtime cutover. Each runner opens/closes a run window in the `runs` table,
+which doubles as the version timeline and before/after attribution.
+
+## 2026-08-17 00:14 — Went live (autonomous operation begins)
 Decision: started the continuous bot (`./run-live.sh`, supervised) and the web
 UI (0.0.0.0:8800) as persistent background processes; began the self-paced
 improvement loop.
@@ -73,7 +74,16 @@ explorer baseline plays correctly with 0 action errors (recruited to world_cap,
 armed up, spread vale:4/mines:3/spire:3). Operator authorized go-live.
 State at go-live: run window #2 "go-live baseline", explorer/0.1.0.
 
-## 2026-08-17 — Iteration 1: explorer/0.2.0 (movement + affordability + a nav bug)
+## 2026-08-17 00:14 — First improvement target: move_failed rate
+Observation: the pre-flight showed ~10 `move_failed` events vs 28 successful
+moves (~26%). Cause: early in a run the map is barely known, so BFS finds no path
+and the fallback picks a "legal" step that only checks *known* tiles — near
+spawn/edges/unknown terrain it still bounces (a failed move wastes stamina).
+Plan: the first loop iteration will tighten the movement fallback (avoid stepping
+into unknown/edge tiles; prefer known-walkable), add a regression test, and
+measure move_failed rate before/after. Tactical (not a strategy pivot).
+
+## 2026-08-17 00:54 — Iteration 1: explorer/0.2.0 (movement + affordability + a nav bug)
 Before (run #2 @ ~tick 10.8k): action_error_rate 9.9% dominated by
 not_enough_stamina=3185; move_failed=19276 vs move=18742 (~50% of moves bounced).
 Changes (verified by pytest + reaper gate; each new assertion mutation-checked):
@@ -90,12 +100,4 @@ Changes (verified by pytest + reaper gate; each new assertion mutation-checked):
 Expected effect: move_failed rate and action_error_rate fall sharply; more
 ground explored per stamina. How to falsify: next window's move_failed/action-
 error rates don't improve materially. Tactical (no strategy pivot).
-
-## 2026-08-17 — First improvement target: move_failed rate
-Observation: the pre-flight showed ~10 `move_failed` events vs 28 successful
-moves (~26%). Cause: early in a run the map is barely known, so BFS finds no path
-and the fallback picks a "legal" step that only checks *known* tiles — near
-spawn/edges/unknown terrain it still bounces (a failed move wastes stamina).
-Plan: the first loop iteration will tighten the movement fallback (avoid stepping
-into unknown/edge tiles; prefer known-walkable), add a regression test, and
-measure move_failed rate before/after. Tactical (not a strategy pivot).
+Deployed: run window #3, sha dfa62c7, 2026-08-17 00:54.

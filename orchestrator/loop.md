@@ -61,9 +61,10 @@ before it is judged — think hours per iteration, not minutes.
    opens. **Rollback:** pick the last known-good `git_sha` from `runs`,
    `git checkout <sha>`, `./redeploy.sh`, then return to the working branch.
 
-9. **Record.** Append to `decisions.log`: what, why, expected effect, how it would
-   be falsified. After the next window, note the actual effect. Also update the
-   **lab notebook** (`findings.jsonl`) — see below.
+9. **Record.** Append to `decisions.log` under a `## YYYY-MM-DD HH:MM — title`
+   header (local time): what, why, expected effect, how it would be falsified.
+   After the next window, note the actual effect. Also update the **lab
+   notebook** (`findings.jsonl`) — see below.
 
 10. **Periodically** run `uv run tools/check_submodule.py`; if upstream moved,
     review and deliberately port relevant protocol/client fixes into `steemer/`
