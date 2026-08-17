@@ -21,6 +21,34 @@ before it is judged — think hours per iteration, not minutes.
   would have caught it; mutation-check every new assertion (break it, watch it
   fail); never weaken a check to route around a defect.
 
+## Usage-cap failure mode (read this first each tick)
+
+The loop runs on the operator's Claude usage. If that caps out, **the game must
+keep playing** — so protection is layered:
+
+1. **The bot is detached from the Claude session.** `redeploy.sh` launches it via
+   `daemon(8)` (FreeBSD) / `setsid` (Linux), reparented to init — it survives the
+   Claude session ending. A cap pauses *improvement*, never *play*. (Verify:
+   `pgrep -f steemer.runner` chain roots at PID 1.)
+2. **Safety invariant so a mid-cap interruption never breaks the running bot:**
+   the only irreversible/outward step is the hot-redeploy, and it happens *only
+   after* local pytest + the reaper gate + a commit. If a cap interrupts the loop
+   at any earlier point, the worst case is an uncommitted improvement — the live
+   (previous) version keeps playing, unharmed.
+3. **Graceful degradation via `orchestrator/loop_config.json`** (read it at the
+   start of every tick; there is no readable usage-% signal, so this is the
+   operator's lever and the loop self-adjusts + logs when it has any budget hint):
+   - `mode: normal` — full loop at `cadence_seconds`.
+   - `mode: conserve` — self-nerf as the cap nears: skip UI upgrades and the
+     reaper VM gate (verify locally with pytest + replay only), act only on clear
+     high-value wins, and lengthen the wakeup ~2–3×. This is the "slow the
+     decision factors during the last 10%" behavior.
+   - `mode: pause` — call `ScheduleWakeup(stop: true)` and stop; the detached bot
+     plays solo with zero ongoing Claude usage until the operator restarts the
+     loop. Log that it paused and why.
+   Adjustments to this ladder are themselves fair game during self-improvement —
+   just record them in `decisions.log`.
+
 ## One iteration
 
 1. **Ensure the bot is live.** Confirm a current open run window:

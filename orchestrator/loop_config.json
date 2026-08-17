@@ -1,0 +1,7 @@
+{
+  "mode": "normal",
+  "cadence_seconds": 2400,
+  "reaper_gate": true,
+  "ui_upgrades": true,
+  "_notes": "The improvement loop reads this at the start of every tick and honors it. There is no reliable programmatic signal for Claude usage %, so this is the operator's lever for the usage-cap failure mode (and the loop self-adjusts + logs when it has any budget signal). The detached game bot keeps playing regardless of this file. mode: 'normal' = full loop; 'conserve' = self-nerf as the cap nears (skip UI upgrades and the reaper VM gate, verify locally only, act only on clear high-value wins, and lengthen cadence ~2-3x); 'pause' = stop scheduling wakeups entirely (zero ongoing Claude usage) and let the detached bot play solo until the operator restarts the loop. cadence_seconds: base wakeup interval. reaper_gate / ui_upgrades: feature toggles the conserve ladder also flips off."
+}

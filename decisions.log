@@ -108,3 +108,25 @@ iteration — fun or practical (graph views, heatmaps, live roster, knowledge
 tables). Discretionary, not required every tick. Added as loop step 11; candidate
 ideas seeded in findings.jsonl (tag: ui). Next likely build: metric time-series
 graphs with per-version overlay (pairs with measuring explorer/0.2.0).
+
+## 2026-08-17 01:06 — Failure mode for Claude usage caps
+Directive (operator): degrade gracefully as Claude usage nears its cap; nerf/slow
+the loop during the last stretch; adjustable during self-improvement (keep it
+logged).
+Design:
+1. **Detached bot (core protection).** The live bot was tethered to the Claude
+   session (would die on a cap). redeploy.sh now launches it via daemon(8) /
+   setsid, reparented to init — verified the process chain roots at PID 1. A cap
+   pauses improvement, not play. Relaunched run #4 (0.2.0) detached.
+2. **No readable usage signal** (policy-limits.json is restrictions, not quota;
+   no ccusage), so graceful degradation is operator-tunable via
+   orchestrator/loop_config.json (mode normal|conserve|pause + cadence + gate/ui
+   toggles), honored at the top of each loop tick. conserve = skip UI + reaper
+   gate, local-only verify, longer cadence; pause = stop scheduling (bot plays
+   solo). Documented as loop.md "Usage-cap failure mode".
+3. **Safety invariant:** the only irreversible step (hot-redeploy) happens after
+   local pytest + reaper gate + commit, so a mid-cap interruption never leaves
+   the running bot broken (worst case: an uncommitted improvement).
+Falsify/verify: kill the Claude session and confirm the daemon-owned bot keeps
+logging frames; flip loop_config to conserve/pause and confirm the next tick
+honors it.
