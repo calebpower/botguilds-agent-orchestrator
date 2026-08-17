@@ -27,10 +27,21 @@ v0.4.0 — 0.3.0 cut the death *rate* 43% but chars now survive-while-poisoned
     tank poison) then END (stamina to outrun it) then STR, each toward the
     full-rate effective-bonus cap of 8, preferring the character's half-cost
     gifts. This is what turns 0.3.0's survivors into characters that actually grow.
+
+v0.5.0 — the operator noticed characters carrying weapons/armor but wearing
+none. Cause: `equip` had fired 0 times ever — the village SOLD gear (everything
+outside KEEP) before the equip step could reach it, and there was no path to
+equip looted armor/shields/trinkets at all. Fix:
+  * **Equip carried gear into empty slots, BEFORE selling.** Slots are learned
+    by trial (wrong_slot advances to another slot; stat_requirement marks the
+    kind unusable) so it needs no content knowledge of which item goes where.
+  * **Never sell gear we can still use** — only loot and gear that won't fit.
+    Unarmored characters were almost certainly compounding the death problem.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
 from .. import nav
@@ -47,12 +58,35 @@ POTION_KEEP = 1            # potions to carry into the field per character
 POTION_MIN_GOLD = 25       # only buy a potion with this much gold to spare
 XP_PRIORITY = ("vit", "end", "str")   # survival first: HP, then stamina, then damage
 XP_STAT_TARGET = 8         # grow each toward the full-rate effective-bonus cap
+EQUIP_SLOTS = ("hand", "offhand", "outfit", "trinket", "boots")
 
 
 class Explorer:
-    version = "explorer/0.4.0"
+    version = "explorer/0.5.0"
 
-    # -- village: economy + healing supply + even, discovery-first deployment --
+    def __init__(self) -> None:
+        # Equip-slot learning (persists across frames): slots a kind has been
+        # rejected from (wrong_slot), and kinds that fail a stat requirement.
+        self.slot_wrong: dict[str, set[str]] = defaultdict(set)
+        self.wont_fit: set[str] = set()
+        self.equipping: dict[str, tuple[str, str]] = {}   # uid -> (kind, slot) in flight
+
+    def on_action_error(self, bot: "Any", message: dict[str, Any]) -> None:
+        """Learn equip slots from the server's rejections. We send at most one
+        equip per character per frame, so the pending (kind, slot) identifies it."""
+        if message.get("action") != "equip":
+            return
+        pend = self.equipping.get(message.get("char_uid"))
+        if not pend:
+            return
+        kind, slot = pend
+        reason = message.get("reason")
+        if reason == "wrong_slot":
+            self.slot_wrong[kind].add(slot)     # not this slot — try another next time
+        elif reason == "stat_requirement":
+            self.wont_fit.add(kind)             # can't meet the requirement; stop trying
+
+    # -- village: gear + economy + healing supply + discovery-first deployment --
 
     def village(self, bot: "Any", frame: dict[str, Any]) -> list[dict[str, Any]]:
         guild = frame.get("guild", {})
@@ -63,33 +97,33 @@ class Explorer:
         for char in chars:
             uid = char["char_uid"]
             inv = char.get("inventory", [])
-            # 1) sell the haul (keep field supplies).
+            eqp = char.get("equipment", {}) or {}
+            # 1) EQUIP carried gear into empty slots — BEFORE selling, or we sell
+            #    the weapons/armor we ought to be wearing (the original bug: 0
+            #    equips ever, everyone bare-handed and unarmored).
+            eq = self._equip_action(uid, inv, eqp)
+            if eq is not None:
+                return [self._village_act(bot, uid, eq, eq.pop("_why"))]
+            # 2) sell only what we can't use: loot, and gear that won't fit.
             for item in inv:
-                if item["kind"] not in KEEP:
+                if self._should_sell(item, eqp):
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "sell",
                                    "item_id": item["item_id"]},
                         f"selling {item['kind']} (tier {item.get('tier')}) to bank gold")]
-            # 2) arm the unarmed.
+            # 3) still bare-handed with nothing to equip? buy a basic weapon.
             weapon = "shortsword" if char.get("stats", {}).get("str", 0) >= 4 else "club"
-            if char.get("equipment", {}).get("hand") is None:
-                owned = next((i for i in inv if i["kind"] == weapon), None)
-                if owned:
-                    return [self._village_act(
-                        bot, uid, {"char_uid": uid, "action": "equip",
-                                   "item_id": owned["item_id"], "slot": "hand"},
-                        f"equipping {weapon} before embarking")]
-                if gold >= 45:
-                    return [self._village_act(
-                        bot, uid, {"char_uid": uid, "action": "buy", "kind": weapon},
-                        f"buying a {weapon} (STR {char.get('stats',{}).get('str')})")]
-            # 3) stock a field potion (the only heal fast enough to beat poison).
+            if eqp.get("hand") is None and gold >= 45:
+                return [self._village_act(
+                    bot, uid, {"char_uid": uid, "action": "buy", "kind": weapon},
+                    f"buying a {weapon} (nothing to equip; STR {char.get('stats',{}).get('str')})")]
+            # 4) stock a field potion (the only heal fast enough to beat poison).
             potions = sum(1 for i in inv if i["kind"] == "potion_red")
             if potions < POTION_KEEP and gold >= POTION_MIN_GOLD:
                 return [self._village_act(
                     bot, uid, {"char_uid": uid, "action": "buy", "kind": "potion_red"},
                     "buying a red potion for the field (survival)")]
-            # 4) spend banked XP on durability (safe in the village).
+            # 5) spend banked XP on durability (safe in the village).
             stat = self._pick_xp_stat(char)
             if stat is not None:
                 v = char.get("stats", {}).get(stat, 1)
@@ -100,7 +134,7 @@ class Explorer:
                         bot, uid, {"char_uid": uid, "action": "spend_xp", "stat": stat},
                         f"spending XP on {stat} (v{v}->{v+1}, "
                         f"{'gift ' if gifted else ''}cost {cost}) for durability")]
-            # 5) heal before shipping out.
+            # 6) heal before shipping out.
             if char.get("hp", 0) < char.get("max_hp", 1):
                 self._trace(bot, None, frame.get("world"),
                             [f"{uid} hurt ({char['hp']}/{char['max_hp']}); healing in village"],
@@ -222,6 +256,41 @@ class Explorer:
                 break
 
     # -- helpers --------------------------------------------------------------
+
+    def _equip_action(self, uid: str, inv: list[dict[str, Any]],
+                      eqp: dict[str, Any]) -> dict[str, Any] | None:
+        """Equip the first carried, equippable item into an empty slot it has not
+        already been rejected from. Slots are learned by trial (see
+        on_action_error), so this needs no content knowledge of which item goes
+        where. Returns an equip action (with a ``_why`` note) or None."""
+        for item in inv:
+            kind = item["kind"]
+            if "equip" not in (item.get("uses") or []) or kind in self.wont_fit:
+                continue
+            slot = next((s for s in EQUIP_SLOTS
+                         if eqp.get(s) is None and s not in self.slot_wrong[kind]), None)
+            if slot is None:
+                continue                    # no empty, not-known-wrong slot for it
+            self.equipping[uid] = (kind, slot)
+            return {"char_uid": uid, "action": "equip", "slot": slot,
+                    "item_id": item["item_id"],
+                    "_why": f"equipping {kind} -> {slot} "
+                            f"(wrong so far: {sorted(self.slot_wrong[kind]) or 'none'})"}
+        return None
+
+    def _should_sell(self, item: dict[str, Any], eqp: dict[str, Any]) -> bool:
+        """Sell loot and gear we cannot use — but never gear we might still equip
+        (that was the sell-before-equip bug). Keep field supplies (KEEP)."""
+        kind = item["kind"]
+        if kind in KEEP:
+            return False
+        if "equip" not in (item.get("uses") or []):
+            return True                     # pure loot -> bank it
+        if kind in self.wont_fit:
+            return True                     # equippable but fails its stat requirement
+        # otherwise keep it only while a slot it could still go into remains:
+        return all(s in self.slot_wrong[kind] or eqp.get(s) is not None
+                   for s in EQUIP_SLOTS)
 
     @staticmethod
     def _pick_xp_stat(char: dict[str, Any]) -> str | None:

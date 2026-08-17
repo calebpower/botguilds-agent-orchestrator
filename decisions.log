@@ -213,3 +213,21 @@ green. Expected effect: living characters' max_hp and stamina climb above the
 rate falls further. Falsify: the max_hp distribution of living/dying characters
 does not rise above ~30, or death rate (deaths/1k ticks) does not improve.
 Deployed as run #6.
+
+## 2026-08-17 03:21 — Iteration 4: explorer/0.5.0 (equip carried gear — operator-flagged)
+Operator noticed characters carrying weapons/armor but wearing none. RCA: the
+equip action had fired 0 times in all of history — the village SOLD everything
+outside KEEP before the equip step could run (buy->sell churn), and looted
+armor/shields/trinkets had no equip path at all. Characters fought bare-handed
+and UNARMORED, almost certainly compounding the deaths/poison problem.
+Fix: equip carried gear into empty slots BEFORE selling; learn each item's slot
+by trial (wrong_slot -> try another; stat_requirement -> mark unusable); never
+sell gear we can still wear. 83 tests (equip-before-sell / slot-learning /
+stat-requirement mutation-checked); reaper gate green. Deployed run #7.
+Attribution caveat: shipped ahead of 0.4.0's isolated measurement, so spend_xp
+(0.4.0) got only a short window — the next measurement reflects 0.4.0+0.5.0
+combined. Prioritized getting characters armored (operator-flagged, survival-
+critical) over clean attribution.
+Measure next: death rate (deaths/1k ticks, baseline 7.28 on 0.3.0),
+status_damage/1k, and a NEW equip-rate metric (% of fielded characters wearing a
+weapon and armor, baseline ~0%).

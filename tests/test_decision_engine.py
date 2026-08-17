@@ -261,6 +261,60 @@ def test_village_no_xp_spend_when_stats_capped():
     assert all(a.get("action") != "spend_xp" for a in bot.on_frame(_village_frame1(char)))
 
 
+def _equip_char(inv, equipment=None, uid="c1"):
+    return {"char_uid": uid, "hp": 30, "max_hp": 30, "inventory": inv,
+            "equipment": equipment or {"hand": None, "offhand": None,
+                                       "outfit": None, "trinket": None, "boots": None},
+            "stats": {"vit": 1, "end": 1, "str": 1}, "gifts": [], "xp": 0}
+
+
+def _vframe(char, gold=100):
+    return {"world": "village", "tick": 3,
+            "guild": {"gold": gold, "chars_here": [char["char_uid"]], "chars_by_world": {}},
+            "chars": [char]}
+
+
+def test_village_equips_carried_gear_before_selling():
+    bot = _bot()
+    char = _equip_char([{"kind": "ore_copper", "item_id": "o1", "uses": []},
+                        {"kind": "rusty_sword", "item_id": "w1", "uses": ["equip", "attack"]}])
+    # must EQUIP the sword (not sell the ore first, and not leave the sword unworn)
+    assert bot.on_frame(_vframe(char)) == \
+        [{"char_uid": "c1", "action": "equip", "slot": "hand", "item_id": "w1"}]
+
+
+def test_village_equips_into_empty_slot_when_hand_is_taken():
+    bot = _bot()
+    char = _equip_char([{"kind": "hide_vest", "item_id": "a1", "uses": ["equip"]}],
+                       equipment={"hand": {"kind": "club"}, "offhand": None,
+                                  "outfit": None, "trinket": None, "boots": None})
+    # hand occupied -> it must probe the first EMPTY slot, not skip the armor
+    assert bot.on_frame(_vframe(char)) == \
+        [{"char_uid": "c1", "action": "equip", "slot": "offhand", "item_id": "a1"}]
+
+
+def test_wrong_slot_is_learned_then_next_slot_tried():
+    bot = _bot()
+    char = _equip_char([{"kind": "hide_vest", "item_id": "a1", "uses": ["equip"]}])
+    first = bot.on_frame(_vframe(char))
+    assert first[0]["slot"] == "hand"                    # first empty slot
+    bot.strategy.on_action_error(bot, {"action": "equip", "char_uid": "c1",
+                                       "reason": "wrong_slot"})
+    second = bot.on_frame(_vframe(char))
+    assert second[0]["slot"] == "offhand"                # hand now known-wrong
+
+
+def test_stat_requirement_marks_unusable_and_then_sells():
+    bot = _bot()
+    char = _equip_char([{"kind": "heavy_maul", "item_id": "m1", "uses": ["equip"]}])
+    bot.on_frame(_vframe(char))                          # attempt equip
+    bot.strategy.on_action_error(bot, {"action": "equip", "char_uid": "c1",
+                                       "reason": "stat_requirement"})
+    # unusable now -> not re-equipped, and sold rather than hoarded
+    assert bot.on_frame(_vframe(char)) == \
+        [{"char_uid": "c1", "action": "sell", "item_id": "m1"}]
+
+
 def test_decisions_are_persisted(tmp_path):
     s = Storage(str(tmp_path / "d.db"), commit_every=1)
     bot = _bot(storage=s)
