@@ -19,6 +19,14 @@ because they couldn't afford the step home):
   * **Carry field healing.** The village stocks a `potion_red` per character; the
     field's drink-when-hurt branch was dead code with no ammunition, and a potion
     is the only heal fast enough to outrun poison's tick.
+
+v0.4.0 — 0.3.0 cut the death *rate* 43% but chars now survive-while-poisoned
+(status_damage tripled) and were still frozen at their recruit stats (max_hp
+24-30) because XP was banked and never spent:
+  * **Spend XP for durability.** In the village, pour banked XP into VIT (HP to
+    tank poison) then END (stamina to outrun it) then STR, each toward the
+    full-rate effective-bonus cap of 8, preferring the character's half-cost
+    gifts. This is what turns 0.3.0's survivors into characters that actually grow.
 """
 
 from __future__ import annotations
@@ -37,10 +45,12 @@ DEFAULT_MAPS = ("vale", "mines", "spire")
 REST_SCORE = 0.5           # the floor: rest wins only when nothing affordable beats it
 POTION_KEEP = 1            # potions to carry into the field per character
 POTION_MIN_GOLD = 25       # only buy a potion with this much gold to spare
+XP_PRIORITY = ("vit", "end", "str")   # survival first: HP, then stamina, then damage
+XP_STAT_TARGET = 8         # grow each toward the full-rate effective-bonus cap
 
 
 class Explorer:
-    version = "explorer/0.3.0"
+    version = "explorer/0.4.0"
 
     # -- village: economy + healing supply + even, discovery-first deployment --
 
@@ -79,7 +89,18 @@ class Explorer:
                 return [self._village_act(
                     bot, uid, {"char_uid": uid, "action": "buy", "kind": "potion_red"},
                     "buying a red potion for the field (survival)")]
-            # 4) heal before shipping out.
+            # 4) spend banked XP on durability (safe in the village).
+            stat = self._pick_xp_stat(char)
+            if stat is not None:
+                v = char.get("stats", {}).get(stat, 1)
+                gifted = stat in set(char.get("gifts", []))
+                cost = self._xp_cost(v, gifted)
+                if char.get("xp", 0) >= cost:
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "spend_xp", "stat": stat},
+                        f"spending XP on {stat} (v{v}->{v+1}, "
+                        f"{'gift ' if gifted else ''}cost {cost}) for durability")]
+            # 5) heal before shipping out.
             if char.get("hp", 0) < char.get("max_hp", 1):
                 self._trace(bot, None, frame.get("world"),
                             [f"{uid} hurt ({char['hp']}/{char['max_hp']}); healing in village"],
@@ -201,6 +222,22 @@ class Explorer:
                 break
 
     # -- helpers --------------------------------------------------------------
+
+    @staticmethod
+    def _pick_xp_stat(char: dict[str, Any]) -> str | None:
+        """The stat to raise next: survival-priority (VIT>END>STR), each grown to
+        the full-rate cap. None once all three are there (bank the rest)."""
+        stats = char.get("stats", {})
+        for s in XP_PRIORITY:
+            if stats.get(s, 0) < XP_STAT_TARGET:
+                return s
+        return None
+
+    @staticmethod
+    def _xp_cost(value: int, gifted: bool) -> int:
+        """XP to raise a stat from ``value``: 8·v·2^(v//10), halved for a gift."""
+        cost = 8 * value * (2 ** (value // 10))
+        return cost // 2 if gifted else cost
 
     @staticmethod
     def _cost(action_name: str, cfg: dict[str, Any]) -> int:

@@ -201,3 +201,15 @@ sustained poison/status_damage on fleeing characters.
 Iteration 3 (next): spend_xp into VIT (HP to tank poison) -> END (stamina to
 outrun it) -> STR, preferring gifts — now even better motivated by the poison
 finding. Possibly reduce poison exposure. (Spire de-funnel still deferred.)
+
+## 2026-08-17 03:02 — Iteration 3: explorer/0.4.0 (spend_xp for durability)
+Motivated by the iteration-2 result: 0.3.0 raised survival rate but characters
+survive-while-poisoned and were frozen at max_hp 24-30 because banked XP was
+never spent. Change: the village spends banked XP into VIT > END > STR, each
+toward the full-rate cap of 8, preferring the character's half-cost gifts.
+Verified: local pytest 77 (priority/gift-cost/cap mutation-checked) + reaper gate
+green. Expected effect: living characters' max_hp and stamina climb above the
+24-30 floor over time; poison becomes survivable as the HP buffer grows; death
+rate falls further. Falsify: the max_hp distribution of living/dying characters
+does not rise above ~30, or death rate (deaths/1k ticks) does not improve.
+Deployed as run #6.

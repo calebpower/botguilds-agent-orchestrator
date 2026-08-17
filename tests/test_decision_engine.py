@@ -214,6 +214,53 @@ def test_village_does_not_buy_a_second_potion():
                for a in actions)
 
 
+def _village_char(**over):
+    # armed + carrying a potion so the sell/weapon/potion steps all no-op and we
+    # reach the spend_xp step.
+    char = {"char_uid": "c1", "hp": 30, "max_hp": 30,
+            "inventory": [{"kind": "potion_red", "item_id": "p1", "tier": 1}],
+            "equipment": {"hand": {"kind": "club"}},
+            "stats": {"vit": 1, "end": 1, "str": 1}, "gifts": [], "xp": 0}
+    char.update(over)
+    return char
+
+
+def _village_frame1(char, gold=100):
+    return {"world": "village", "tick": 3,
+            "guild": {"gold": gold, "chars_here": ["c1"], "chars_by_world": {}},
+            "chars": [char]}
+
+
+def test_village_spends_xp_on_vit_first():
+    bot = _bot()
+    char = _village_char(stats={"vit": 1, "end": 1, "str": 1}, xp=10)
+    assert bot.on_frame(_village_frame1(char)) == \
+        [{"char_uid": "c1", "action": "spend_xp", "stat": "vit"}]
+
+
+def test_village_spends_end_after_vit_capped():
+    bot = _bot()
+    char = _village_char(stats={"vit": 8, "end": 1, "str": 1}, xp=10)
+    assert bot.on_frame(_village_frame1(char)) == \
+        [{"char_uid": "c1", "action": "spend_xp", "stat": "end"}]
+
+
+def test_village_gift_halves_xp_cost():
+    # vit=2 costs 16 XP normally, 8 as a gift. With exactly 8 XP, only the gifted
+    # character can afford the point.
+    bot = _bot()
+    gift = _village_char(stats={"vit": 2, "end": 8, "str": 8}, xp=8, gifts=["vit"])
+    assert {"char_uid": "c1", "action": "spend_xp", "stat": "vit"} in bot.on_frame(_village_frame1(gift))
+    nongift = _village_char(stats={"vit": 2, "end": 8, "str": 8}, xp=8, gifts=[])
+    assert all(a.get("action") != "spend_xp" for a in bot.on_frame(_village_frame1(nongift)))
+
+
+def test_village_no_xp_spend_when_stats_capped():
+    bot = _bot()
+    char = _village_char(stats={"vit": 8, "end": 8, "str": 8}, xp=9999)
+    assert all(a.get("action") != "spend_xp" for a in bot.on_frame(_village_frame1(char)))
+
+
 def test_decisions_are_persisted(tmp_path):
     s = Storage(str(tmp_path / "d.db"), commit_every=1)
     bot = _bot(storage=s)
