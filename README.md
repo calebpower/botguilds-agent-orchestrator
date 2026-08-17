@@ -39,11 +39,14 @@ uv sync                                   # set up the environment
 # Play live (reads guild_token.json for server + credentials):
 uv run python -m steemer.runner
 
-# Keep it always-on (auto-restart; POSIX, no systemd needed):
-./steemer/runner.sh
+# Keep it always-on (auto-restart on crash; POSIX, no systemd needed):
+./run-live.sh
+
+# Hot-redeploy the running bot with ~zero downtime (after committing + reaper test):
+./redeploy.sh --note "what changed"
 
 # Replay recorded history through the current decision engine:
-uv run python -m steemer.replay --db guild_log.db --world vale
+uv run python -m steemer.replay --db guild_log.db --world vale -v
 
 # Web dashboard (LAN-accessible, read-only):
 uv run python ui/server.py --host 0.0.0.0 --port 8800
