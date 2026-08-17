@@ -1,0 +1,41 @@
+# reaper tenant manifest for the "steemer" bot.
+#
+# This is the pre-redeploy gate: `reaper test` runs the pytest battery in a
+# digest-pinned, reproducible container on the ubuntu-26.04 guest. The fast
+# tiers also run locally (`uv run pytest`) during iteration; the session's value
+# is proving the battery green in a pinned environment before a redeploy.
+#
+# The live bot does NOT run here — it runs on the workstation. reaper sessions
+# are ephemeral (TTL, reaped), not a hosting platform. See docs/ and the plan.
+
+schema = 1
+project = "steemer"
+guests = ["ubuntu-26.04"]
+exec = "container"
+
+[build]
+# uv on debian-slim, pinned by digest (reaper rejects tags). uv provisions a
+# stable managed CPython (>=3.12 per pyproject) and the manylinux pyzmq wheel
+# inside the container, so no apt/system packages are needed here (unlike the
+# FreeBSD workstation, where pyzmq compiles against system libzmq).
+# digest alone (no tag — reaper rejects tags); this digest IS the bookworm-slim image.
+image = "ghcr.io/astral-sh/uv@sha256:22334efe746f1b69217d455049b484d7b8cacfb2d5f42555580b62415a98e0a3"
+# Cache uv's downloads on the pool, not the tiny root disk (<4 GiB free).
+cmd = "UV_CACHE_DIR=$REAPER_CACHE_UV uv sync --frozen"
+cache = ["uv"]
+
+[run]
+# No pipe: dash has no pipefail, so `... | tee` would mask a failing suite and
+# poison @pristine. Redirect the log into $REAPER_OUT (collected back to out/).
+cmd = "UV_CACHE_DIR=$REAPER_CACHE_UV uv run pytest -q > $REAPER_OUT/pytest.log 2>&1"
+
+[sync]
+# out/ is auto-excluded. Skip the FreeBSD venv (wrong platform), caches, local
+# DBs, and the reference submodule (never imported by the battery).
+exclude = ["/.venv/", "/__pycache__/", "/*.db", "/reference_starter_kit/"]
+
+[resources]
+cores = 4
+ram_gb = 8
+
+# No [reset]: the battery is stateless (nothing under $REAPER_STATE to roll back).

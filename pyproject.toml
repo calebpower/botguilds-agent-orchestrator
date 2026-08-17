@@ -3,7 +3,11 @@ name = "steemer"
 version = "0.0.0"
 description = "Autonomous bot + self-improvement harness for BotGuilds (guild Stanley_Steemer)"
 readme = "README.md"
-requires-python = ">=3.15"
+# Floor at 3.12: the code uses nothing 3.15-specific, and pinning >=3.15 (an
+# unreleased beta) makes the reaper container unbuildable — uv can't provision a
+# 3.15 interpreter there. Locally uv keeps the existing 3.15 venv (it satisfies
+# this), so the workstation still runs on 3.15; the container uses a stable one.
+requires-python = ">=3.12"
 authors = [{ name = "Caleb L. Power", email = "cpower@axonibyte.com" }]
 dependencies = [
     "pyzmq>=26",
