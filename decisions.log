@@ -137,3 +137,14 @@ Claude usage on a cadence and maps it to the conserve/pause ladder. First readin
 ~97% (near cap), resets in ~19 min -> set mode=conserve and scheduled the next
 tick for just after the reset so it runs on fresh quota; kept this turn minimal
 to spare the remaining budget.
+
+## 2026-08-17 01:40 — Iteration 1 result: CONFIRMED (big win)
+Measured explorer/0.2.0 vs 0.1.0 (by strategy_version across run windows):
+- move_failed rate: 55.4% -> **0.8%** (29847/53836 -> 464/56434).
+- action_error_rate: 8.5% -> **3.9%** (3951/46586 -> 1889/49054).
+The nav wall-frontier bug fix was indeed the dominant lever. Falsification test
+(move_failed stays ~50%) did not hold -> conjecture confirmed.
+Remaining: not_enough_stamina still the top error (1776) -> next target (cost
+estimates likely too low for pricier weapon attacks). New small error kinds seen:
+no_such_character/unknown_character (acting on a recalled/dead char between
+frames), no_such_item. Candidates for iteration 2.
