@@ -130,3 +130,10 @@ Design:
 Falsify/verify: kill the Claude session and confirm the daemon-owned bot keeps
 logging frames; flip loop_config to conserve/pause and confirm the next tick
 honors it.
+
+## 2026-08-17 01:12 — Periodic usage check-in (operator-tunable throttle)
+Decision: with no readable usage signal, the loop asks the operator for current
+Claude usage on a cadence and maps it to the conserve/pause ladder. First reading
+~97% (near cap), resets in ~19 min -> set mode=conserve and scheduled the next
+tick for just after the reset so it runs on fresh quota; kept this turn minimal
+to spare the remaining budget.

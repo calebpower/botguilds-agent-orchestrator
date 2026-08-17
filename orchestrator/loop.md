@@ -142,3 +142,12 @@ Watch which signals move — gold/hr, xp/hr, deaths, exploration depth, craft
 outcomes, action-error classes — and let that steer specialization. Don't
 hard-code content (items, enemies, recipes); learn it from `guild_log.db` and the
 event stream, exactly as the game intends.
+
+### Periodic usage check-in
+
+No readable usage-% signal exists, so the loop **asks the operator** for current
+Claude usage every `usage_checkin_every_ticks` ticks (or when `last_usage` is
+stale) and maps the answer via `usage_to_mode` (normal <85%, conserve 85-95%,
+pause >=95%), recording it in `loop_config.last_usage`. Never block on the answer
+- if the operator is away, proceed on the last known mode. When a reset time is
+given, schedule the next wake for just after it.
