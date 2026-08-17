@@ -355,3 +355,16 @@ Verify: pytest 101 green + both fixes mutation-checked + bounded replay clean.
 Next after measuring: v0.9.0 taste-to-learn (turn stranded undecoded singletons
 into essence discoveries via `taste` instead of just selling them), then M3a
 forging (armor).
+
+## 2026-08-17 11:42 — bugfix: superseded run windows left open (attribution integrity)
+Found during the 0.8.0 redeploy: run #9 (0.7.0) stayed stopped_at=NULL after
+#10 superseded it. Cause: end_run() only runs on GRACEFUL shutdown, but the
+hot-redeploy hard-kills the outgoing runner, so it never closes its window ->
+two windows read "open" and per-run metrics double-count. Fix: begin_run() now
+defensively closes any dangling open window (UPDATE runs SET stopped_at WHERE
+stopped_at IS NULL) before opening the new one, so there is always exactly one
+open run regardless of how the prior runner died. Test + mutation-checked in
+test_storage.py. Repaired run #9's window in the live DB (stopped_at = its last
+frame time). NOT redeploying for this alone — run #10 (0.8.0) keeps accumulating
+a clean measurement window; the fix takes effect on the next redeploy (it will
+close #10 cleanly then, or on any hard kill).

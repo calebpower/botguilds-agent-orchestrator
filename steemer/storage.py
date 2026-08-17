@@ -104,10 +104,17 @@ class Storage:
     # -- run/version windows --------------------------------------------------
 
     def begin_run(self, git_sha: str, strategy_version: str, note: str = "") -> int:
+        now = time.time()
+        # Defensive close: a prior runner that was hard-killed (e.g. superseded
+        # during a hot-redeploy, before it could call end_run) leaves its window
+        # open. Close any such dangling window so there is always exactly one
+        # open run — otherwise per-run metric attribution silently double-counts.
+        self.conn.execute(
+            "UPDATE runs SET stopped_at=? WHERE stopped_at IS NULL", (now,))
         cur = self.conn.execute(
             "INSERT INTO runs(git_sha, strategy_version, started_at, note) "
             "VALUES(?,?,?,?)",
-            (git_sha, strategy_version, time.time(), note),
+            (git_sha, strategy_version, now, note),
         )
         self.conn.commit()
         self.run_id = cur.lastrowid

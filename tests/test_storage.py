@@ -83,6 +83,22 @@ def test_runs_window_recorded(tmp_path):
     s.close()
 
 
+def test_begin_run_closes_a_dangling_prior_window(tmp_path):
+    # A runner hard-killed during a hot-redeploy never calls end_run, leaving its
+    # window open. The next begin_run must close it, or two windows look "open"
+    # at once and per-run metrics double-count.
+    s = _db(tmp_path)
+    old = s.begin_run("aaa", "explorer/0.7.0")     # simulate: no end_run() called
+    new = s.begin_run("bbb", "explorer/0.8.0")     # supersedes it
+    open_windows = [r[0] for r in s.conn.execute(
+        "SELECT run_id FROM runs WHERE stopped_at IS NULL").fetchall()]
+    assert open_windows == [new]                   # exactly one open, the newest
+    old_stopped = s.conn.execute(
+        "SELECT stopped_at FROM runs WHERE run_id=?", (old,)).fetchone()[0]
+    assert old_stopped is not None                 # the dangling one got closed
+    s.close()
+
+
 def test_prune_frames_keeps_only_the_last_n(tmp_path):
     s = _db(tmp_path)
     for t in range(10):
