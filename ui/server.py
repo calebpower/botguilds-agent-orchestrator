@@ -36,13 +36,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 # Import from the installed steemer package (works under `uv run`): the storage
-# module owns the authoritative schema, and metrics owns the KPI snapshot.
-from steemer import metrics
+# module owns the authoritative schema, metrics owns the KPI snapshot, and
+# findings owns the authored lab-notebook loader.
+from steemer import findings, metrics
 from steemer.storage import DEFAULT_DB
 
-# Repo root is the parent of this ui/ directory; the log files the operator wants
-# rendered (decisions.log, server_bugs.md) live there.
+# Repo root is the parent of this ui/ directory; the authored notebook and the
+# log files the operator wants rendered all live there.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The lab notebook lives at the repo root; load() already tolerates a missing or
+# half-written file (returns [] / skips bad lines) so the tab degrades cleanly.
+FINDINGS_PATH = os.path.join(REPO_ROOT, findings.FINDINGS_PATH)
 
 # Files exposed by the log viewer, by short name. Restricted to this allow-list
 # so the route can never be coerced into reading arbitrary paths.
@@ -254,6 +259,60 @@ def api_log(name: str) -> tuple[str, str]:
         return ("error", str(exc))
 
 
+def api_findings() -> list[dict]:
+    """The authored lab notebook — reuse :func:`steemer.findings.load` verbatim.
+
+    ``load`` already returns ``[]`` for a missing file and skips malformed lines,
+    so a half-written notebook never takes the tab down. Sorting (newest-updated
+    first) and filtering are left to the page so the raw notebook is served as-is.
+    """
+    try:
+        return findings.load(FINDINGS_PATH)
+    except OSError:
+        return []
+
+
+def api_observed(db_path: str) -> dict:
+    """Auto-derived "observed in play" signals from the read-only guild_log.db.
+
+    Three cheap SQL/aggregate views that keep the Findings tab alive between the
+    operator's authored updates: when each event kind was *first* seen, which
+    action-error reasons occur (and how often), and how far exploration has
+    pushed per world. Robust to an empty/missing DB.
+    """
+    empty = {"ok": False, "event_first_seen": [], "error_reasons": [],
+             "exploration": {}}
+    if not _db_ready(db_path):
+        return empty
+    conn = _ro(db_path)
+    try:
+        out = {"ok": True}
+        # New game events surface here the first tick they ever appear.
+        out["event_first_seen"] = [
+            {"kind": r["kind"], "first_tick": r["first_tick"], "n": r["n"]}
+            for r in conn.execute(
+                "SELECT kind, MIN(tick) AS first_tick, COUNT(*) AS n "
+                "FROM events GROUP BY kind ORDER BY first_tick")
+        ]
+        # Action-error reasons, most frequent first — a content-free health tell.
+        out["error_reasons"] = [
+            {"reason": ("" if r[0] is None else r[0]), "n": r[1]}
+            for r in conn.execute(
+                "SELECT reason, COUNT(*) FROM action_errors "
+                "GROUP BY reason ORDER BY 2 DESC")
+        ]
+        # Exploration frontier: reuse the snapshot's per-world exploration block.
+        try:
+            out["exploration"] = metrics.snapshot(db_path).get("exploration", {})
+        except sqlite3.Error:
+            out["exploration"] = {}
+        return out
+    except sqlite3.Error:
+        return empty
+    finally:
+        conn.close()
+
+
 # --------------------------------------------------------------------------- #
 # HTTP handler
 # --------------------------------------------------------------------------- #
@@ -308,6 +367,10 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/log":
                 kind, text = api_log(one("name", "decisions"))
                 self._json({"kind": kind, "text": text})
+            elif path == "/api/findings":
+                self._json(api_findings())
+            elif path == "/api/observed":
+                self._json(api_observed(self.db_path))
             else:
                 self._send(404, b"not found", "text/plain; charset=utf-8")
         except BrokenPipeError:
@@ -463,6 +526,50 @@ label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13
   color:var(--ink2)}
 .run .meta b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 .delta.up{color:var(--good)} .delta.down{color:var(--crit)}
+/* findings — the lab notebook */
+.find-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  gap:14px}
+.finding{background:var(--surface);border:1px solid var(--border);
+  border-left:4px solid var(--axis);border-radius:12px;padding:14px 16px}
+/* conjectures read as "not yet established": dashed, tinted, distinct from a
+   solid confirmed discovery. Kind sets the left accent colour. */
+.finding.k-discovery{border-left-color:var(--s2)}
+.finding.k-conjecture{border-left-color:var(--s3);border-left-style:dashed;
+  background:color-mix(in srgb,var(--s3) 6%,var(--surface))}
+.finding.k-consideration{border-left-color:var(--s1)}
+.finding.refuted{opacity:.6}
+.finding .ftitle{font-size:14px;font-weight:700;margin:0 0 8px}
+.finding .fbadges{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.finding .fdetail{color:var(--ink2);font-size:13px;white-space:pre-wrap}
+.finding .block{margin-top:10px;font-size:12.5px;border-radius:8px;
+  padding:8px 10px;background:var(--plane)}
+.finding .block .lab{display:block;font-size:11px;text-transform:uppercase;
+  letter-spacing:.5px;color:var(--muted);margin-bottom:3px}
+.finding .block.evidence{border-left:3px solid var(--s2)}
+.finding .block.test{border-left:3px solid var(--s3)}
+.finding .ftags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.finding .tag{font-size:11px;padding:1px 8px;border-radius:999px;
+  background:var(--plane);border:1px solid var(--border);color:var(--ink2);
+  cursor:pointer}
+.finding .ffoot{margin-top:8px;font-size:11px;color:var(--muted)}
+/* status/kind/confidence badges */
+.fbadge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);
+  background:var(--plane);color:var(--ink2);font-weight:600}
+.fbadge.kind{color:var(--ink)}
+.fbadge.st-confirmed{color:#fff;background:var(--good);border-color:transparent}
+.fbadge.st-shipped{color:#fff;background:var(--s1);border-color:transparent}
+.fbadge.st-refuted{color:#fff;background:var(--crit);border-color:transparent}
+.fbadge.st-open{color:var(--ink2)}
+.fbadge.conf{background:transparent}
+.observed table{width:100%;border-collapse:collapse;font-size:12.5px}
+.observed th{text-align:left;color:var(--muted);font-weight:600;
+  text-transform:uppercase;letter-spacing:.4px;font-size:11px;
+  padding:4px 8px;border-bottom:1px solid var(--border)}
+.observed td{padding:4px 8px;border-bottom:1px solid var(--border);
+  font-variant-numeric:tabular-nums}
+.observed td.k{color:var(--ink);font-variant-numeric:normal}
+.observed .col3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:820px){.observed .col3{grid-template-columns:1fr}}
 /* logs */
 pre.log{white-space:pre-wrap;font-family:ui-monospace,"SF Mono",Menlo,Consolas,
   monospace;font-size:12.5px;background:var(--surface);border:1px solid var(--border);
@@ -480,6 +587,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     <button data-tab="decisions">Decisions</button>
     <button data-tab="map">Map</button>
     <button data-tab="timeline">Timeline</button>
+    <button data-tab="findings">Findings</button>
     <button data-tab="logs">Logs</button>
   </nav>
   <span class="grow"></span>
@@ -541,6 +649,46 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   <!-- TIMELINE -->
   <section class="tab" id="tab-timeline">
     <div class="card"><h2>Version timeline (runs)</h2><div id="tl-list"></div></div>
+  </section>
+
+  <!-- FINDINGS -->
+  <section class="tab" id="tab-findings">
+    <div class="filters">
+      <label class="chk">kind
+        <select id="fx-kind">
+          <option value="">all</option>
+          <option value="discovery">discoveries</option>
+          <option value="conjecture">conjectures</option>
+          <option value="consideration">considerations</option>
+        </select></label>
+      <label class="chk">status
+        <select id="fx-status"><option value="">all</option></select></label>
+      <label class="chk">tag
+        <select id="fx-tag"><option value="">all</option></select></label>
+      <label class="chk">search
+        <input type="text" id="fx-q" placeholder="title / detail" size="18"></label>
+      <span class="grow"></span>
+      <span class="small" id="fx-count"></span>
+    </div>
+    <div class="find-grid" id="find-list"></div>
+
+    <div class="card observed" style="margin-top:20px">
+      <h2>Observed in play (auto-derived)</h2>
+      <div class="col3">
+        <div>
+          <h2 style="margin-top:0">Event kinds — first seen</h2>
+          <div id="obs-events"></div>
+        </div>
+        <div>
+          <h2 style="margin-top:0">Action-error reasons</h2>
+          <div id="obs-errors"></div>
+        </div>
+        <div>
+          <h2 style="margin-top:0">Exploration frontier</h2>
+          <div id="obs-explore"></div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- LOGS -->
@@ -974,12 +1122,123 @@ async function loadLogs(){
   $("#log-body").textContent = r ? (r.text||"(empty)") : "(failed to load)";
 }
 
+/* ---- FINDINGS ---- */
+// Confidence may be a word or a 0..1 number; render both as a short label.
+function confLabel(c){
+  if(c==null||c==="") return null;
+  if(typeof c==="number") return "conf "+Math.round(c*100)+"%";
+  return "conf "+c;
+}
+function fmtDate(s){ if(!s) return "—"; const d=new Date(s);
+  return isNaN(d) ? String(s) : d.toLocaleString(); }
+
+let findingsRaw = [];          // last fetched notebook (unfiltered)
+let findingsFiltersBuilt = false;
+function buildFindingFilters(rows){
+  // Populate status + tag dropdowns from the data, preserving any current pick.
+  const statuses=[...new Set(rows.map(r=>r.status).filter(Boolean))].sort();
+  const tags=[...new Set(rows.flatMap(r=>r.tags||[]))].sort();
+  const fill=(sel,vals)=>{ const cur=sel.value;
+    sel.innerHTML="<option value=''>all</option>";
+    vals.forEach(v=>{ const o=el("option",null,v); o.value=v; sel.appendChild(o); });
+    if(vals.includes(cur)) sel.value=cur; };
+  fill($("#fx-status"),statuses); fill($("#fx-tag"),tags);
+}
+function renderFindings(){
+  const kind=$("#fx-kind").value, status=$("#fx-status").value,
+        tag=$("#fx-tag").value, q=$("#fx-q").value.trim().toLowerCase();
+  // newest-updated first (fall back to created)
+  const rows=[...findingsRaw].sort((a,b)=>
+    String(b.updated||b.created||"").localeCompare(String(a.updated||a.created||"")));
+  const list=$("#find-list"); list.innerHTML="";
+  let shown=0;
+  for(const f of rows){
+    if(kind && f.kind!==kind) continue;
+    if(status && f.status!==status) continue;
+    if(tag && !(f.tags||[]).includes(tag)) continue;
+    if(q){ const hay=((f.title||"")+" "+(f.detail||"")).toLowerCase();
+      if(!hay.includes(q)) continue; }
+    shown++;
+    const card=el("div","finding k-"+esc(f.kind)+" "+esc(f.status));
+    card.appendChild(el("h3","ftitle", f.title||"(untitled)"));
+    const badges=el("div","fbadges");
+    if(f.kind) badges.appendChild(el("span","fbadge kind", f.kind));
+    if(f.status) badges.appendChild(el("span","fbadge st-"+esc(f.status), f.status));
+    const cl=confLabel(f.confidence);
+    if(cl) badges.appendChild(el("span","fbadge conf", cl));
+    card.appendChild(badges);
+    if(f.detail) card.appendChild(el("div","fdetail", f.detail));
+    // Evidence matters most for discoveries; the falsification test for
+    // conjectures — surface each in its own labelled block.
+    const block=(cls,label,text)=>{ const b=el("div","block "+cls);
+      b.appendChild(el("span","lab",label));
+      b.appendChild(document.createTextNode(text)); return b; };
+    if(f.evidence) card.appendChild(block("evidence","evidence", f.evidence));
+    if(f.test) card.appendChild(block("test","test · how it'd be falsified", f.test));
+    if((f.tags||[]).length){
+      const tw=el("div","ftags");
+      (f.tags||[]).forEach(t=>{ const s=el("span","tag", t);
+        s.onclick=()=>{ $("#fx-tag").value=t; renderFindings(); }; tw.appendChild(s); });
+      card.appendChild(tw);
+    }
+    card.appendChild(el("div","ffoot","updated "+fmtDate(f.updated||f.created)));
+    list.appendChild(card);
+  }
+  if(!shown) list.appendChild(el("div","empty",
+    findingsRaw.length ? "No findings match these filters." : "No findings yet."));
+  $("#fx-count").textContent = shown+" / "+findingsRaw.length+" shown";
+}
+async function loadFindings(){
+  const rows = await getJSON("/api/findings");
+  findingsRaw = Array.isArray(rows) ? rows : [];
+  buildFindingFilters(findingsRaw);
+  if(!findingsFiltersBuilt){ findingsFiltersBuilt=true;
+    ["#fx-kind","#fx-status","#fx-tag"].forEach(id=>$(id).onchange=renderFindings);
+    $("#fx-q").oninput=renderFindings; }
+  renderFindings();
+  loadObserved();
+}
+function obsTable(rows, cols){
+  const t=el("table"); const thead=el("tr");
+  cols.forEach(c=>thead.appendChild(el("th",null,c.h))); t.appendChild(thead);
+  if(!rows.length){ const tr=el("tr"); const td=el("td",null,"—");
+    td.colSpan=cols.length; tr.appendChild(td); t.appendChild(tr); return t; }
+  for(const r of rows){ const tr=el("tr");
+    cols.forEach(c=>{ const td=el("td",c.cls||null); td.textContent=c.get(r); tr.appendChild(td); });
+    t.appendChild(tr); }
+  return t;
+}
+async function loadObserved(){
+  const o = await getJSON("/api/observed");
+  const ev=$("#obs-events"), er=$("#obs-errors"), ex=$("#obs-explore");
+  ev.innerHTML=""; er.innerHTML=""; ex.innerHTML="";
+  if(!o || !o.ok){
+    ev.appendChild(el("div","small","no data yet"));
+    er.appendChild(el("div","small","no data yet"));
+    ex.appendChild(el("div","small","no data yet")); return;
+  }
+  ev.appendChild(obsTable(o.event_first_seen||[], [
+    {h:"kind", get:r=>r.kind||"(none)", cls:"k"},
+    {h:"first tick", get:r=>fmtNum(r.first_tick)},
+    {h:"count", get:r=>fmtNum(r.n)} ]));
+  er.appendChild(obsTable(o.error_reasons||[], [
+    {h:"reason", get:r=>r.reason||"(none)", cls:"k"},
+    {h:"count", get:r=>fmtNum(r.n)} ]));
+  const rows=Object.entries(o.exploration||{}).map(([w,d])=>({w,...d}));
+  ex.appendChild(obsTable(rows, [
+    {h:"world", get:r=>r.w, cls:"k"},
+    {h:"max y", get:r=>fmtNum(r.max_y_reached)},
+    {h:"tiles seen", get:r=>fmtNum(r.tiles_seen)},
+    {h:"notable", get:r=>fmtNum(r.notable_tiles)} ]));
+}
+
 /* ---- refresh orchestration ---- */
 function refresh(){
   if(active==="overview") loadOverview();
   else if(active==="decisions") loadDecisions();
   else if(active==="map") loadMap();
   else if(active==="timeline") loadTimeline();
+  else if(active==="findings") loadFindings();
   else if(active==="logs") loadLogs();
 }
 ["#f-char","#f-world","#f-limit"].forEach(id=>$(id).onchange = loadDecisions);
