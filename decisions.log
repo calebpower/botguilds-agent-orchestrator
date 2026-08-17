@@ -368,3 +368,22 @@ test_storage.py. Repaired run #9's window in the live DB (stopped_at = its last
 frame time). NOT redeploying for this alone — run #10 (0.8.0) keeps accumulating
 a clean measurement window; the fix takes effect on the next redeploy (it will
 close #10 cleanly then, or on any hard kill).
+
+## 2026-08-17 11:58 — frames retention by ARCHIVE-then-prune (operator directive), core built
+Disk is the only scaling constraint: guild_log.db grows ~7 GiB/day (raw frames),
+would fill the 40 GiB free in ~5-6 days and take the walk-away bot down. CPU/RAM
+are idle (24 GiB free). Operator chose: don't downsample or delete — ARCHIVE old
+frames off-box, then reclaim local space.
+Built (destination-agnostic, tested): steemer/archive.py (export a closed,
+aged-out run's frames to gzip-JSONL that reconstructs the rows byte-for-byte;
+manifest table; verify-gated prune; WAL checkpoint+VACUUM) and steemer/shippers.py
+(Shipper protocol + LocalDirShipper + two-oracle verify). Safety invariant: a
+frame is pruned ONLY after its archive is shipped AND independently re-observed
+on the remote with matching size/sha256 — else the DB stays full but intact and
+we alert. Both guards mutation-checked (drop the prune guard -> test fails; make
+verify always-true -> oracle self-tests fail). Only closed runs older than the
+retention horizon are eligible; the open run and recent frames are never touched.
+Pending operator credentials: the concrete off-box transport (S3-compatible vs
+rsync/scp over SSH) implements the same 2-method Shipper; then the orchestrator
+(export->ship->verify->prune->checkpoint) runs on a schedule for hands-off
+retention. events/decisions/metrics stay local (cheap, mined signal).

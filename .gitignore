@@ -31,3 +31,6 @@ out/
 # live supervisor log
 steemer-live.log
 *.log
+
+# local archive staging (frames shipped off-box, then pruned)
+/archive/
