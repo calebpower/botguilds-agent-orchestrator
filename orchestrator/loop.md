@@ -65,7 +65,9 @@ keep playing** — so protection is layered:
    window; what does the game appear to reward; and the top few concrete,
    testable improvements, ranked. Keep the raw data out of the main thread.
 
-4. **Pick a change.** Tactical (tuning scores, fixing an action-error class,
+4. **Pick a change.** Advance the lowest unmet milestone in
+   [`gameplan.md`](gameplan.md) (it holds the goals, exit criteria, and
+   recommended order). Tactical (tuning scores, fixing an action-error class,
    handling a newly-seen event) → proceed. Strategy pivot (new build direction,
    changing the optimization target, a big rewrite) → notify the operator, then
    proceed on best judgment if no timely reply.

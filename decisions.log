@@ -248,3 +248,13 @@ Data-driven arc priority: FORGING first (fills the 0% armor gap with mined ore,
 no gold needed), then MAGIC (clarity vs the remaining poison), then brewing.
 Awaiting operator steer on arc order before starting that pivot; holding to let
 0.5.0 keep running meanwhile.
+
+## 2026-08-17 04:11 — Milestone gameplan written (orchestrator/gameplan.md)
+Laid out the long arc as milestones M0..M7 with measurable exit criteria and a
+metrics-driven order: M0 foundation ✅, M1 mechanical competence ✅, M2 survival
+◑ (largely met; spire de-funnel + median-max_hp tail remain), M3 self-sufficiency
+via crafting ▶ next (M3a forging -> M3b brewing -> M3c foraging), M4 magic,
+M5 economy/scale, M6 deep content & bosses, M7 autonomy/knowledge (ongoing). The
+loop now picks the lowest unmet milestone (loop.md step 4). This also sets the
+crafting/magic arc order I had asked about: forging first (fills the 0% armor
+gap, needs ore not gold), then magic clarity for the residual poison.
