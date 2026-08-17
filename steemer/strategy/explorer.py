@@ -48,6 +48,15 @@ a `craft`-busy character is left alone (never actioned, moved, or embarked — t
 would abandon the work). Consumables/food (`drink`) are now kept too (M3c sustain).
 Brewing was chosen before forging (M3a) because `forge` needs an unpublished
 `product` name; brewing needs no such vocabulary and proves the craft machinery.
+
+v0.7.0 — the 34 blind brews of 0.6.0 curdled ~50% of the time. Analysis of the
+logged products + tells decoded this world's essence map (``knowledge.py``):
+``vigor`` and ``venom`` are opposite poles, and every curdle was a brew that
+mixed them. So brewing is now **essence-aware**: group brewables by their known
+essence and brew a *single-essence* batch — never a mix — preferring ``vigor``
+(which brews ``potion_red``, the field heal). Ingredients we haven't decoded are
+brewed only among themselves, as a learning batch, so discovery continues
+without poisoning the healing supply.
 """
 
 from __future__ import annotations
@@ -55,7 +64,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from .. import nav
+from .. import knowledge, nav
 from .base import FieldContext
 from ..reasoning import DecisionTrace
 
@@ -76,7 +85,7 @@ BREW_MIN_GOLD = 10         # keep a little gold buffer before buying bottles
 
 
 class Explorer:
-    version = "explorer/0.6.0"
+    version = "explorer/0.7.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -139,23 +148,27 @@ class Explorer:
                 return [self._village_act(
                     bot, uid, {"char_uid": uid, "action": "buy", "kind": "potion_red"},
                     "buying a red potion for the field (survival)")]
-            # 4b) brew looted ingredients into potions (M3b) instead of selling
-            #     them. Keep a bottle (cheap); brew 2-4 brewables — the pot decides
-            #     the product from the majority essence, and the result + tells
-            #     teach us this world's herb->essence vocabulary.
-            brewables = [i for i in inv if "brew" in (i.get("uses") or [])]
+            # 4b) brew looted ingredients into potions (M3b), essence-aware
+            #     (v0.7.0). Group brewables by their DECODED essence and brew a
+            #     single-essence batch — never a vigor+venom mix, which curdles —
+            #     preferring vigor (-> potion_red healing). Undecoded herbs brew
+            #     only among themselves, as a learning batch. KEEP items
+            #     (potion_red/bottle_empty) are never spent as ingredients.
+            brewables = [i for i in inv
+                         if "brew" in (i.get("uses") or []) and i["kind"] not in KEEP]
             bottles = sum(1 for i in inv if i["kind"] == "bottle_empty")
-            if len(brewables) >= BREW_MIN and bottles == 0 and gold >= BREW_MIN_GOLD:
+            picks, ess, healing = self._choose_brew(brewables)
+            if picks and bottles == 0 and gold >= BREW_MIN_GOLD:
                 return [self._village_act(
                     bot, uid, {"char_uid": uid, "action": "buy", "kind": "bottle_empty"},
-                    "buying an empty bottle to brew looted ingredients")]
-            if len(brewables) >= BREW_MIN and bottles >= 1:
-                picks = brewables[:BREW_MAX]
+                    f"buying an empty bottle to brew a {ess or 'unknown'}-essence batch")]
+            if picks and bottles >= 1:
+                label = (f"{ess} (-> potion_red heal)" if healing
+                         else f"{ess}-essence" if ess else "undecoded (learning batch)")
                 return [self._village_act(
                     bot, uid, {"char_uid": uid, "action": "brew",
                                "item_ids": [i["item_id"] for i in picks]},
-                    f"brewing {[i['kind'] for i in picks]} "
-                    "(learn essences + make potions)")]
+                    f"brewing {label}: {[i['kind'] for i in picks]}")]
             # 5) spend banked XP on durability (safe in the village).
             stat = self._pick_xp_stat(char)
             if stat is not None:
@@ -317,6 +330,35 @@ class Explorer:
                     "_why": f"equipping {kind} -> {slot} "
                             f"(wrong so far: {sorted(self.slot_wrong[kind]) or 'none'})"}
         return None
+
+    @staticmethod
+    def _choose_brew(brewables: list[dict[str, Any]]
+                     ) -> tuple[list[dict[str, Any]] | None, str | None, bool]:
+        """Pick a *single-essence* batch of 2-4 ingredients so the brew can't
+        curdle, preferring vigor (which yields the healing ``potion_red``).
+
+        Returns ``(picks, essence, is_healing)``. ``picks`` is None when no
+        brewable batch is safe (e.g. one vigor + one venom and nothing else —
+        every pairing would mix opposites, so we brew nothing rather than curdle).
+        Undecoded ingredients (essence None) are only ever batched with each
+        other, as a learning brew — never mixed with a known essence they might
+        oppose."""
+        groups: dict[str | None, list[dict[str, Any]]] = defaultdict(list)
+        for it in brewables:
+            groups[knowledge.essence_of(it["kind"])].append(it)
+        # Prefer a vigor batch (heals), then any other decoded essence, then a
+        # batch of purely-undecoded herbs (to keep learning) — never a mix.
+        known = [e for e in groups if e is not None]
+        order = (["vigor"] if "vigor" in known else []) \
+            + sorted(e for e in known if e != "vigor")
+        for ess in order:
+            g = groups[ess]
+            if len(g) >= BREW_MIN:
+                return g[:BREW_MAX], ess, ess == "vigor"
+        unknown = groups.get(None) or []
+        if len(unknown) >= BREW_MIN:
+            return unknown[:BREW_MAX], None, False
+        return None, None, False
 
     def _should_sell(self, item: dict[str, Any], eqp: dict[str, Any]) -> bool:
         """Sell only what we can't use. Keep: field supplies (KEEP), consumables

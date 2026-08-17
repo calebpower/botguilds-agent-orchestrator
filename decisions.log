@@ -294,3 +294,25 @@ looted armor), survivor max_hp to 66. Brewing: 31 brews (15 ok / 16 fail),
 products potion_red x11, flask_green x2, potion_gold x1, vial_green x1 — multiple
 essence-majority products. Launching an analysis subagent to infer this world's
 herb->essence map from the accumulated brews (M3b discovery exit).
+
+## 2026-08-17 06:09 — v0.7.0: essence-aware brewing (stop curdling; target vigor healing)
+What: brew selection now reads the decoded per-world essence map
+(`steemer/knowledge.py`) and brews a SINGLE-essence batch of 2-4 ingredients
+rather than the first N in inventory order. It prefers vigor (which yields
+potion_red, the field heal), then any other decoded essence, then a batch of
+purely-undecoded herbs as a learning brew — and declines to brew at all rather
+than mix the opposed vigor/venom poles. KEEP items (potion_red/bottle_empty) are
+excluded from ingredients so we never brew away our healing supply. New pure
+helper `Explorer._choose_brew`; 9 mutation-checked tests in `tests/test_brewing.py`.
+Why: run #8's 34 blind brews curdled ~50% (16/31 failed); the decoded map shows
+every curdle was a vigor+venom mix. Grouping by essence removes that failure mode
+and turns brewing into reliable potion_red production.
+Expected effect: brew success rate up sharply (curdle rate toward ~0 on decoded
+batches); more potion_red carried -> field heals available -> deaths/1k down
+further; the essence map also seeds M4 magic attunement.
+Falsified if: brew-success rate does NOT rise vs the 0.6.0 window, or curdles
+persist on batches drawn from the decoded (vigor/venom) ingredients — either would
+mean the essence map is wrong or the pot ignores essence homogeneity.
+Status: implemented + local pytest (97) green + mutation-checked + bounded replay
+clean. HELD pre-redeploy: awaiting operator push authorization + usage %, then the
+reaper gate (subagent) before hot-redeploy. Live bot stays on 0.6.0 until then.
