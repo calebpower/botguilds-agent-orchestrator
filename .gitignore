@@ -1,0 +1,29 @@
+# Secrets — NEVER commit. The guild token authenticates as the guild; leaking it
+# lets anyone control Stanley_Steemer. Belt-and-suspenders: the pre-commit hook
+# in .githooks/ also hard-blocks these.
+guild_token.json
+*token*.json
+*.token
+.env
+.env.*
+
+# Local databases (raw frame mirror, metrics, decisions) — large and machine-local.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# reaper reverse-sync results directory (always local)
+out/
+
+# editor/OS noise
+*.swp
+.DS_Store

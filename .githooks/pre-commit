@@ -1,0 +1,45 @@
+#!/bin/sh
+# Hard-block secrets from ever being committed. This is the backstop to
+# .gitignore: .gitignore stops accidental `git add`, but `git add -f` bypasses
+# it — this hook does not bypass. If it ever fires, that is the system working.
+#
+# Wired via:  git config core.hooksPath .githooks
+#
+# POSIX sh (this host is FreeBSD): no bashisms.
+
+set -eu
+
+blocked=""
+
+# NUL-delimited so paths with spaces/newlines can't smuggle anything past us.
+staged_files=$(git diff --cached --name-only -z | tr '\0' '\n')
+
+IFS='
+'
+for path in $staged_files; do
+    [ -z "$path" ] && continue
+    base=${path##*/}
+    case "$base" in
+        guild_token.json|*token*.json|*.token|.env|.env.*)
+            blocked="$blocked  $path\n"
+            ;;
+    esac
+    # Content heuristic: a file carrying a guild id *and* a real-looking token
+    # value (a long secret, not a "…" placeholder) is a credential regardless of
+    # its name. The length gate is what keeps documentation that shows the token
+    # *format* (e.g. {"guild_id": "g_ab12", "token": "…"}) from tripping this.
+    content=$(git show ":$path" 2>/dev/null || true)
+    if printf '%s' "$content" | grep -Eq '"guild_id"[[:space:]]*:' \
+        && printf '%s' "$content" | grep -Eq '"token"[[:space:]]*:[[:space:]]*"[^"]{20,}"'; then
+        blocked="$blocked  $path (looks like a real guild credential)\n"
+    fi
+done
+
+if [ -n "$blocked" ]; then
+    printf '\n\033[31mpre-commit: refusing to commit — secret-looking files are staged:\033[0m\n' >&2
+    printf "$blocked" >&2
+    printf '\nThese must never be committed. Unstage them:\n  git restore --staged <path>\n\n' >&2
+    exit 1
+fi
+
+exit 0

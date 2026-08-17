@@ -1,0 +1,3 @@
+[submodule "reference_starter_kit"]
+	path = reference_starter_kit
+	url = https://bot.willmorrison.net/starter.git
