@@ -60,6 +60,29 @@ def test_append_refuses_invalid(tmp_path):
     assert findings.load(p) == []       # nothing written
 
 
+def test_rewrite_curates_and_validates(tmp_path):
+    p = str(tmp_path / "f.jsonl")
+    findings.append({"kind": "conjecture", "status": "open", "title": "c1",
+                     "test": "t", "confidence": "low"}, path=p)
+    findings.append({"kind": "consideration", "status": "open", "title": "c2"}, path=p)
+    rows = findings.load(p)
+    rows[0]["status"] = "confirmed"          # resolve the conjecture
+    findings.rewrite(rows, path=p)
+    reloaded = findings.load(p)
+    assert len(reloaded) == 2                # replaced, not appended
+    assert reloaded[0]["status"] == "confirmed"
+
+
+def test_rewrite_refuses_invalid_entry(tmp_path):
+    p = str(tmp_path / "f.jsonl")
+    findings.append({"kind": "consideration", "status": "open", "title": "ok"}, path=p)
+    bad = [{"kind": "conjecture", "status": "open", "title": "no test"}]
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        findings.rewrite(bad, path=p)
+    assert len(findings.load(p)) == 1        # original file untouched on failure
+
+
 def test_load_skips_malformed_lines(tmp_path):
     p = tmp_path / "f.jsonl"
     p.write_text('{"kind":"discovery","status":"open","title":"ok"}\n'

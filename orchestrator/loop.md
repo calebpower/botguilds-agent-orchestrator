@@ -131,9 +131,16 @@ iteration:
 - **consideration** — an orchestration idea being weighed, before it graduates
   into `decisions.log` as a change.
 
-Append with `steemer.findings.append(...)` (it validates and timestamps) or edit
-the file directly. Update `status`/`updated` as things resolve rather than
-piling on duplicates. This is committed knowledge — keep it honest and pruned.
+Append with `steemer.findings.append(...)` (it validates and timestamps).
+
+**Review the notebook every iteration — do not just append.** Before adding new
+entries, read the existing ones and *curate*: resolve conjectures whose tests
+have run (`open` → `confirmed`/`refuted`), mark shipped considerations `shipped`,
+fold duplicates together. Curation is a first-class op: `findings.load()`, edit
+the list, `findings.rewrite(rows)` (validates every entry, writes atomically).
+Append-only rot — a pile of stale `open` conjectures sitting next to the
+discoveries that already resolved them — is the failure mode here; a short review
+pass each loop keeps this committed knowledge honest and legible.
 
 ## First objective: discover what the game rewards
 

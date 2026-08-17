@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 from typing import Any
 
 FINDINGS_PATH = "findings.jsonl"
@@ -93,3 +94,27 @@ def append(entry: dict[str, Any], path: str = FINDINGS_PATH) -> dict[str, Any]:
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
     return entry
+
+
+def rewrite(entries: list[dict[str, Any]], path: str = FINDINGS_PATH) -> None:
+    """Replace the whole notebook — the supported way to *curate* (resolve a
+    conjecture to confirmed/refuted, mark a consideration shipped, prune a
+    duplicate) rather than only append. Every entry is validated; created/updated
+    are preserved as given (the caller bumps ``updated`` on what it changed).
+    Written atomically so a crash can't leave a half-file.
+    """
+    lines = []
+    for e in entries:
+        e = dict(e)
+        e.setdefault("status", "open")
+        e.setdefault("tags", [])
+        e.setdefault("created", _now())
+        e.setdefault("updated", e["created"])
+        reason = validate(e)
+        if reason is not None:
+            raise ValueError(f"invalid finding ({reason}): {e.get('title')!r}")
+        lines.append(json.dumps(e, ensure_ascii=False))
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + ("\n" if lines else ""))
+    os.replace(tmp, path)
