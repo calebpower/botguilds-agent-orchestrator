@@ -73,6 +73,24 @@ explorer baseline plays correctly with 0 action errors (recruited to world_cap,
 armed up, spread vale:4/mines:3/spire:3). Operator authorized go-live.
 State at go-live: run window #2 "go-live baseline", explorer/0.1.0.
 
+## 2026-08-17 — Iteration 1: explorer/0.2.0 (movement + affordability + a nav bug)
+Before (run #2 @ ~tick 10.8k): action_error_rate 9.9% dominated by
+not_enough_stamina=3185; move_failed=19276 vs move=18742 (~50% of moves bounced).
+Changes (verified by pytest + reaper gate; each new assertion mutation-checked):
+1. **nav bug fix (likely the big one):** the pathfinder would route onto a
+   *solid* "frontier" wall (a wall bordering the unseen counted as an exploration
+   goal, and bfs stepped onto goal tiles without a walkability check) — a
+   guaranteed bounce. Surfaced by mutation-checking the reservation test.
+2. **Block monster tiles when pathing** — attack when adjacent, route around
+   otherwise (was: monsters kept walkable, so it stepped onto them).
+3. **Per-action stamina gating** — rest (send nothing → double regen) instead of
+   attempting an action it can't afford, killing the not_enough_stamina spam.
+4. **Destination reservation** — two of our own characters no longer pick the
+   same tile in one frame (a self-collision bounce).
+Expected effect: move_failed rate and action_error_rate fall sharply; more
+ground explored per stamina. How to falsify: next window's move_failed/action-
+error rates don't improve materially. Tactical (no strategy pivot).
+
 ## 2026-08-17 — First improvement target: move_failed rate
 Observation: the pre-flight showed ~10 `move_failed` events vs 28 successful
 moves (~26%). Cause: early in a run the map is barely known, so BFS finds no path

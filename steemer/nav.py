@@ -75,9 +75,11 @@ def bfs_step(
         for nxt in neighbors(current):
             if nxt in came_from:
                 continue
-            # allow stepping *onto* a goal tile even if unknown/solid-unseen,
-            # but never expand through a non-walkable tile
-            if is_goal(nxt) and nxt not in blocked_set:
+            # allow stepping *onto* a goal tile even if it is unknown (e.g. loot
+            # or an enemy on an as-yet-unseen tile), but NEVER onto a known-solid
+            # tile — a "frontier" wall borders the unseen yet cannot be stood on,
+            # and routing onto it is a guaranteed bounce (move_failed).
+            if is_goal(nxt) and nxt not in blocked_set and known.get(nxt) not in SOLID:
                 came_from[nxt] = current
                 queue.append(nxt)
                 continue
@@ -94,5 +96,9 @@ def bfs_step(
 
 
 def frontier(pos: tuple[int, int], known: dict[tuple[int, int], str]) -> bool:
-    """A seen tile that still borders somewhere unseen — an exploration target."""
+    """A *standable* seen tile that still borders the unseen — a place we can
+    actually move to in order to reveal new ground. A solid tile that happens to
+    border the unseen is not a frontier: we cannot stand on it."""
+    if known.get(pos) in SOLID:
+        return False
     return any(n not in known for n in neighbors(pos))

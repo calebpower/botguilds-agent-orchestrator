@@ -52,6 +52,22 @@ def test_bfs_step_routes_around_a_blocked_tile():
     assert nav.bfs_step((0, 0), lambda p: p == (0, 2), known) == (0, 1)
 
 
+def test_bfs_step_never_routes_onto_a_solid_goal_tile():
+    # a wall that borders the unseen is a "frontier" by adjacency but cannot be
+    # stood on; bfs must not return a step onto it (that is a guaranteed bounce).
+    known = {(0, 0): "floor", (0, 1): "wall"}
+    assert nav.bfs_step((0, 0), lambda p: p == (0, 1), known) is None
+    # but an *unknown* goal tile adjacent to us is still reachable
+    known2 = {(0, 0): "floor"}
+    assert nav.bfs_step((0, 0), lambda p: p == (0, 1), known2) == (0, 1)
+
+
+def test_frontier_excludes_solid_tiles():
+    known = {(0, 0): "floor", (0, 1): "wall"}   # wall borders unseen but isn't standable
+    assert nav.frontier((0, 1), known) is False
+    assert nav.frontier((0, 0), known) is True   # floor bordering unseen
+
+
 def test_frontier_is_a_seen_tile_bordering_the_unseen():
     known = {(0, 0): "floor", (0, 1): "floor"}
     assert nav.frontier((0, 1), known) is True       # borders unseen tiles

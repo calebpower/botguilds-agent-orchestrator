@@ -82,4 +82,10 @@ class GuildBot:
             trace.record(self.storage, self.strategy.version)
             if action:
                 actions.append(action)
+                # Reserve this character's move destination so a later character
+                # in the same frame won't pick the same tile — two of our own
+                # moving onto one tile is a bounce (move_failed) for one of them.
+                if action.get("action") == "move" and action.get("dir") in nav.DIRS:
+                    dx, dy = nav.DIRS[action["dir"]]
+                    ctx.bodies.add((char["pos"][0] + dx, char["pos"][1] + dy))
         return actions

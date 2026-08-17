@@ -87,6 +87,65 @@ def test_village_recruits_toward_the_cap_when_empty_handed():
     assert bot.on_frame(frame) == [{"action": "recruit"}]
 
 
+def test_affordability_rests_rather_than_attempting_unaffordable(tmp_path):
+    # stamina 15 cannot afford an attack (~20) or a move (~20): the character
+    # rests (sends nothing) instead of a doomed action that would only earn a
+    # not_enough_stamina error and forfeit the idle regen. (0.1.0 would attack.)
+    bot = _bot()
+    char = _field_char(stamina=15)
+    frame = _field_frame(char, FLOOR3,
+                         entities=[{"pos": [1, 0], "faction": "monster",
+                                    "kind": "rat", "hp_frac": 0.5}])
+    assert bot.on_frame(frame) == []
+
+
+def test_acts_once_stamina_is_affordable():
+    bot = _bot()
+    char = _field_char(stamina=25)     # >= attack cost (~20)
+    frame = _field_frame(char, FLOOR3,
+                         entities=[{"pos": [1, 0], "faction": "monster",
+                                    "kind": "rat", "hp_frac": 0.5}])
+    assert {"char_uid": "c1", "action": "attack", "target": [1, 0]} in bot.on_frame(frame)
+
+
+def test_adjacent_monster_is_attacked_never_walked_onto():
+    bot = _bot()
+    frame = _field_frame(_field_char(), FLOOR3,
+                         entities=[{"pos": [0, 1], "faction": "monster",
+                                    "kind": "rat", "hp_frac": 0.9}])
+    actions = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "attack", "target": [0, 1]} in actions
+    # no emitted move steps onto the monster tile (0,1)
+    from steemer import nav
+    for a in actions:
+        if a.get("action") == "move":
+            dx, dy = nav.DIRS[a["dir"]]
+            assert (0 + dx, 0 + dy) != (0, 1)
+
+
+def test_two_characters_do_not_move_onto_the_same_tile():
+    # a 1-wide corridor with a single open middle tile; both ends would pick it.
+    # Reservation must stop the second from colliding. (0.1.0 collides.)
+    bot = _bot()
+    W = "wall"
+    tiles = [[0, 0, "floor"], [0, 1, "floor"], [0, 2, "floor"],
+             [1, 0, W], [1, 1, W], [1, 2, W], [-1, 0, W], [-1, 1, W], [-1, 2, W],
+             [0, -1, W], [0, 3, W]]
+    a = _field_char(char_uid="a", pos=[0, 0])
+    b = _field_char(char_uid="b", pos=[0, 2])
+    frame = {"world": "vale", "tick": 10, "chars": [a, b],
+             "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
+    actions = bot.on_frame(frame)
+    dests = []
+    for act in actions:
+        if act.get("action") == "move":
+            base = a["pos"] if act["char_uid"] == "a" else b["pos"]
+            from steemer import nav
+            dx, dy = nav.DIRS[act["dir"]]
+            dests.append((base[0] + dx, base[1] + dy))
+    assert len(dests) == len(set(dests)), f"two chars collided on a tile: {dests}"
+
+
 def test_decisions_are_persisted(tmp_path):
     s = Storage(str(tmp_path / "d.db"), commit_every=1)
     bot = _bot(storage=s)
