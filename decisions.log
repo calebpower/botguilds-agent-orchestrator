@@ -62,3 +62,22 @@ Why: the operator's first objective is "discover what the game rewards"; a broad
 baseline maximizes what the metrics reveal before specializing.
 Effect/verify: to be measured live (gold/hr, xp/hr, deaths, exploration depth,
 action-error rate). This is the baseline the loop improves against.
+
+## 2026-08-17 — Went live (autonomous operation begins)
+Decision: started the continuous bot (`./run-live.sh`, supervised) and the web
+UI (0.0.0.0:8800) as persistent background processes; began the self-paced
+improvement loop.
+Why: build complete and gated — live connectivity proven, reaper battery green
+(51 tests in the pinned container), and a bounded live pre-flight showed the
+explorer baseline plays correctly with 0 action errors (recruited to world_cap,
+armed up, spread vale:4/mines:3/spire:3). Operator authorized go-live.
+State at go-live: run window #2 "go-live baseline", explorer/0.1.0.
+
+## 2026-08-17 — First improvement target: move_failed rate
+Observation: the pre-flight showed ~10 `move_failed` events vs 28 successful
+moves (~26%). Cause: early in a run the map is barely known, so BFS finds no path
+and the fallback picks a "legal" step that only checks *known* tiles — near
+spawn/edges/unknown terrain it still bounces (a failed move wastes stamina).
+Plan: the first loop iteration will tighten the movement fallback (avoid stepping
+into unknown/edge tiles; prefer known-walkable), add a regression test, and
+measure move_failed rate before/after. Tactical (not a strategy pivot).
