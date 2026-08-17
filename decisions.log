@@ -148,3 +148,20 @@ Remaining: not_enough_stamina still the top error (1776) -> next target (cost
 estimates likely too low for pricier weapon attacks). New small error kinds seen:
 no_such_character/unknown_character (acting on a recalled/dead char between
 frames), no_such_item. Candidates for iteration 2.
+
+## 2026-08-17 02:05 — Iteration 2: explorer/0.3.0 (survival — retreat + potions)
+Diagnosis (analysis subagent over guild_log.db): 306 of our char-deaths / 984
+recruits = 0.31/recruit; 76% died within ~200 ticks of embark at ~22% HP; 35%
+poisoned at death; 45% of below-threshold decisions "rested" because they
+couldn't afford the 20-stamina step home; potions never carried (0/36); spend_xp
+never called (chars frozen at max_hp 24-30); spire received 74% of embark slots
+via a self-reinforcing funnel (dies fastest -> fewest fielded -> refilled first).
+Changes (#1+#2; verified local pytest + reaper gate 69 green; mutation-checked):
+- RETREAT_HP 0.4 -> 0.6; poison/burn triggers retreat regardless of HP; a hurt
+  char offers ONLY heal/flee (offense suppressed) so stamina goes to escaping.
+- village buys 1 potion_red per armed char; the field drink-branch now has ammo.
+Held for iteration 3: spend_xp (VIT>END>STR, prefer gifts) + cap spire embark
+share / only send leveled chars to spire.
+Expected effect: deaths/recruit down (target ~0.18-0.22), poisoned-death % and
+rested-while-hurt % down, longer ticks-alive-from-embark. Falsify: next window's
+deaths/recruit not materially below 0.31. Deployed as run #5.

@@ -146,6 +146,74 @@ def test_two_characters_do_not_move_onto_the_same_tile():
     assert len(dests) == len(set(dests)), f"two chars collided on a tile: {dests}"
 
 
+def _south_corridor():
+    # a north-south corridor: (0,0)=exit row, (0,1), (0,2); an enemy sits east.
+    return [[0, 0, "floor"], [0, 1, "floor"], [0, 2, "floor"]]
+
+
+def test_retreats_at_60pct_even_when_it_would_have_fought_before(tmp_path):
+    # 50% HP: below 0.3.0's 0.6 threshold but above 0.2.0's 0.4 — so 0.2.0 would
+    # attack the adjacent monster and 0.3.0 flees toward the exit.
+    bot = _bot()
+    char = _field_char(pos=[0, 1], hp=15, max_hp=30, stamina=40)
+    frame = _field_frame(char, _south_corridor(),
+                         entities=[{"pos": [1, 1], "faction": "monster",
+                                    "kind": "rat", "hp_frac": 0.9}])
+    actions = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in actions   # fleeing
+    assert all(a.get("action") != "attack" for a in actions)             # not fighting
+
+
+def test_poison_triggers_retreat_even_at_full_hp(tmp_path):
+    bot = _bot()
+    char = _field_char(pos=[0, 1], hp=30, max_hp=30, stamina=40,
+                       statuses=[{"kind": "poison", "ticks_left": 5, "power": 1}])
+    frame = _field_frame(char, _south_corridor(),
+                         entities=[{"pos": [1, 1], "faction": "monster",
+                                    "kind": "rat", "hp_frac": 0.9}])
+    actions = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in actions
+    assert all(a.get("action") != "attack" for a in actions)
+
+
+def test_hurt_suppresses_offense_when_it_cannot_flee(tmp_path):
+    # boxed in (no walkable exit) and hurt, adjacent to a monster it could afford
+    # to hit: 0.2.0 would attack; 0.3.0 offers only heal/flee -> rests (empty).
+    W = "wall"
+    bot = _bot()
+    char = _field_char(pos=[0, 1], hp=10, max_hp=30, stamina=40)
+    tiles = [[0, 1, "floor"], [1, 1, "floor"],
+             [0, 0, W], [0, 2, W], [-1, 1, W]]
+    frame = _field_frame(char, tiles,
+                         entities=[{"pos": [1, 1], "faction": "monster",
+                                    "kind": "rat", "hp_frac": 0.5}])
+    assert bot.on_frame(frame) == []          # heal/flee only, both impossible -> rest
+
+
+def test_village_buys_a_potion_when_armed_and_carrying_none():
+    bot = _bot()
+    char = {"char_uid": "c1", "inventory": [], "equipment": {"hand": {"kind": "club"}},
+            "stats": {"str": 2}, "hp": 30, "max_hp": 30}
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 100, "chars_here": ["c1"], "chars_by_world": {}},
+             "chars": [char]}
+    assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "potion_red"}]
+
+
+def test_village_does_not_buy_a_second_potion():
+    bot = _bot()
+    char = {"char_uid": "c1",
+            "inventory": [{"kind": "potion_red", "item_id": "p1", "tier": 1}],
+            "equipment": {"hand": {"kind": "club"}}, "stats": {"str": 2},
+            "hp": 30, "max_hp": 30}
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 100, "chars_here": ["c1"], "chars_by_world": {}},
+             "chars": [char]}
+    actions = bot.on_frame(frame)
+    assert all(not (a.get("action") == "buy" and a.get("kind") == "potion_red")
+               for a in actions)
+
+
 def test_decisions_are_persisted(tmp_path):
     s = Storage(str(tmp_path / "d.db"), commit_every=1)
     bot = _bot(storage=s)

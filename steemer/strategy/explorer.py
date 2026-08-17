@@ -5,14 +5,20 @@ what's adjacent, grabs loot, cracks containers, pushes north, and walks home to
 heal and sell when hurt or full. Every branch is a scored candidate on the trace,
 so the reasoning is legible.
 
-v0.2.0 — from the first live window (explorer/0.1.0 had ~50% move_failed and a
-9.9% action-error rate dominated by not_enough_stamina):
-  * **Monster tiles are blocked for pathing** (attack when adjacent, route around
-    otherwise) — the baseline stepped onto monsters and bounced.
-  * **Every action is gated by its stamina cost** — a character that cannot afford
-    its best action rests (sends nothing) instead of spamming a doomed action,
-    which also reclaims the double idle-regen. The unaffordable want is still
-    written to the trace so the reasoning shows why it rested.
+v0.2.0 — from the first live window (~50% move_failed, 9.9% action errors):
+  * Block monster tiles when pathing (attack adjacent, route around).
+  * Gate every action by its stamina cost — rest instead of the unaffordable.
+
+v0.3.0 — from the death analysis (0.31 permadeaths/recruit; 76% died within
+~20 s of embarking, ~22% HP, 35% poisoned, and 45% of hurt-decisions "rested"
+because they couldn't afford the step home):
+  * **Retreat earlier and commit to it.** RETREAT_HP 0.4 -> 0.6 (flee while there
+    is still HP *and* stamina to run), poison/burn triggers retreat regardless of
+    HP, and a hurt character offers *only* heal/flee — no attack/loot/explore, so
+    its scarce stamina goes to escaping, not to the fight that is killing it.
+  * **Carry field healing.** The village stocks a `potion_red` per character; the
+    field's drink-when-hurt branch was dead code with no ammunition, and a potion
+    is the only heal fast enough to outrun poison's tick.
 """
 
 from __future__ import annotations
@@ -23,44 +29,57 @@ from .. import nav
 from .base import FieldContext
 from ..reasoning import DecisionTrace
 
-RETREAT_HP = 0.4            # retreat below 40% HP
-KEEP = frozenset({"potion_red"})       # field supplies we never sell
+RETREAT_HP = 0.6           # flee below 60% HP — early enough to still afford the run
+DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless of HP
+KEEP = frozenset({"potion_red"})            # field supplies we never sell
 CONTAINERS = frozenset({"chest", "safe"})
 DEFAULT_MAPS = ("vale", "mines", "spire")
 REST_SCORE = 0.5           # the floor: rest wins only when nothing affordable beats it
+POTION_KEEP = 1            # potions to carry into the field per character
+POTION_MIN_GOLD = 25       # only buy a potion with this much gold to spare
 
 
 class Explorer:
-    version = "explorer/0.2.0"
+    version = "explorer/0.3.0"
 
-    # -- village: economy + even, discovery-first deployment ------------------
+    # -- village: economy + healing supply + even, discovery-first deployment --
 
     def village(self, bot: "Any", frame: dict[str, Any]) -> list[dict[str, Any]]:
         guild = frame.get("guild", {})
         cfg = bot.config
         chars = frame.get("chars", [])
+        gold = guild.get("gold", 0)
 
         for char in chars:
             uid = char["char_uid"]
-            for item in char.get("inventory", []):
+            inv = char.get("inventory", [])
+            # 1) sell the haul (keep field supplies).
+            for item in inv:
                 if item["kind"] not in KEEP:
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "sell",
                                    "item_id": item["item_id"]},
                         f"selling {item['kind']} (tier {item.get('tier')}) to bank gold")]
+            # 2) arm the unarmed.
             weapon = "shortsword" if char.get("stats", {}).get("str", 0) >= 4 else "club"
             if char.get("equipment", {}).get("hand") is None:
-                owned = next((i for i in char.get("inventory", [])
-                              if i["kind"] == weapon), None)
+                owned = next((i for i in inv if i["kind"] == weapon), None)
                 if owned:
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "equip",
                                    "item_id": owned["item_id"], "slot": "hand"},
                         f"equipping {weapon} before embarking")]
-                if guild.get("gold", 0) >= 45:
+                if gold >= 45:
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "buy", "kind": weapon},
                         f"buying a {weapon} (STR {char.get('stats',{}).get('str')})")]
+            # 3) stock a field potion (the only heal fast enough to beat poison).
+            potions = sum(1 for i in inv if i["kind"] == "potion_red")
+            if potions < POTION_KEEP and gold >= POTION_MIN_GOLD:
+                return [self._village_act(
+                    bot, uid, {"char_uid": uid, "action": "buy", "kind": "potion_red"},
+                    "buying a red potion for the field (survival)")]
+            # 4) heal before shipping out.
             if char.get("hp", 0) < char.get("max_hp", 1):
                 self._trace(bot, None, frame.get("world"),
                             [f"{uid} hurt ({char['hp']}/{char['max_hp']}); healing in village"],
@@ -98,21 +117,21 @@ class Explorer:
         stamina = char.get("stamina", 0)
         carry = char.get("carry", {"used": 0, "cap": 1})
         cfg = bot.config
-        hurt = hp < max_hp * RETREAT_HP
+        statuses = char.get("statuses", []) or []
+        dot = any(s.get("kind") in DOT_KINDS for s in statuses)
+        hurt = hp < max_hp * RETREAT_HP or dot
         full = carry["used"] >= carry["cap"] - 1
-        # Don't walk onto other characters OR monsters; attack adjacent monsters
-        # instead, and route around the rest.
+        # Don't walk onto other characters OR monsters.
         blocked = ctx.bodies | set(ctx.enemies)
 
         trace.observe(f"at {pos} hp {hp}/{max_hp} sta {stamina} "
-                      f"carry {carry['used']}/{carry['cap']}")
+                      f"carry {carry['used']}/{carry['cap']}"
+                      + (f" statuses={[s.get('kind') for s in statuses]}" if statuses else ""))
 
         # Rest is always available (cost 0) and is the floor.
         trace.consider(None, REST_SCORE, f"rest (double regen); stamina {stamina}")
 
         def offer(action: dict[str, Any], score: float, why: str) -> None:
-            """Consider an action only if its stamina cost is affordable; else
-            note the unaffordable want on the trace and rest instead."""
             name = action["action"]
             cost = self._cost(name, cfg)
             if stamina >= cost:
@@ -120,17 +139,20 @@ class Explorer:
             else:
                 trace.observe(f"wanted {name} ({why}) but stamina {stamina} < ~{cost}: resting")
 
-        # Heal / flee when hurt.
+        # --- Hurt: disengage. Offer ONLY heal + flee, then stop. A hurt char
+        # that keeps attacking/looting spends the stamina it needs to escape and
+        # dies stuck at low HP (the failure mode the death analysis found). ---
         if hurt:
-            trace.observe("hurt: below retreat threshold")
-            potion = next((i for i in char.get("inventory", [])
-                           if i["kind"] == "potion_red"), None)
+            reason = "poisoned/burning" if dot and hp >= max_hp * RETREAT_HP else "low HP"
+            trace.observe(f"hurt ({reason}) — disengaging, heal or run only")
+            potion = next((i for i in char.get("inventory", []) if i["kind"] == "potion_red"), None)
             if potion:
                 offer({"char_uid": uid, "action": "use", "item_id": potion["item_id"]},
                       9.0, "drinking a red potion to recover HP")
             self._retreat(uid, pos, ctx, blocked, offer, 8.5, "hurt — walking home to heal")
+            return
 
-        # Fight what's adjacent (weakest first).
+        # --- Healthy: fight / gather / explore. ---
         adj = [p for p in nav.neighbors(pos) if p in ctx.enemies]
         if adj:
             weakest = min(adj, key=lambda p: ctx.enemies[p].get("hp_frac", 1.0))
@@ -138,12 +160,10 @@ class Explorer:
             offer({"char_uid": uid, "action": "attack", "target": list(weakest)},
                   8.0, f"attack adjacent {e.get('kind','?')} (hp {e.get('hp_frac',1):.0%})")
 
-        # Bank when full.
         if full:
             self._retreat(uid, pos, ctx, blocked, offer, 7.5,
                           "pack full — heading home to sell")
 
-        # Loot underfoot / nearby.
         if pos in ctx.loot or pos in ctx.gold:
             offer({"char_uid": uid, "action": "pickup"}, 6.0, "loot underfoot — grab it")
         else:
@@ -152,13 +172,11 @@ class Explorer:
                 offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
                       4.0, "moving toward visible loot")
 
-        # Crack an adjacent container.
         box = next((p for p in nav.neighbors(pos) if p in ctx.containers), None)
         if box:
             offer({"char_uid": uid, "action": "open", "target": list(box)},
                   5.0, "opening an adjacent container")
 
-        # Close on a visible-but-not-adjacent monster: step to a tile beside it.
         if ctx.enemies and not adj:
             near = self._step(pos, lambda p: any(n in ctx.enemies for n in nav.neighbors(p)),
                               ctx, blocked)
@@ -166,7 +184,6 @@ class Explorer:
                 offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, near)},
                       3.5, "closing to attack range on a monster")
 
-        # Explore — push north into the unknown, else any frontier.
         north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known), ctx, blocked)
         if north:
             offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
@@ -176,7 +193,6 @@ class Explorer:
             offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, any_frontier)},
                   2.0, "heading to the nearest frontier")
 
-        # Last resort: any legal step (never onto a body or monster).
         for d, (dx, dy) in nav.DIRS.items():
             nxt = (pos[0] + dx, pos[1] + dy)
             if nav.is_walkable(nxt, ctx.known, blocked):
@@ -188,9 +204,6 @@ class Explorer:
 
     @staticmethod
     def _cost(action_name: str, cfg: dict[str, Any]) -> int:
-        """Conservative stamina cost per action, from server config where known.
-        Conservative (base costs, ignoring stat discounts) so we err toward
-        resting rather than a rejected action."""
         move = cfg.get("move_stamina", 20)
         item = cfg.get("item_stamina", 10)
         punch = cfg.get("punch_stamina", 20)
