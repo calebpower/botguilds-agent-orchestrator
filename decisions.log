@@ -101,3 +101,10 @@ Expected effect: move_failed rate and action_error_rate fall sharply; more
 ground explored per stamina. How to falsify: next window's move_failed/action-
 error rates don't improve materially. Tactical (no strategy pivot).
 Deployed: run window #3, sha dfa62c7, 2026-08-17 00:54.
+
+## 2026-08-17 01:01 — Operator directive: consider UI upgrades in the loop
+Decision: the self-improvement loop now also weighs dashboard upgrades each
+iteration — fun or practical (graph views, heatmaps, live roster, knowledge
+tables). Discretionary, not required every tick. Added as loop step 11; candidate
+ideas seeded in findings.jsonl (tag: ui). Next likely build: metric time-series
+graphs with per-version overlay (pairs with measuring explorer/0.2.0).

@@ -70,6 +70,14 @@ before it is judged — think hours per iteration, not minutes.
     review and deliberately port relevant protocol/client fixes into `steemer/`
     (never a blind submodule merge). Log it.
 
+11. **Consider a UI upgrade (optional, operator-requested).** Each iteration,
+    weigh whether a dashboard improvement is worth it — a graph/analysis view
+    that helps read the metrics, a practical panel, or something the operator
+    would simply enjoy. Not required every tick; entirely discretionary. Build UI
+    changes in a `ui/`-scoped subagent, verify (routes 200, self-contained, no
+    CDNs), restart the UI on 8800, and commit. Candidate ideas live in
+    `findings.jsonl` as `consideration` entries tagged `ui`.
+
 ## Metric attribution
 
 The world is shared, persistent, and noisy, so there is no clean simultaneous
