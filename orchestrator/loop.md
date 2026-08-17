@@ -62,7 +62,8 @@ before it is judged — think hours per iteration, not minutes.
    `git checkout <sha>`, `./redeploy.sh`, then return to the working branch.
 
 9. **Record.** Append to `decisions.log`: what, why, expected effect, how it would
-   be falsified. After the next window, note the actual effect.
+   be falsified. After the next window, note the actual effect. Also update the
+   **lab notebook** (`findings.jsonl`) — see below.
 
 10. **Periodically** run `uv run tools/check_submodule.py`; if upstream moved,
     review and deliberately port relevant protocol/client fixes into `steemer/`
@@ -76,6 +77,26 @@ A/B on one guild. Use **sequential before/after windows** on **rate** metrics
 `decisions.log`; a swing inside noise is not a result. `runs` (git sha + strategy
 version + window) is the attribution backbone; `analyze.py` surfaces per-run
 gold delta and error rate.
+
+## Lab notebook (`findings.jsonl`)
+
+The game hides its content, so building an evidence-backed model of it is a
+first-class goal, not a side effect. Maintain `findings.jsonl` (schema and
+helpers in `steemer/findings.py`; surfaced on the UI's Findings tab) every
+iteration:
+
+- **discovery** — a fact learned about the game. A *confirmed* discovery must
+  carry `evidence` (the event/query that shows it).
+- **conjecture** — a hypothesis about a hidden mechanic. Must carry a
+  `confidence` and a `test` (how it would be **falsified**) — a conjecture
+  without a falsification test is noise, the same rule as "every fix ships with a
+  test". Move it to `confirmed`/`refuted` when the test resolves.
+- **consideration** — an orchestration idea being weighed, before it graduates
+  into `decisions.log` as a change.
+
+Append with `steemer.findings.append(...)` (it validates and timestamps) or edit
+the file directly. Update `status`/`updated` as things resolve rather than
+piling on duplicates. This is committed knowledge — keep it honest and pruned.
 
 ## First objective: discover what the game rewards
 
