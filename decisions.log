@@ -274,3 +274,15 @@ LIVE-VERIFY PENDING: brew is a new action type never issued live -> confirm
 0.5.0 (sha 1f722b0) if live brewing errors.
 Measure next: brews issued + succeeded, potions produced, first 'tells' -> begin
 this world's herb->essence table.
+
+## 2026-08-17 04:39 — M3b brewing CONFIRMED live (crafting works)
+run #8 (0.6.0): 11 brew actions, 7 bottle buys, 0 brew errors. Outcomes: 6 brewed
+(5 potion_red + 1 potion_gold), 6 brew_failed (murky/curdled) = 50% success
+(normal for blind experimentation). All four tells observed (dark_sheen 5,
+pale_crust 2, acrid_smoke 1, sweet_mist 1). The craft busy-state handling worked
+(no 'crafting' errors). The guild now brews its own potions (incl a rarer
+potion_gold combo) instead of buying them. No rollback.
+Discovery next: correlate brew item_ids -> ingredient kinds with products+tells
+(over more brews) to infer this world's herb->essence map — an analysis-subagent
+job once volume accumulates. Minor edge noted: 7 'move' actions rejected
+not_in_village (a char exiting to village with a queued move); low priority.
