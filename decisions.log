@@ -231,3 +231,20 @@ critical) over clean attribution.
 Measure next: death rate (deaths/1k ticks, baseline 7.28 on 0.3.0),
 status_damage/1k, and a NEW equip-rate metric (% of fielded characters wearing a
 weapon and armor, baseline ~0%).
+
+## 2026-08-17 04:05 — Measurement: survival arc cumulative (0.3.0 -> 0.4.0 -> 0.5.0)
+Per-version windows [deaths/1k, status_damage/1k, weapon-equip%, armor%, spend_xp, max_hp med/max]:
+  0.3.0: 6.44, 256.5, 0%, 0%, 0,  30/30
+  0.4.0: 4.37, 147.4, 0%, 0%, 28, 30/54   (short 4.5k-tick window)
+  0.5.0: 4.66, 134.2, 41%, 0%, 75, 30/66  (full 10k-tick window)
+Cumulative wins: deaths/1k down ~28%; status_damage/1k down ~48%; 41% of fielded
+chars now wield a weapon (equip fix working at scale, 86 equips); spend_xp active
+and survivors' max_hp reaching 66 (durability compounding). 0.5.0 vs 0.4.0 death
+rate is within noise (0.4.0's window was tiny).
+Remaining gaps: (1) armor still 0% — body armor is not buyable, so this needs
+FORGING; (2) median max_hp still 30 (most recruits die young before leveling);
+(3) poison still ~134/1k -> magic (clarity purges).
+Data-driven arc priority: FORGING first (fills the 0% armor gap with mined ore,
+no gold needed), then MAGIC (clarity vs the remaining poison), then brewing.
+Awaiting operator steer on arc order before starting that pivot; holding to let
+0.5.0 keep running meanwhile.
