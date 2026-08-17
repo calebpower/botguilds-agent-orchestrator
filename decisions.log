@@ -258,3 +258,19 @@ M5 economy/scale, M6 deep content & bosses, M7 autonomy/knowledge (ongoing). The
 loop now picks the lowest unmet milestone (loop.md step 4). This also sets the
 crafting/magic arc order I had asked about: forging first (fills the 0% armor
 gap, needs ore not gold), then magic clarity for the residual poison.
+
+## 2026-08-17 04:22 — Iteration 5: explorer/0.6.0 (M3b brewing — crafting arc begins)
+Operator green-lit "proceed with the gameplan." Started the crafting arc with
+BREWING rather than forging (forge needs an unpublished 'product' name -> a
+discovery blocker; brew needs no vocabulary, so it proves the shared craft
+machinery and starts learning essences). Village-brew MVP: keep brew ingredients
++ consumables/food (stop selling looted herbs for pennies), buy a cheap
+bottle_empty, brew 2-4 ingredients; respect the craft busy-state (a crafting
+character is left alone and never embarked, which would abandon the work);
+bottle_empty added to KEEP. 88 tests (craft-rest / brew / keep-ingredients
+mutation-checked); reaper gate green. Deployed run #8.
+LIVE-VERIFY PENDING: brew is a new action type never issued live -> confirm
+'brewed' events + no crafting/malformed errors after redeploy; roll back to
+0.5.0 (sha 1f722b0) if live brewing errors.
+Measure next: brews issued + succeeded, potions produced, first 'tells' -> begin
+this world's herb->essence table.

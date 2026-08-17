@@ -37,6 +37,17 @@ equip looted armor/shields/trinkets at all. Fix:
     kind unusable) so it needs no content knowledge of which item goes where.
   * **Never sell gear we can still use** — only loot and gear that won't fit.
     Unarmored characters were almost certainly compounding the death problem.
+
+v0.6.0 — start of the crafting arc (gameplan M3b, brewing): the guild constantly
+loots brewable herbs/parts (bitterroot, frostmoss, bone, ectoplasm) and was
+*selling them for pennies*. Now, in the village, it keeps them, buys a cheap
+`bottle_empty`, and `brew`s 2-4 together — the pot decides the product from the
+majority essence, and the result + `tells` teach this world's herb->essence map
+(analysis loop infers it from logged events). Crafting occupies the character, so
+a `craft`-busy character is left alone (never actioned, moved, or embarked — that
+would abandon the work). Consumables/food (`drink`) are now kept too (M3c sustain).
+Brewing was chosen before forging (M3a) because `forge` needs an unpublished
+`product` name; brewing needs no such vocabulary and proves the craft machinery.
 """
 
 from __future__ import annotations
@@ -50,7 +61,7 @@ from ..reasoning import DecisionTrace
 
 RETREAT_HP = 0.6           # flee below 60% HP — early enough to still afford the run
 DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless of HP
-KEEP = frozenset({"potion_red"})            # field supplies we never sell
+KEEP = frozenset({"potion_red", "bottle_empty"})   # field/craft supplies we never sell
 CONTAINERS = frozenset({"chest", "safe"})
 DEFAULT_MAPS = ("vale", "mines", "spire")
 REST_SCORE = 0.5           # the floor: rest wins only when nothing affordable beats it
@@ -59,10 +70,13 @@ POTION_MIN_GOLD = 25       # only buy a potion with this much gold to spare
 XP_PRIORITY = ("vit", "end", "str")   # survival first: HP, then stamina, then damage
 XP_STAT_TARGET = 8         # grow each toward the full-rate effective-bonus cap
 EQUIP_SLOTS = ("hand", "offhand", "outfit", "trinket", "boots")
+BREW_MIN = 2               # a brew takes 2-4 ingredients
+BREW_MAX = 4
+BREW_MIN_GOLD = 10         # keep a little gold buffer before buying bottles
 
 
 class Explorer:
-    version = "explorer/0.5.0"
+    version = "explorer/0.6.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -96,6 +110,8 @@ class Explorer:
 
         for char in chars:
             uid = char["char_uid"]
+            if char.get("craft"):
+                continue                    # busy crafting; don't disturb or embark it
             inv = char.get("inventory", [])
             eqp = char.get("equipment", {}) or {}
             # 1) EQUIP carried gear into empty slots — BEFORE selling, or we sell
@@ -123,6 +139,23 @@ class Explorer:
                 return [self._village_act(
                     bot, uid, {"char_uid": uid, "action": "buy", "kind": "potion_red"},
                     "buying a red potion for the field (survival)")]
+            # 4b) brew looted ingredients into potions (M3b) instead of selling
+            #     them. Keep a bottle (cheap); brew 2-4 brewables — the pot decides
+            #     the product from the majority essence, and the result + tells
+            #     teach us this world's herb->essence vocabulary.
+            brewables = [i for i in inv if "brew" in (i.get("uses") or [])]
+            bottles = sum(1 for i in inv if i["kind"] == "bottle_empty")
+            if len(brewables) >= BREW_MIN and bottles == 0 and gold >= BREW_MIN_GOLD:
+                return [self._village_act(
+                    bot, uid, {"char_uid": uid, "action": "buy", "kind": "bottle_empty"},
+                    "buying an empty bottle to brew looted ingredients")]
+            if len(brewables) >= BREW_MIN and bottles >= 1:
+                picks = brewables[:BREW_MAX]
+                return [self._village_act(
+                    bot, uid, {"char_uid": uid, "action": "brew",
+                               "item_ids": [i["item_id"] for i in picks]},
+                    f"brewing {[i['kind'] for i in picks]} "
+                    "(learn essences + make potions)")]
             # 5) spend banked XP on durability (safe in the village).
             stat = self._pick_xp_stat(char)
             if stat is not None:
@@ -141,7 +174,8 @@ class Explorer:
                             None, 5.0, "resting in village to heal before embark")
                 return []
 
-        here = guild.get("chars_here", [])
+        crafting = {c["char_uid"] for c in chars if c.get("craft")}
+        here = [u for u in guild.get("chars_here", []) if u not in crafting]
         by_world = guild.get("chars_by_world", {})
         fielded = sum(len(v) for v in by_world.values())
         roster = len(here) + fielded
@@ -167,6 +201,12 @@ class Explorer:
     def act(self, bot: "Any", char: dict[str, Any], frame: dict[str, Any],
             ctx: FieldContext, trace: DecisionTrace) -> None:
         uid = char["char_uid"]
+        if char.get("craft"):
+            # A craft (brew/smelt/forge) occupies the character; any other action
+            # is rejected with `crafting`, and moving/embarking abandons the work.
+            trace.observe(f"crafting ({char['craft'].get('ticks_left')} ticks left) — busy")
+            trace.consider(None, 1.0, "crafting in progress; wait it out")
+            return
         pos = tuple(char["pos"])
         hp, max_hp = char.get("hp", 0), char.get("max_hp", 1)
         stamina = char.get("stamina", 0)
@@ -279,12 +319,15 @@ class Explorer:
         return None
 
     def _should_sell(self, item: dict[str, Any], eqp: dict[str, Any]) -> bool:
-        """Sell loot and gear we cannot use — but never gear we might still equip
-        (that was the sell-before-equip bug). Keep field supplies (KEEP)."""
+        """Sell only what we can't use. Keep: field supplies (KEEP), consumables
+        and food (`drink` — potions/elixirs/food for sustain), brew ingredients
+        (`brew` — to craft potions), and gear we might still equip. Everything
+        else (pure loot: ore/forge stock/junk) is banked for gold."""
         kind = item["kind"]
-        if kind in KEEP:
+        uses = item.get("uses") or []
+        if kind in KEEP or "drink" in uses or "brew" in uses:
             return False
-        if "equip" not in (item.get("uses") or []):
+        if "equip" not in uses:
             return True                     # pure loot -> bank it
         if kind in self.wont_fit:
             return True                     # equippable but fails its stat requirement

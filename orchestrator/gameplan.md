@@ -49,7 +49,10 @@ fresh recruits into the hardest map — the deferred *spire de-funnel*).
 ## M3 — Self-sufficiency via crafting  ▶ NEXT
 The guild makes its own gear and consumables instead of depending on a shop that
 sells no armor and on rare loot.
-- **M3a Forging** *(do first — fills the armor gap, needs ore not gold)*: mine
+- **M3b Brewing** *(started first in v0.6.0 — no unknown `product` vocabulary, so
+  it proves the craft machinery; converts looted herbs into potions + learns
+  essences for M4)*: see below.
+- **M3a Forging** *(after brewing — fills the armor gap, needs ore not gold)*: mine
   ore veins (pickaxe) → `smelt` 2 ore → ingot → `forge` weapons/armor (+lumber,
   +flux). Learn per-metal flux by experiment (read the `forged` tells).
   **Exit:** armor-equip% > 50%; forged weapon/armor tier > shop tier; a per-world
@@ -102,8 +105,11 @@ per-run history.
 ---
 
 ### Sequencing note
-Recommended order is **M3a forging → M3b brewing → M4 magic → M5 economy → M6
-bosses**, with M2 tail-work (spire de-funnel) and M7 folded in continuously. This
-order is driven by the metrics: armor (M3a) is the top unmet durability lever
-(0% armored, unbuyable), and magic's `clarity` (M4) is the direct counter to the
-poison that still dominates damage. Adjust freely — it's a plan, not a contract.
+Order is **M3b brewing → M3a forging → M4 magic → M5 economy → M6 bosses**, with
+M2 tail-work (spire de-funnel) and M7 folded in continuously. Brewing leads
+because `forge` needs an unpublished `product` name (a discovery blocker) while
+`brew` needs none — so brewing proves the shared craft machinery and starts
+learning essences with zero vocabulary risk, then forging (the top durability
+lever: armor is 0% and unbuyable) reuses that machinery. Magic's `clarity` (M4)
+is the direct counter to the poison that still dominates damage. A plan, not a
+contract — adjust freely.

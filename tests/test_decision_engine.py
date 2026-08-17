@@ -315,6 +315,78 @@ def test_stat_requirement_marks_unusable_and_then_sells():
         [{"char_uid": "c1", "action": "sell", "item_id": "m1"}]
 
 
+def test_field_character_that_is_crafting_rests():
+    bot = _bot()
+    char = _field_char(craft={"kind": "brew", "ticks_left": 5})
+    frame = _field_frame(char, FLOOR3,
+                         entities=[{"pos": [1, 0], "faction": "monster",
+                                    "kind": "rat", "hp_frac": 0.2}])
+    # busy crafting -> take no action (any action would error `crafting`)
+    assert bot.on_frame(frame) == []
+
+
+def _brew_char(inv, gold_stats_capped=True, **over):
+    char = {"char_uid": "c1", "hp": 30, "max_hp": 30, "inventory": inv,
+            "equipment": {"hand": {"kind": "club"}, "offhand": None, "outfit": None,
+                          "trinket": None, "boots": None},
+            "stats": {"vit": 8, "end": 8, "str": 8}, "gifts": [], "xp": 0}
+    char.update(over)
+    return char
+
+
+def test_village_brews_ingredients_with_a_bottle():
+    bot = _bot()
+    char = _brew_char([{"kind": "bitterroot", "item_id": "b1", "uses": ["brew", "taste"]},
+                       {"kind": "frostmoss", "item_id": "f1", "uses": ["brew", "taste"]},
+                       {"kind": "bottle_empty", "item_id": "bot1", "uses": []}])
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 5, "chars_here": ["c1"], "chars_by_world": {}},
+             "chars": [char]}
+    assert bot.on_frame(frame) == \
+        [{"char_uid": "c1", "action": "brew", "item_ids": ["b1", "f1"]}]
+
+
+def test_village_buys_a_bottle_when_it_has_ingredients_but_none():
+    bot = _bot()
+    char = _brew_char([{"kind": "bitterroot", "item_id": "b1", "uses": ["brew", "taste"]},
+                       {"kind": "frostmoss", "item_id": "f1", "uses": ["brew", "taste"]}])
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 15, "chars_here": ["c1"], "chars_by_world": {}},
+             "chars": [char]}
+    assert bot.on_frame(frame) == \
+        [{"char_uid": "c1", "action": "buy", "kind": "bottle_empty"}]
+
+
+def test_village_keeps_ingredients_and_food_sells_pure_loot():
+    bot = _bot()
+    # brewable + food listed FIRST so the test fails if _should_sell stops
+    # keeping them (it would sell b1/m1 before reaching the ore).
+    char = _brew_char([{"kind": "bitterroot", "item_id": "b1", "uses": ["brew", "taste"]},
+                       {"kind": "meat", "item_id": "m1", "uses": ["drink"]},
+                       {"kind": "ore_copper", "item_id": "o1", "uses": ["forge"]}])
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 5, "chars_here": ["c1"], "chars_by_world": {}},
+             "chars": [char]}
+    # only one brewable (<2) so no brew; the ore is pure loot -> sold; the
+    # brew ingredient and the food are kept, not sold.
+    assert bot.on_frame(frame) == \
+        [{"char_uid": "c1", "action": "sell", "item_id": "o1"}]
+
+
+def test_village_leaves_a_crafting_character_alone():
+    bot = _bot()
+    busy = {"char_uid": "c1", "craft": {"kind": "brew", "ticks_left": 7},
+            "inventory": [], "equipment": {}, "stats": {}, "hp": 30, "max_hp": 30}
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 500, "chars_here": ["c1"],
+                       "chars_by_world": {"vale": ["a", "b", "c", "d", "e"],
+                                          "mines": ["f", "g", "h", "i", "j"]}},
+             "chars": [busy]}
+    # roster at world_cap and the only home char is busy -> no action (not sold,
+    # not embarked, which would abandon the brew)
+    assert bot.on_frame(frame) == []
+
+
 def test_decisions_are_persisted(tmp_path):
     s = Storage(str(tmp_path / "d.db"), commit_every=1)
     bot = _bot(storage=s)
