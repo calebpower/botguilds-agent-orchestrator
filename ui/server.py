@@ -427,10 +427,24 @@ label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13
 .alt.chosen .score{color:var(--chosen)}
 .alt .why{color:var(--ink2)}
 .alt .aname{color:var(--ink);font-weight:600}
-/* map */
-.map-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px;
-  background:var(--plane)}
-#mapCanvas{display:block}
+/* map — a pan/zoom canvas viewport (Google-Maps style) */
+.map-wrap{position:relative;overflow:hidden;border:1px solid var(--border);
+  border-radius:8px;background:var(--plane);height:min(70vh,640px);
+  touch-action:none}                 /* touch-action:none -> we own pan/pinch */
+#mapCanvas{display:block;width:100%;height:100%;image-rendering:pixelated;
+  cursor:grab}
+#mapCanvas.grabbing{cursor:grabbing}
+.map-controls{position:absolute;top:10px;right:10px;display:flex;
+  flex-direction:column;gap:6px;z-index:2}
+.map-controls button{width:34px;height:34px;border:1px solid var(--border);
+  background:var(--surface);color:var(--ink);border-radius:8px;font-size:18px;
+  line-height:1;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;padding:0}
+.map-controls button:hover{background:var(--plane)}
+.map-coords{position:absolute;left:10px;bottom:10px;background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:12px;
+  font-variant-numeric:tabular-nums;color:var(--ink2);pointer-events:none;
+  z-index:2}
 .legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:12px}
 .legend .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink2)}
 .legend .sw{width:12px;height:12px;border-radius:3px;border:1px solid var(--border)}
@@ -511,7 +525,16 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
       <label class="chk">world <select id="m-world"></select></label>
       <span class="small" id="map-info"></span>
     </div>
-    <div class="map-wrap"><canvas id="mapCanvas" width="10" height="10"></canvas></div>
+    <div class="map-wrap" id="mapWrap">
+      <canvas id="mapCanvas"></canvas>
+      <div class="map-controls">
+        <button id="m-zin" title="zoom in">+</button>
+        <button id="m-zout" title="zoom out">&minus;</button>
+        <button id="m-fit" title="fit whole world">&#9974;</button>
+      </div>
+      <div class="map-coords" id="mapCoords">&mdash;</div>
+    </div>
+    <div class="small" style="margin-top:6px">drag to pan &middot; wheel or pinch to zoom &middot; hover for tile coords</div>
     <div class="legend" id="map-legend"></div>
   </section>
 
@@ -718,6 +741,22 @@ function tileColor(kind){
   let h=0; for(const ch of (kind||"")) h=(h*31+ch.charCodeAt(0))>>>0;
   return FALLBACK[h % FALLBACK.length];
 }
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// --- pan/zoom viewer state ------------------------------------------------
+// The canvas is a fixed viewport; the world is drawn under an affine transform
+// (translate + uniform scale). `view.scale` is screen-pixels-per-tile; `ox/oy`
+// is the screen-pixel offset of world-origin (tile col 0, drawn-row 0 = the
+// TOP-drawn row, i.e. the northmost). One view is stored PER WORLD so the 3s
+// auto-refresh redraws with the operator's current pan/zoom intact — we only
+// re-fit when the world changes or Reset is pressed.
+let mapData = null;          // last fetched /api/map payload for mapWorld
+let mapWorld = null;         // world currently displayed
+const mapViews = {};         // world -> {scale, ox, oy}
+let mapWired = false;        // interaction handlers attached once
+const MIN_SCALE = 0.4, MAX_SCALE = 64;
+const clampScale = s => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
+
 let mapWorldsFilled=false;
 async function fillMapWorlds(){
   if(mapWorldsFilled) return; mapWorldsFilled=true;
@@ -725,56 +764,160 @@ async function fillMapWorlds(){
   const sel=$("#m-world"); sel.innerHTML="";
   (worlds||[]).filter(w=>w!=="village").forEach(w=>{
     const o=el("option",null,w); o.value=w; sel.appendChild(o); });
-  sel.onchange = loadMap;
+  // Explicit world switch = a fresh frame-the-world view (drop any saved one).
+  sel.onchange = ()=>{ delete mapViews[sel.value]; mapWorld=null; loadMap(); };
 }
+
+// Screen<->world helpers (row 0 at the BOTTOM: y increases north).
+function drawnRow(y, H){ return H-1-y; }                 // world y -> drawn row
+function fitView(m){
+  const cv=$("#mapCanvas"); const vw=cv.clientWidth||600, vh=cv.clientHeight||400;
+  const [W,H]=m.bounds; const pad=14;
+  const s = clampScale(Math.min((vw-2*pad)/W, (vh-2*pad)/H));
+  mapViews[m.world] = {scale:s, ox:(vw-W*s)/2, oy:(vh-H*s)/2};
+}
+// Zoom by `factor` while keeping the point (cx,cy) in viewport coords fixed —
+// this is the "zoom toward the cursor" behaviour of Google Maps / DynMap.
+function zoomAt(cx, cy, factor){
+  const v = mapViews[mapWorld]; if(!v) return;
+  const ns = clampScale(v.scale*factor); const f = ns/v.scale;
+  v.ox = cx - (cx - v.ox)*f;
+  v.oy = cy - (cy - v.oy)*f;
+  v.scale = ns;
+  drawMap();
+}
+
+function drawMap(){
+  const cv=$("#mapCanvas"); if(!cv) return;
+  const ctx=cv.getContext("2d");
+  const dpr=window.devicePixelRatio||1;
+  const cw=cv.clientWidth, ch=cv.clientHeight;
+  cv.width=Math.max(1,Math.round(cw*dpr)); cv.height=Math.max(1,Math.round(ch*dpr));
+  ctx.setTransform(dpr,0,0,dpr,0,0);   // work in CSS px; dpr for crispness
+  ctx.imageSmoothingEnabled=false;
+  ctx.fillStyle=cssVar("--plane")||"#111"; ctx.fillRect(0,0,cw,ch);
+
+  const m=mapData, v=mapViews[mapWorld];
+  if(!m || !v) return;
+  const [W,H]=m.bounds, s=v.scale, ox=v.ox, oy=v.oy;
+  // world tile (x,y) -> screen rect top-left; +0.6 overscan closes seams.
+  for(const [x,y,kind] of m.tiles){
+    ctx.fillStyle=tileColor(kind);
+    ctx.fillRect(x*s+ox, drawnRow(y,H)*s+oy, s+0.6, s+0.6);
+  }
+  // faint grid only when zoomed in enough to read it, clipped to world extent
+  if(s>=8){
+    ctx.strokeStyle=cssVar("--grid")||"#333"; ctx.lineWidth=1;
+    const L=ox, R=W*s+ox, T=oy, B=H*s+oy;
+    ctx.beginPath();
+    for(let x=0;x<=W;x++){ const X=Math.round(x*s+ox)+.5; ctx.moveTo(X,T); ctx.lineTo(X,B); }
+    for(let y=0;y<=H;y++){ const Y=Math.round(y*s+oy)+.5; ctx.moveTo(L,Y); ctx.lineTo(R,Y); }
+    ctx.stroke();
+  }
+  // overlays from the latest frame; centred on the tile, min radius so they
+  // stay visible when zoomed out. Kept aligned via the same transform maths.
+  const dot=(x,y,color,rFrac,ring)=>{
+    const cx=(x+0.5)*s+ox, cy=(drawnRow(y,H)+0.5)*s+oy, r=Math.max(3,s*rFrac);
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fillStyle=color; ctx.fill();
+    if(ring){ ctx.lineWidth=2; ctx.strokeStyle=ring; ctx.stroke(); }
+  };
+  (m.items||[]).forEach(it=>{ if(it.pos) dot(it.pos[0],it.pos[1],"#eda100",0.3); });
+  (m.gold||[]).forEach(g=>{ if(g.pos) dot(g.pos[0],g.pos[1],"#c98500",0.3); });
+  (m.entities||[]).forEach(e=>{ if(!e.pos) return;
+    dot(e.pos[0],e.pos[1], e.faction==="monster"?"#e34948":"#898781", 0.4); });
+  (m.chars||[]).forEach(c=>{ if(c.pos) dot(c.pos[0],c.pos[1],"#2a78d6",0.4,cssVar("--ink")); });
+}
+
+// Viewport (mx,my) -> game tile coords, honouring row 0 at the bottom.
+function tileAt(mx,my){
+  const m=mapData, v=mapViews[mapWorld]; if(!m||!v) return null;
+  const [W,H]=m.bounds;
+  const tx=Math.floor((mx-v.ox)/v.scale);
+  const gy=(H-1)-Math.floor((my-v.oy)/v.scale);
+  if(tx<0||tx>=W||gy<0||gy>=H) return null;
+  return {x:tx,y:gy};
+}
+
+// Attach pan / wheel-zoom / pinch / button handlers exactly once. Uses Pointer
+// Events so mouse, touch-drag and two-finger pinch share one code path.
+function wireMap(){
+  if(mapWired) return; mapWired=true;
+  const cv=$("#mapCanvas"), coords=$("#mapCoords");
+  const pointers=new Map();       // active pointerId -> {x,y}
+  let pinchDist=0;                 // last two-finger distance, 0 = not pinching
+
+  const showCoords=(mx,my)=>{ const t=tileAt(mx,my);
+    coords.textContent = t ? `x ${t.x}, y ${t.y}` : "—"; };
+
+  cv.addEventListener("pointerdown", e=>{
+    cv.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pointers.size===1) cv.classList.add("grabbing");
+    pinchDist=0;
+  });
+  cv.addEventListener("pointermove", e=>{
+    const rect=cv.getBoundingClientRect();
+    if(!pointers.has(e.pointerId)){ showCoords(e.clientX-rect.left,e.clientY-rect.top); return; }
+    const prev=pointers.get(e.pointerId);
+    if(pointers.size>=2){
+      // pinch-to-zoom: scale by change in finger distance about their midpoint
+      pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      const pts=[...pointers.values()];
+      const dist=Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+      const midx=(pts[0].x+pts[1].x)/2-rect.left, midy=(pts[0].y+pts[1].y)/2-rect.top;
+      if(pinchDist>0 && dist>0) zoomAt(midx,midy, dist/pinchDist);
+      pinchDist=dist;
+    } else {
+      // single-pointer drag = pan
+      const v=mapViews[mapWorld];
+      if(v){ v.ox += e.clientX-prev.x; v.oy += e.clientY-prev.y; drawMap(); }
+      pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      showCoords(e.clientX-rect.left,e.clientY-rect.top);
+    }
+  });
+  const endPtr=e=>{ pointers.delete(e.pointerId);
+    if(pointers.size<2) pinchDist=0;
+    if(pointers.size===0) cv.classList.remove("grabbing"); };
+  cv.addEventListener("pointerup", endPtr);
+  cv.addEventListener("pointercancel", endPtr);
+  cv.addEventListener("pointerleave", e=>{ if(!pointers.has(e.pointerId)) coords.textContent="—"; });
+
+  cv.addEventListener("wheel", e=>{
+    e.preventDefault();
+    const rect=cv.getBoundingClientRect();
+    // smooth exponential stepping; zoom centred on the cursor
+    zoomAt(e.clientX-rect.left, e.clientY-rect.top, Math.exp(-e.deltaY*0.0015));
+  }, {passive:false});
+
+  $("#m-zin").onclick =()=>zoomAt(cv.clientWidth/2, cv.clientHeight/2, 1.3);
+  $("#m-zout").onclick=()=>zoomAt(cv.clientWidth/2, cv.clientHeight/2, 1/1.3);
+  $("#m-fit").onclick =()=>{ if(mapData){ fitView(mapData); drawMap(); } };
+  // keep the framing sensible if the window resizes while the tab is open
+  window.addEventListener("resize", ()=>{ if(active==="map") drawMap(); });
+}
+
 async function loadMap(){
   await fillMapWorlds();
+  wireMap();
   const world = $("#m-world").value;
   const m = await getJSON("/api/map"+(world?("?world="+encodeURIComponent(world)):""));
-  const cv = $("#mapCanvas"), ctx = cv.getContext("2d");
   const info = $("#map-info");
   if(!m || !m.bounds || !m.tiles.length){
-    cv.width=10; cv.height=10; ctx.clearRect(0,0,10,10);
+    mapData=null; drawMap();
     info.textContent = "no tiles seen for this world yet";
-    $("#map-legend").innerHTML="";
+    $("#map-legend").innerHTML=""; $("#mapCoords").textContent="—";
     return;
   }
   if(world!==m.world && m.world){ // server chose a default; reflect it
     const sel=$("#m-world"); if([...sel.options].some(o=>o.value===m.world)) sel.value=m.world;
   }
-  const [W,H] = m.bounds;
-  const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-  const surface = cssVar("--plane") || "#111";
-  // choose a cell size that fits ~900px wide but stays legible
-  const cell = Math.max(2, Math.min(14, Math.floor(900 / Math.max(W,1))));
-  cv.width = W*cell; cv.height = H*cell;
-  ctx.fillStyle = surface; ctx.fillRect(0,0,cv.width,cv.height);
-  const py = y => (H-1-y);            // row 0 at the BOTTOM (y increases north)
-  // tiles
-  for(const [x,y,kind] of m.tiles){
-    ctx.fillStyle = tileColor(kind);
-    ctx.fillRect(x*cell, py(y)*cell, cell, cell);
-  }
-  // faint grid when cells are big enough to see it
-  if(cell>=6){
-    ctx.strokeStyle = cssVar("--grid"); ctx.lineWidth=1;
-    for(let x=0;x<=W;x++){ctx.beginPath();ctx.moveTo(x*cell,0);ctx.lineTo(x*cell,H*cell);ctx.stroke();}
-    for(let y=0;y<=H;y++){ctx.beginPath();ctx.moveTo(0,y*cell);ctx.lineTo(W*cell,y*cell);ctx.stroke();}
-  }
-  const dot = (x,y,color,r,ring)=>{
-    const cx=x*cell+cell/2, cy=py(y)*cell+cell/2;
-    ctx.beginPath(); ctx.arc(cx,cy,Math.max(r,cell*0.35),0,7); ctx.fillStyle=color; ctx.fill();
-    if(ring){ ctx.lineWidth=2; ctx.strokeStyle=ring; ctx.stroke(); }
-  };
-  // loot + gold + entities overlaid from the latest frame
-  (m.items||[]).forEach(it=>{ if(it.pos) dot(it.pos[0],it.pos[1],"#eda100",cell*0.3); });
-  (m.gold||[]).forEach(g=>{ if(g.pos) dot(g.pos[0],g.pos[1],"#c98500",cell*0.3); });
-  (m.entities||[]).forEach(e=>{ if(!e.pos) return;
-    const col = e.faction==="monster" ? "#e34948" : "#898781";
-    dot(e.pos[0],e.pos[1],col,cell*0.4); });
-  // our own characters: highlighted ring so they stand out
-  (m.chars||[]).forEach(c=>{ if(c.pos) dot(c.pos[0],c.pos[1],"#2a78d6",cell*0.4, cssVar("--ink")); });
+  mapData = m;
+  // Preserve the view across refreshes: only fit when the world changed (or on
+  // the very first draw of a world, when no saved view exists).
+  if(mapWorld!==m.world || !mapViews[m.world]){ mapWorld=m.world; fitView(m); }
+  drawMap();
 
+  const [W,H]=m.bounds;
   info.textContent = `${m.world} · ${W}×${H} · ${m.tiles.length} tiles seen`
     + (m.tick!=null?` · frame @ tick ${m.tick}`:"");
   // legend: only kinds actually present, plus overlay markers
