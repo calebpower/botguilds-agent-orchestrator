@@ -184,3 +184,20 @@ Fix (verified pytest 73 + mutation-checked + reaper gate):
 Result: /api/snapshot 25s -> 1.78s cold / ~1.5ms warm (cache hit). UI restarted.
 Follow-up: the frames table grows unbounded (~916 MiB); indexes keep it fast
 regardless, so this is a disk concern, not a speed one — see findings.
+
+## 2026-08-17 02:49 — Iteration 2 result: survival RATE down 43%; metric correction; poison now dominant
+Measured explorer/0.3.0 (run #5, ~10k ticks) vs 0.2.0:
+- our-deaths per 1000 ticks: 12.68 -> **7.28 (-43%)** — survival rate clearly improved.
+- deaths/recruit: 0.317 -> 0.329 (flat). CORRECTION: this is a poor oracle — each
+  death triggers a ~1:1 refill recruit, so the ratio is structurally near-constant
+  regardless of survival. Death RATE (per tick) is the right metric; the original
+  "deaths/recruit < 0.31" falsification target was mis-chosen.
+- status_damage per 1000 ticks: 89.8 -> **254 (2.8x)**. Not a regression: chars now
+  SURVIVE while poisoned (flee + drink — 55 potion_red buys, 81 use actions in
+  run #5, retreat logic active) instead of dying to it. Poison exposure now
+  converts to survival rather than death.
+Verdict: iteration 2 CONFIRMED as a survival-rate win. New dominant hazard:
+sustained poison/status_damage on fleeing characters.
+Iteration 3 (next): spend_xp into VIT (HP to tank poison) -> END (stamina to
+outrun it) -> STR, preferring gifts — now even better motivated by the poison
+finding. Possibly reduce poison exposure. (Spire de-funnel still deferred.)
