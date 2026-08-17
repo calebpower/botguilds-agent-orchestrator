@@ -1,0 +1,57 @@
+#!/bin/sh
+#
+# PROVIDE: smbnetfs
+# REQUIRE: NETWORKING DAEMON
+# KEYWORD: shutdown
+#
+# Permanent SMB2/3 mount of the TrueNAS share at /mnt/nas via smbnetfs (FUSE).
+# Enable with:  sysrc smbnetfs_enable=YES
+# Credentials live in /root/.smb/smbnetfs.auth (mode 600); config in /root/.smb.
+
+. /etc/rc.subr
+
+name=smbnetfs
+rcvar=smbnetfs_enable
+
+load_rc_config $name
+: ${smbnetfs_enable:="NO"}
+: ${smbnetfs_mountpoint:="/mnt/nas"}
+
+command="/usr/local/bin/smbnetfs"
+command_args="-o allow_other ${smbnetfs_mountpoint}"
+start_precmd="smbnetfs_prestart"
+stop_cmd="smbnetfs_stop"
+status_cmd="smbnetfs_status"
+
+# smbnetfs reads its config from root's ~/.smb; make that explicit.
+export HOME=/root
+
+smbnetfs_prestart()
+{
+	/sbin/kldload -n fusefs
+	/bin/mkdir -p "${smbnetfs_mountpoint}"
+	if /sbin/mount | /usr/bin/grep -q " ${smbnetfs_mountpoint} "; then
+		echo "smbnetfs: ${smbnetfs_mountpoint} already mounted"
+		return 1
+	fi
+	return 0
+}
+
+smbnetfs_stop()
+{
+	/sbin/umount "${smbnetfs_mountpoint}" 2>/dev/null ||
+		/sbin/umount -f "${smbnetfs_mountpoint}" 2>/dev/null ||
+		echo "smbnetfs: nothing mounted at ${smbnetfs_mountpoint}"
+}
+
+smbnetfs_status()
+{
+	if /sbin/mount | /usr/bin/grep -q " ${smbnetfs_mountpoint} "; then
+		echo "smbnetfs is mounted at ${smbnetfs_mountpoint}"
+	else
+		echo "smbnetfs is NOT mounted"
+		return 1
+	fi
+}
+
+run_rc_command "$1"

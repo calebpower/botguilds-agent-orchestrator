@@ -387,3 +387,18 @@ Pending operator credentials: the concrete off-box transport (S3-compatible vs
 rsync/scp over SSH) implements the same 2-method Shipper; then the orchestrator
 (export->ship->verify->prune->checkpoint) runs on a schedule for hands-off
 retention. events/decisions/metrics stay local (cheap, mined signal).
+
+## 2026-08-17 12:54 — retention live: NAS mount + daily archival cron (walk-away disk safety)
+Mounted TrueNAS //truenas/samba_share at /mnt/nas over SMB2/3 (smbnetfs FUSE;
+base mount_smbfs is SMB1-only and TrueNAS has SMB1 off). Permanent via rc.d
+(ops/smbnetfs.rc) + kld_list=fusefs + smbnetfs_enable. Creds in /root/.smb (600),
+never in repo (verified). Built + tested end-to-end against the real NAS the full
+export->ship->verify(size+sha256)->prune->checkpoint chain (see ops/retention.md).
+Scheduled: cron for cal, daily 04:17, uv run tools/archive_frames.py, 48h hot
+window. checkpoint() no longer VACUUMs (VACUUM needs an exclusive lock the live
+bot blocks; freed pages are reused so the file plateaus ~14 GiB steady). Not
+force-archiving the current backlog: runs #6-9 are <48h old, within policy; the
+DB (3.4 GiB) will plateau well under the 40 GiB free as the cron ages runs out.
+KNOWN LIMIT: archival is per-CLOSED-run, so a long-open run during a loop pause
+isn't archived (logged as a finding; fix = timed run rotation or age-based
+partial archival). Hardware verdict stands: CPU/RAM idle, no new hardware needed.

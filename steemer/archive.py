@@ -190,8 +190,21 @@ def prune_run_frames(conn: sqlite3.Connection, run_id: int) -> int:
 
 
 def checkpoint(conn: sqlite3.Connection) -> None:
-    """Fold the WAL back into the main DB and truncate it, reclaiming the space a
-    large prune freed. No-op-safe if another reader holds the WAL."""
+    """Fold the WAL back into the main DB and truncate it. Pages freed by a prune
+    become free-list pages the live writer reuses, so the file stops *growing*
+    even though it does not shrink — that is what bounds disk on a walk-away box.
+
+    Deliberately does NOT VACUUM: VACUUM needs an exclusive lock and would fail
+    (or block) while the live bot has the DB open. Physically shrinking the file
+    is a separate maintenance-window op (``reclaim_space``), not part of the
+    automatic retention pass."""
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.commit()
+
+
+def reclaim_space(conn: sqlite3.Connection) -> None:
+    """VACUUM the DB to physically shrink the file after large prunes. Requires
+    an exclusive lock, so run it only in a maintenance window with the live bot
+    stopped — otherwise it raises 'database is locked'."""
     conn.execute("VACUUM")
     conn.commit()
