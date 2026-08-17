@@ -286,3 +286,11 @@ Discovery next: correlate brew item_ids -> ingredient kinds with products+tells
 (over more brews) to infer this world's herb->essence map — an analysis-subagent
 job once volume accumulates. Minor edge noted: 7 'move' actions rejected
 not_in_village (a char exiting to village with a queued move); low priority.
+
+## 2026-08-17 05:21 — 0.6.0 measurement: best version yet + brewing producing variety
+run #8 (14k ticks): deaths/1k=3.07 (0.3.0 was 6.44, 0.5.0 4.66 — cumulative arc
+~halved deaths again), weapon-equip 48%, ARMOR 19% (finally >0 — equip landing
+looted armor), survivor max_hp to 66. Brewing: 31 brews (15 ok / 16 fail),
+products potion_red x11, flask_green x2, potion_gold x1, vial_green x1 — multiple
+essence-majority products. Launching an analysis subagent to infer this world's
+herb->essence map from the accumulated brews (M3b discovery exit).
