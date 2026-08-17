@@ -316,3 +316,18 @@ mean the essence map is wrong or the pot ignores essence homogeneity.
 Status: implemented + local pytest (97) green + mutation-checked + bounded replay
 clean. HELD pre-redeploy: awaiting operator push authorization + usage %, then the
 reaper gate (subagent) before hot-redeploy. Live bot stays on 0.6.0 until then.
+
+## 2026-08-17 10:25 — v0.7.0 early measurement: brewing fix confirmed (curdles isolated to undecoded batches)
+Window: run #9, first ~30 min (small sample — survival not yet judged).
+Brews: 8 ok / 3 fail (73% vs 0.6.0's 48%). Successes: potion_red x5 (the vigor
+HEAL — essence-aware targeting working), flask_green x1 (venom), potion_blue x1,
+potion_yellow x1 (both NEW products this world). All 3 FAILURES carry the
+pale_crust tell, which maps only to the UNDECODED off-axis herbs — i.e. the
+curdles are in the "unknown learning batch" path, never in a decoded vigor/venom
+batch. Falsification criterion (curdle on a decoded batch) did NOT fire: the fix
+works as designed.
+Cost surfaced: blindly mixing DIFFERENT undecoded herbs still curdles (essence
+conflict) — a lossy way to learn. Motivates a v0.8.0 refinement (below). deaths/1k
+deferred to a longer window; not enough deaths yet for an honest rate.
+Next: let 0.7.0 accumulate ~1h for survival signal, then either v0.8.0
+(learn-by-taste / same-kind batches) or M3a forging (armor).
