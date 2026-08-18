@@ -607,6 +607,42 @@ def test_embarks_a_home_char_toward_the_emptiest_map_from_the_frame_distribution
                and a["map"] in ("mines", "spire") for a in acts)  # emptiest (0) map
 
 
+def test_stuck_char_learns_the_blocked_tile_and_stops_reissuing_the_move():
+    # v0.12.0: (0,1) is a north frontier (floor bordering the unknown), so the char
+    # pushes north into it. If we then DON'T move the char, that move bounced
+    # (move_failed) — the bot must learn (0,1) is blocked and NOT re-issue move N
+    # (the freeze that starved field productivity: one char sat at (43,3) for 40+
+    # ticks "pushing north" without moving).
+    bot = _bot()
+    tiles = [[0, 0, "floor"], [0, 1, "floor"], [1, 0, "floor"]]
+
+    def frame(tick):
+        return {"world": "vale", "tick": tick,
+                "chars": [_field_char(pos=[0, 0], stamina=40)],
+                "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
+
+    a1 = bot.on_frame(frame(10))
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in a1        # pushes north
+    a2 = bot.on_frame(frame(11))                                          # still at (0,0) -> bounced
+    assert (0, 1) in bot._learned_blocked["vale"]                        # learned the wall
+    assert all(not (x.get("action") == "move" and x.get("dir") == "N") for x in a2)  # no longer N
+
+
+def test_learned_block_does_not_fire_when_the_char_actually_moved():
+    # a char that DID move must not have its destination marked blocked.
+    bot = _bot()
+    tiles = [[0, 0, "floor"], [0, 1, "floor"], [1, 0, "floor"]]
+
+    def frame(tick, pos):
+        return {"world": "vale", "tick": tick,
+                "chars": [_field_char(pos=pos, stamina=40)],
+                "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
+
+    bot.on_frame(frame(10, [0, 0]))          # issues move N toward (0,1)
+    bot.on_frame(frame(11, [0, 1]))          # it moved to (0,1) — success, not a bounce
+    assert (0, 1) not in bot._learned_blocked.get("vale", {})
+
+
 def test_decisions_are_persisted(tmp_path):
     s = Storage(str(tmp_path / "d.db"), commit_every=1)
     bot = _bot(storage=s)

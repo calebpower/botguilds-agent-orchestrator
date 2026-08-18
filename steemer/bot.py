@@ -18,12 +18,25 @@ from .strategy import FieldContext, Strategy, get_strategy
 
 CONTAINER_KINDS = frozenset({"chest", "safe"})
 
+# A tile a char bounced off (issued a move but didn't move — a move_failed) is
+# treated as blocked for this many ticks, so nav routes around it instead of
+# re-issuing the same doomed move forever (the freeze that starved field
+# productivity: chars stuck against a wall, 0 loot/xp). A TTL, not permanent — a
+# real wall re-bounces and refreshes it; a transient body-tile clears once
+# nothing re-blocks it.
+STUCK_BLOCK_TTL = 150
+
 
 class GuildBot:
     def __init__(self, strategy: Strategy | str = "explorer", storage: Storage | None = None):
         self.strategy: Strategy = get_strategy(strategy) if isinstance(strategy, str) else strategy
         self.storage = storage
         self.known: dict[str, dict[tuple[int, int], str]] = {}   # world -> tiles
+        # Stuck detection: a char's last field pos + last move dir, and per-world
+        # tiles that bounced (learned blocked, with the tick they last bounced).
+        self._last_pos: dict[str, tuple[int, int]] = {}
+        self._last_move_dir: dict[str, str | None] = {}
+        self._learned_blocked: dict[str, dict[tuple[int, int], int]] = {}
         self.tick = 0
         self.config: dict[str, Any] = {}
         self.guild: dict[str, Any] = {}
@@ -100,22 +113,44 @@ class GuildBot:
                    if e.get("faction") == "guild"}
         containers = {p for p, k in known.items() if k in CONTAINER_KINDS}
 
+        # Learned-blocked tiles (chars that bounced here recently) also block nav,
+        # so a char that hit a wall stops re-issuing the same doomed move. Expire
+        # stale entries as we go.
+        learned = self._learned_blocked.setdefault(world, {})
+        for t in [t for t, tk in learned.items() if self.tick - tk >= STUCK_BLOCK_TTL]:
+            del learned[t]
+        bodies |= set(learned)
+
         ctx = FieldContext(world=world, known=known, enemies=enemies, loot=loot,
                            gold=gold, bodies=bodies, containers=containers)
 
         actions: list[dict[str, Any]] = []
         for char in frame.get("chars", []):
-            trace = DecisionTrace(tick=self.tick, world=world,
-                                  char_uid=char["char_uid"])
+            uid = char["char_uid"]
+            cur = (char["pos"][0], char["pos"][1])
+            # If this char issued a move last tick and hasn't moved, that move
+            # bounced (move_failed) — remember the tile it tried to enter as
+            # blocked, and apply it immediately so this frame's decision avoids it.
+            if self._last_pos.get(uid) == cur and self._last_move_dir.get(uid) in nav.DIRS:
+                dx, dy = nav.DIRS[self._last_move_dir[uid]]
+                learned[(cur[0] + dx, cur[1] + dy)] = self.tick
+                ctx.bodies.add((cur[0] + dx, cur[1] + dy))
+
+            trace = DecisionTrace(tick=self.tick, world=world, char_uid=uid)
             self.strategy.act(self, char, frame, ctx, trace)
             action = trace.decide()
             trace.record(self.storage, self.strategy.version)
+
+            moved_dir = None
             if action:
                 actions.append(action)
                 # Reserve this character's move destination so a later character
                 # in the same frame won't pick the same tile — two of our own
                 # moving onto one tile is a bounce (move_failed) for one of them.
                 if action.get("action") == "move" and action.get("dir") in nav.DIRS:
-                    dx, dy = nav.DIRS[action["dir"]]
-                    ctx.bodies.add((char["pos"][0] + dx, char["pos"][1] + dy))
+                    moved_dir = action["dir"]
+                    dx, dy = nav.DIRS[moved_dir]
+                    ctx.bodies.add((cur[0] + dx, cur[1] + dy))
+            self._last_pos[uid] = cur
+            self._last_move_dir[uid] = moved_dir
         return actions

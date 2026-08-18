@@ -137,6 +137,20 @@ first ~46 ticks). Fix: split the two gates — RECRUIT keeps the authoritative
 spectate TOTAL (the frame total swings, so this is the right source and it keeps
 the dashboard/roster count honest), but EMBARK reverts to the frame's fresh,
 per-tick `chars_by_world` (accurate for the current per-map field, no staleness).
+
+v0.12.0 — the master lever, found once the loop finally *saw* field productivity:
+the guild had collapsed into a poverty trap (0 loot/xp for 8 runs, chars bare-
+handed, gold 13; move_failed ~1%→~30% since the MariaDB cutover). Root cause was
+NOT the DB (record_frame is ~11 ms) — it was a NAV FREEZE: a char that issues a
+move into a blocked tile bounces (`move_failed`) but never learns, so it
+re-issues the identical doomed move *every tick, forever* (observed: one char
+frozen at (43,3) for 40+ ticks "pushing north" without moving). Fix lives in
+`GuildBot._field` (not the strategy proper — the version bump marks the deployed
+behavior): detect "issued a move but didn't move" and add that tile to a
+per-world learned-blocked set (TTL `STUCK_BLOCK_TTL`) that nav routes around, so
+a stuck char frees itself next tick. Expected: move_failed collapses, chars
+explore/loot/earn again, and the village economy (equip/sell/brew/smelt/spend_xp,
+all at 0 for 8 runs) restarts.
 """
 
 from __future__ import annotations
@@ -180,7 +194,7 @@ RECRUIT_COOLDOWN = 8  # v0.10.0: same staleness for recruit — a just-recruited
 
 
 class Explorer:
-    version = "explorer/0.11.1"
+    version = "explorer/0.12.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been

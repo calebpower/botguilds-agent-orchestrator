@@ -946,3 +946,48 @@ split are mutation-checked. Live end-to-end: sidecar signed in, set the color,
 recorded spectate (2 guilds) + tiles (714 sprites); `metrics.snapshot.intel`
 renders the head-to-head. **Operator runs `make sidecar` in its own screen
 window** (like the bot and dashboard) — reaper gate: pending.
+
+## 2026-08-18 16:38 — explorer/0.12.0: the master lever — fix the nav FREEZE that starved field productivity (poverty trap)
+
+**The reframe.** The improvement loop had been optimizing `action_error_rate`
+while blind to the real problem. The analyze phase (first pass of the persistent
+loop) found: `move_failed` (a server EVENT, not an action_error) regressed ~1%
+(sqlite run #22) → ~30% (all MariaDB runs #28–#35), and the **entire village
+economy emitted ZERO buy/sell/equip/brew/smelt/spend_xp for 8 straight runs** —
+home chars arrive empty/bare-handed, guild broke (gold 13), field pickups
+2110→2, xp≈0, Vale depth y≈52→5. A self-inflicted **poverty trap**.
+
+**Root cause (NOT the DB).** I measured `record_frame` at ~11 ms on MariaDB (vs
+~1 ms sqlite) — too small to explain 30% move_failed, so the DB-latency theory is
+out. The real cause, caught by tracing one char's decisions (now fast — I added
+`idx_decisions_run`, authorized): **a NAV FREEZE.** Char c8232 sat at (43,3) for
+40+ consecutive ticks, healthy (sta 56), deciding "move north into unexplored
+ground" every tick and never moving. It issues a move into a blocked tile, the
+move bounces (move_failed), and it never learns — so it re-issues the identical
+doomed move forever. Chars freeze against walls → never reach loot → 0 income →
+bare-handed → the spiral. Rival "threat" (WillMorr 30 vs our 15) is a non-issue:
+29 of their 30 are parked idle in the village; we field more and out-level them.
+
+**Fix (`GuildBot._field`).** Detect "issued a move last tick but position
+unchanged" → that tile bounced → add it to a per-world learned-blocked set
+(TTL `STUCK_BLOCK_TTL`=150 ticks) that nav routes around, applied immediately the
+same frame. A wall that keeps bouncing stays blocked (re-refreshed); a transient
+body-tile expires. So a stuck char frees itself next tick. Version bumped to
+explorer/0.12.0 to attribute the window (the code is in bot.py, not the strategy
+proper). Also added `idx_decisions_run` (both schemas + live) — per-run decision
+queries were full-scanning the large decisions table.
+
+**Expected effect.** move_failed collapses back toward ~1%; chars explore/loot/
+fight again → pickups, xp, and the village economy (equip/sell/brew/smelt/
+spend_xp) restart from 0 → gold recovers → chars re-equip → the poverty spiral
+reverses. **Falsified if** next window's move_failed stays elevated, or pickups/xp
+stay ~0. **Watch for** over-blocking (a char routing around tiles that are
+actually clear, exploring less) — the TTL should prevent permanent mis-blocks.
+
+**Verify.** pytest 188 passed / 2 skipped; the stuck-fix is mutation-checked
+(disable bounce detection → the frozen char keeps re-issuing move N → test fails)
+and has a negative test (a char that DID move isn't mis-blocked). Replay clean on
+0.12.0. Reaper gate: pending. Deploy: `make bot-restart` (self-deploy now works —
+daemons survive the harness). Next iteration: make field productivity
+(move_failed%, pickups/1k, xp/1k, per-world depth, economy-action counts)
+first-class KPIs so the loop is never blind to this again.

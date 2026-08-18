@@ -459,6 +459,8 @@ CREATE INDEX IF NOT EXISTS idx_decisions_action ON decisions(action);
 -- these the DISTINCT is a full scan of the (large) decisions table.
 CREATE INDEX IF NOT EXISTS idx_decisions_world ON decisions(world);
 CREATE INDEX IF NOT EXISTS idx_decisions_char ON decisions(char_uid);
+-- per-run decision queries (the analyze/diagnosis path) full-scanned without this.
+CREATE INDEX IF NOT EXISTS idx_decisions_run ON decisions(run_id);
 """
 
 SCHEMA_MARIADB = """
@@ -505,7 +507,9 @@ CREATE TABLE IF NOT EXISTS decisions (
     -- world/char_uid feed the dashboard's filter dropdowns via SELECT DISTINCT;
     -- without these the DISTINCT is a full scan of the (large) decisions table.
     KEY idx_decisions_world (world),
-    KEY idx_decisions_char (char_uid)
+    KEY idx_decisions_char (char_uid),
+    -- per-run decision queries (analyze/diagnosis) full-scanned without this.
+    KEY idx_decisions_run (run_id)
 );
 CREATE TABLE IF NOT EXISTS runs (
     run_id INT AUTO_INCREMENT PRIMARY KEY,

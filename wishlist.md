@@ -10,6 +10,12 @@ top of **Open**.
 
 ## Open
 
+- [ ] **Dashboard "how navigation works" explainer** — a tab (or a section of the
+  Decisions tab) that explains the character navigation algorithm in plain terms:
+  why a char rests / retreats / pushes a frontier / routes around a learned-blocked
+  tile. Ideally *dynamic* — derived from or versioned with the actual nav/strategy
+  code so it stays true every time the nav protocols change, and the operator can
+  learn why characters do what they do. (operator request)
 - [ ] **Magic / spellweaving (`cast`)** — the direct counter to the poison that
   dominates status-damage; a whole unused mechanic (M4). Needs mana/implement +
   attunement discovery.
