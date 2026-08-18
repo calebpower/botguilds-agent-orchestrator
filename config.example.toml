@@ -1,0 +1,37 @@
+# steemer runtime configuration TEMPLATE.
+#
+# Copy this to `config.toml` (which is git-ignored) and edit — the real file
+# carries the MariaDB password that authenticates as the guild's data store, so
+# it must never be committed. This template ships with placeholders only.
+#
+#     cp config.example.toml config.toml   # then set the password
+#     make config                          # does the copy for you if none exists
+#
+# `config.toml` is the one place that decides where the guild's accumulated
+# memory lives. It is read by the bot (writer), the dashboard (reader), and the
+# analysis/retention tools, all via steemer.db.load_db_config().
+#
+# Resolution order (first hit wins): --config <path> > STEEMER_CONFIG env var >
+# repo-root config.toml > built-in default (SQLite ./guild_log.db). So a checkout
+# with NO config.toml still runs, on SQLite, with zero setup — you only need this
+# file to select MariaDB or a non-default SQLite path.
+
+[database]
+# type selects the backend: "mariadb" or "sqlite".
+type     = "mariadb"
+
+# --- mariadb backend (used when type = "mariadb") ---
+# Provision once, e.g.:
+#   sudo mariadb -e "CREATE DATABASE botguilds CHARACTER SET utf8mb4;
+#     CREATE USER 'botguilds'@'127.0.0.1' IDENTIFIED BY '<your-db-password>';
+#     GRANT ALL PRIVILEGES ON botguilds.* TO 'botguilds'@'127.0.0.1';
+#     FLUSH PRIVILEGES;"
+# The schema is created automatically by the bot on first connect.
+host     = "127.0.0.1"
+port     = 3306
+user     = "botguilds"
+password = "CHANGE_ME"          # secret — set in config.toml, never here
+db_name  = "botguilds"
+
+# --- sqlite backend (set `type = "sqlite"` above to use) ---
+# path   = "guild_log.db"

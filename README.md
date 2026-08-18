@@ -24,6 +24,8 @@ bot, verifies the change in a `reaper` ephemeral-VM session, hot-redeploys with
 | `tests/` | unit + frame-replay suites (the pre-redeploy battery) |
 | `orchestrator/` | the improvement-loop runbook |
 | `docs/` | BotGuilds reference manual (game mechanics, protocol, client) |
+| `Makefile` | portable shortcuts for every command below (`make help`) |
+| `config.example.toml` | committed template for the git-ignored `config.toml` |
 | `decisions.log` | every improvement decision + rationale + expected/actual effect |
 | `server_bugs.md` | game-server bugs to report to the server developer |
 | `reference_starter_kit/` | upstream starter kit (git submodule) — **inspiration only, never imported** |
@@ -44,11 +46,19 @@ The config is resolved in this order, first hit wins:
 
 So a fresh checkout with **no `config.toml` runs immediately on SQLite, zero
 setup**. Add a `config.toml` only when you want MariaDB (or a non-default
-SQLite path).
+SQLite path):
+
+```sh
+cp config.example.toml config.toml    # or: make config
+```
+
+[`config.example.toml`](config.example.toml) is a committed template with
+placeholder values; your real `config.toml` is the copy you edit.
 
 > **Secret:** `config.toml` carries the MariaDB password (it authenticates as
 > the guild's data store), so like `guild_token.json` it is **git-ignored and
-> never committed**. Create it locally on each host.
+> never committed** — only the placeholder `config.example.toml` is tracked.
+> Create `config.toml` locally on each host.
 
 ### SQLite (default)
 
@@ -94,6 +104,10 @@ a single command elsewhere without editing the file, use
 
 Requires [`uv`](https://docs.astral.sh/uv/) and Python ≥ 3.15. All dependencies
 are managed by uv; `uv run` keeps the environment in sync automatically.
+
+> Every command below has a `make` shortcut (`make sync`, `make run`,
+> `make test`, …). Run `make help` for the full list; the raw commands are
+> shown here so it's clear what each shim does.
 
 ```sh
 uv sync                                   # set up the environment
