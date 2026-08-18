@@ -1100,6 +1100,10 @@ label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13
 /* conjectures read as "not yet established": dashed, tinted, distinct from a
    solid confirmed discovery. Kind sets the left accent colour. */
 .finding.k-discovery{border-left-color:var(--s2)}
+/* questions read as "open curiosity, no hypothesis yet": dotted, lightly tinted,
+   between a solid confirmed fact and a dashed conjecture. */
+.finding.k-question{border-left-color:var(--s3);border-left-style:dotted;
+  background:color-mix(in srgb,var(--s3) 4%,var(--surface))}
 .finding.k-conjecture{border-left-color:var(--s3);border-left-style:dashed;
   background:color-mix(in srgb,var(--s3) 6%,var(--surface))}
 .finding.k-consideration{border-left-color:var(--s1)}
@@ -1236,6 +1240,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
         <select id="fx-kind">
           <option value="">all</option>
           <option value="discovery">discoveries</option>
+          <option value="question">questions</option>
           <option value="conjecture">conjectures</option>
           <option value="consideration">considerations</option>
         </select></label>

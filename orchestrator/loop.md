@@ -129,8 +129,14 @@ first-class goal, not a side effect. Maintain `findings.jsonl` (schema and
 helpers in `steemer/findings.py`; surfaced on the UI's Findings tab) every
 iteration:
 
+Four kinds, from "cold hard fact" to "just wondering":
+
 - **discovery** — a fact learned about the game. A *confirmed* discovery must
   carry `evidence` (the event/query that shows it).
+- **question** — an open curiosity with no hypothesis/test yet ("a third guild
+  appeared — is the world seeding new guilds?"). No `test` required; it graduates
+  into a `conjecture` when it gains a falsification test, or a `discovery` when
+  answered. This is the home for facts-in-waiting so they get captured.
 - **conjecture** — a hypothesis about a hidden mechanic. Must carry a
   `confidence` and a `test` (how it would be **falsified**) — a conjecture
   without a falsification test is noise, the same rule as "every fix ships with a
@@ -138,7 +144,11 @@ iteration:
 - **consideration** — an orchestration idea being weighed, before it graduates
   into `decisions.log` as a change.
 
-Append with `steemer.findings.append(...)` (it validates and timestamps).
+**Log a durable game fact the MOMENT it is learned — including facts discovered
+while answering the operator, not only during a loop iteration.** (The "third
+guild" fact was learned in conversation and slipped through unlogged; that miss
+is why `question` exists and why this rule is explicit.) Append with
+`steemer.findings.append(...)` (it validates and timestamps).
 
 **Review the notebook every iteration — do not just append.** Before adding new
 entries, read the existing ones and *curate*: resolve conjectures whose tests

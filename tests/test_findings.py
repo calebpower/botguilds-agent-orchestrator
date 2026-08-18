@@ -91,3 +91,11 @@ def test_load_skips_malformed_lines(tmp_path):
                  '{"kind":"consideration","status":"open","title":"ok2"}\n')
     rows = findings.load(str(p))
     assert [r["title"] for r in rows] == ["ok", "ok2"]
+
+
+def test_question_kind_accepted_without_a_test():
+    # a question is an open curiosity: no falsification `test` required (unlike a
+    # conjecture), so facts-in-waiting get captured instead of forgotten.
+    assert "question" in findings.KINDS
+    assert findings.validate(
+        {"kind": "question", "status": "open", "title": "why are there 3 guilds now?"}) is None

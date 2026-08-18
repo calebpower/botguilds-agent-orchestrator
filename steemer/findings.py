@@ -8,7 +8,7 @@ retention and is diffable.
 
 One JSON object per line:
 
-    {"kind": "discovery|conjecture|consideration",
+    {"kind": "discovery|question|conjecture|consideration",
      "status": "open|confirmed|refuted|shipped",
      "title": "...", "detail": "...", "evidence": "...",
      "test": "how it would be falsified",   # required for conjectures
@@ -16,9 +16,25 @@ One JSON object per line:
      "tags": ["crafting", ...],
      "created": "ISO-8601", "updated": "ISO-8601"}
 
-Discipline (enforced by :func:`validate`): a conjecture without a falsification
-``test`` and a ``confidence`` is just noise; a confirmed discovery needs
-``evidence``. Same spirit as "every fix ships with a test".
+The four kinds, from "cold hard fact" to "just wondering":
+
+* **discovery** — a fact learned about the game. A *confirmed* discovery must
+  carry ``evidence``.
+* **question** — an open curiosity we don't yet have a hypothesis or test for
+  ("a third guild appeared — is the world seeding new guilds?"). No test
+  required; it *graduates* into a ``conjecture`` once it has a falsification
+  test, or into a ``discovery`` once answered. This is the home for facts-in-
+  waiting so they get captured instead of forgotten.
+* **conjecture** — a hypothesis about a hidden mechanic; MUST carry a
+  ``confidence`` and a ``test`` (how it would be falsified).
+* **consideration** — an orchestration/change idea being weighed before it
+  graduates into ``decisions.log``.
+
+Log a durable game fact the MOMENT it is learned — including facts discovered
+while answering the operator, not only during a loop iteration. Discipline
+(enforced by :func:`validate`): a conjecture without a falsification ``test`` and
+a ``confidence`` is just noise; a confirmed discovery needs ``evidence``. Same
+spirit as "every fix ships with a test".
 """
 
 from __future__ import annotations
@@ -30,7 +46,7 @@ from typing import Any
 
 FINDINGS_PATH = "findings.jsonl"
 
-KINDS = frozenset({"discovery", "conjecture", "consideration"})
+KINDS = frozenset({"discovery", "question", "conjecture", "consideration"})
 STATUSES = frozenset({"open", "confirmed", "refuted", "shipped"})
 
 
