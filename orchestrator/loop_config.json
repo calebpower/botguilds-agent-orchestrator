@@ -5,9 +5,9 @@
   "ui_upgrades": true,
   "usage_checkin_every_ticks": 3,
   "last_usage": {
-    "pct": 1,
-    "reported_at": "2026-08-17 01:47",
-    "note": "fresh window; resets in ~4h43m"
+    "pct": 0,
+    "reported_at": "2026-08-18 16:46",
+    "note": "fresh window; resets in ~4h53m (~21:39). Plenty of budget — stay normal."
   },
   "usage_to_mode": {
     "normal": "usage < 85%",
