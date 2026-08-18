@@ -119,7 +119,10 @@ def _cached_list(key: str, fn) -> list:
 # a compute. The read is intentionally non-blocking: a cold cache returns
 # "computing" rather than triggering an inline recompute.
 _snap_lock = threading.Lock()
-_snap_state: dict = {"snap": None, "computed_at": 0.0, "error": None}
+# ``version`` is a monotonic counter bumped on every successful publish; it is the
+# cursor the live push channel (and the page) use to tell "has the snapshot been
+# recomputed since I last saw it?" without comparing snapshot contents.
+_snap_state: dict = {"snap": None, "computed_at": 0.0, "error": None, "version": 0}
 # One full snapshot is a genuinely heavy aggregate over the multi-GB mirror
 # (full COUNT(*)s on frames/decisions/events plus a per-run gold-delta blob read),
 # minutes of wall time on a large guild_log. A KPI overview does not need
@@ -142,6 +145,7 @@ def _publish_snapshot(db_cfg) -> None:
         _snap_state["snap"] = snap
         _snap_state["computed_at"] = time.monotonic()
         _snap_state["error"] = None
+        _snap_state["version"] += 1
 
 
 def _read_snapshot() -> tuple[dict | None, str | None]:
@@ -150,10 +154,20 @@ def _read_snapshot() -> tuple[dict | None, str | None]:
         return _snap_state["snap"], _snap_state["error"]
 
 
+def _snap_version() -> int:
+    """The current publish counter — the cursor for snapshot/observed pushes."""
+    with _snap_lock:
+        return _snap_state["version"]
+
+
 def api_snapshot(db_path: str) -> dict:
     """KPI overview — served from the background-published cache, never computed
     on the request thread. ``ok:false, reason:"computing"`` until the first
-    background compute lands (a few tens of seconds after startup)."""
+    background compute lands (a few tens of seconds after startup).
+
+    ``version`` is the cursor the page hands back when subscribing to live
+    pushes, so the socket only re-sends the snapshot when it has been recomputed.
+    """
     if not _db_ready(db_path):
         return {"ok": False, "reason": "no_db"}
     snap, err = _read_snapshot()
@@ -161,6 +175,7 @@ def api_snapshot(db_path: str) -> dict:
         return {"ok": False, "reason": err or "computing"}
     out = dict(snap)
     out["ok"] = True
+    out["version"] = _snap_version()
     return out
 
 
@@ -207,46 +222,57 @@ def api_chars(db_path: str) -> list[str]:
     return _cached_list(f"chars:{_db.cfg_key(db_path)}", compute)
 
 
+def _decision_row(r) -> dict:
+    """One decision feed row (shared by the REST feed and the live pusher)."""
+    try:
+        alts = json.loads(r["alternatives_json"]) if r["alternatives_json"] else []
+    except (json.JSONDecodeError, TypeError):
+        alts = []
+    return {
+        "seq": r["seq"], "tick": r["tick"], "world": r["world"],
+        "char_uid": r["char_uid"], "action": r["action"],
+        "reasoning": r["reasoning"] or "", "alternatives": alts,
+        "strategy_version": r["strategy_version"], "run_id": r["run_id"],
+    }
+
+
+def _query_decisions(conn, char: str | None, world: str | None,
+                     limit: int, since: int = 0) -> list[dict]:
+    """Newest-first decision rows matching the filter, with ``seq > since``.
+
+    ``since=0`` (the REST default) returns the latest ``limit``; the live pusher
+    passes the client's cursor so it gets only rows written after that point —
+    the race-free handoff between the initial REST pull and the push stream.
+    """
+    sql = ("SELECT seq, tick, world, char_uid, action, alternatives_json, "
+           "reasoning, strategy_version, run_id FROM decisions WHERE seq > ?")
+    params: list = [since]
+    if char:
+        sql += " AND char_uid = ?"
+        params.append(char)
+    if world:
+        sql += " AND world = ?"
+        params.append(world)
+    # seq is monotonic with insert order, so DESC is "most recent first".
+    sql += " ORDER BY seq DESC LIMIT ?"
+    params.append(max(1, min(limit, 500)))
+    return [_decision_row(r) for r in conn.execute(sql, params)]
+
+
 def api_decisions(db_path: str, char: str | None, world: str | None,
                   limit: int) -> list[dict]:
     """The verbose decision feed, newest-first, optionally filtered.
 
     ``alternatives_json`` is parsed back into a list so the page can render the
     ranked candidates; ``reasoning`` is returned as-is (multi-line text) and the
-    page preserves its line breaks.
+    page preserves its line breaks. The page reads the newest row's ``seq`` as
+    its live-push cursor, so no separate watermark field is needed here.
     """
     if not _db_ready(db_path):
         return []
     conn = _ro(db_path)
     try:
-        sql = ("SELECT seq, tick, world, char_uid, action, alternatives_json, "
-               "reasoning, strategy_version, run_id FROM decisions")
-        clauses, params = [], []
-        if char:
-            clauses.append("char_uid = ?")
-            params.append(char)
-        if world:
-            clauses.append("world = ?")
-            params.append(world)
-        if clauses:
-            sql += " WHERE " + " AND ".join(clauses)
-        # seq is monotonic with insert order, so DESC is "most recent first".
-        sql += " ORDER BY seq DESC LIMIT ?"
-        params.append(max(1, min(limit, 500)))
-
-        out = []
-        for r in conn.execute(sql, params):
-            try:
-                alts = json.loads(r["alternatives_json"]) if r["alternatives_json"] else []
-            except (json.JSONDecodeError, TypeError):
-                alts = []
-            out.append({
-                "seq": r["seq"], "tick": r["tick"], "world": r["world"],
-                "char_uid": r["char_uid"], "action": r["action"],
-                "reasoning": r["reasoning"] or "", "alternatives": alts,
-                "strategy_version": r["strategy_version"], "run_id": r["run_id"],
-            })
-        return out
+        return _query_decisions(conn, char, world, limit, since=0)
     except _db.Error:
         return []
     finally:
@@ -262,7 +288,7 @@ def api_map(db_path: str, world: str | None) -> dict:
     the grid; row 0 is drawn at the bottom (y increases north).
     """
     empty = {"world": world, "tiles": [], "bounds": None, "tick": None,
-             "entities": [], "items": [], "gold": [], "chars": []}
+             "seq": 0, "entities": [], "items": [], "gold": [], "chars": []}
     if not _db_ready(db_path):
         return empty
     conn = _ro(db_path)
@@ -288,27 +314,20 @@ def api_map(db_path: str, world: str | None) -> dict:
         out["tiles"] = tiles
 
         # Overlay the latest frame for this world (moving things = current only).
+        # ``seq`` (the frame's PK) is the page's live-push cursor for the map.
         frow = conn.execute(
-            "SELECT json FROM frames WHERE world = ? ORDER BY seq DESC LIMIT 1",
+            "SELECT seq, json FROM frames WHERE world = ? ORDER BY seq DESC LIMIT 1",
             (world,)).fetchone()
         if frow:
-            frame = json.loads(zlib.decompress(frow[0]))
-            out["tick"] = frame.get("tick")
-            vis = frame.get("visible") or {}
-            out["entities"] = vis.get("entities") or []
-            out["items"] = vis.get("items") or []
-            out["gold"] = vis.get("gold") or []
-            # Our own characters carry full detail; expose just what we draw.
-            out["chars"] = [
-                {"char_uid": c.get("char_uid"), "pos": c.get("pos"),
-                 "hp": c.get("hp"), "max_hp": c.get("max_hp")}
-                for c in (frame.get("chars") or []) if c.get("pos")
-            ]
+            out["seq"] = frow["seq"]
+            ov = _frame_overlay(frow["json"])
+            out.update(ov)
             # If the frame declares bounds, prefer them (whole-map extent).
-            b = frame.get("bounds")
+            b = ov.get("frame_bounds")
             if isinstance(b, (list, tuple)) and len(b) == 2:
                 max_x = max(max_x, b[0] - 1)
                 max_y = max(max_y, b[1] - 1)
+        out.pop("frame_bounds", None)
 
         out["bounds"] = [max_x + 1, max_y + 1] if max_x >= 0 and max_y >= 0 else None
         return out
@@ -318,18 +337,46 @@ def api_map(db_path: str, world: str | None) -> dict:
         conn.close()
 
 
-def api_log(name: str) -> tuple[str, str]:
-    """Return ``(kind, text)`` for a whitelisted log file; kind hints rendering."""
+def _frame_overlay(blob) -> dict:
+    """The moving/point-in-time layer of one (compressed) frame: entities, loot,
+    gold, our characters, the tick, and the frame's declared bounds. Shared by the
+    full map endpoint and the live map pusher so both draw identical overlays."""
+    frame = json.loads(zlib.decompress(blob))
+    vis = frame.get("visible") or {}
+    b = frame.get("bounds")
+    return {
+        "tick": frame.get("tick"),
+        "entities": vis.get("entities") or [],
+        "items": vis.get("items") or [],
+        "gold": vis.get("gold") or [],
+        "chars": [
+            {"char_uid": c.get("char_uid"), "pos": c.get("pos"),
+             "hp": c.get("hp"), "max_hp": c.get("max_hp")}
+            for c in (frame.get("chars") or []) if c.get("pos")
+        ],
+        "frame_bounds": list(b) if isinstance(b, (list, tuple)) and len(b) == 2 else None,
+    }
+
+
+def api_log(name: str) -> tuple[str, str, int]:
+    """Return ``(kind, text, size)`` for a whitelisted log file.
+
+    ``size`` is the number of file *bytes* the ``text`` represents (read as raw
+    bytes, then decoded) — the page hands it back as the cursor, and the live tail
+    pusher seeks from exactly that byte offset, so the append never mis-aligns even
+    when the file contains invalid UTF-8. ``kind`` hints rendering."""
     path = LOG_FILES.get(name)
     if not path:
-        return ("error", f"unknown log: {name}")
+        return ("error", f"unknown log: {name}", 0)
     if not os.path.exists(path):
-        return ("missing", f"{os.path.basename(path)} does not exist yet.")
+        return ("missing", f"{os.path.basename(path)} does not exist yet.", 0)
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            return ("md" if path.endswith(".md") else "text", fh.read())
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        kind = "md" if path.endswith(".md") else "text"
+        return (kind, raw.decode("utf-8", "replace"), len(raw))
     except OSError as exc:
-        return ("error", str(exc))
+        return ("error", str(exc), 0)
 
 
 def api_findings() -> list[dict]:
@@ -379,6 +426,10 @@ def api_observed(db_path: str) -> dict:
         # request-thread hang this endpoint used to suffer).
         snap, _ = _read_snapshot()
         out["exploration"] = (snap or {}).get("exploration", {})
+        # Observed drifts only with the snapshot recompute (exploration) and the
+        # slow event/error aggregates; the page carries this back as its cursor so
+        # the pusher re-sends it only when it changes, not every tick.
+        out["version"] = _snap_version()
         return out
     except _db.Error:
         return empty
@@ -389,14 +440,19 @@ def api_observed(db_path: str) -> dict:
 # --------------------------------------------------------------------------- #
 # WebSocket push (hand-rolled RFC6455, stdlib only)
 #
-# The page used to poll every /api/* endpoint every 3s, per client. Instead, one
-# server-side watcher thread polls the cheap indexed MAX(seq) once and pushes a
-# tiny "changed" notification to all connected clients only when the data has
-# actually advanced; the browser then refreshes just its active tab. This is not
-# fully event-driven (the bot writes to the DB, it does not push to us), but it
-# collapses the N-clients x every-endpoint poll fan-out into a single 1 Hz server
-# poll that emits only on change. We implement the framing ourselves to keep the
-# dashboard's stdlib-only, zero-dependency constraint.
+# The socket carries the *data*, not a nudge. Each client subscribes to the view
+# it is showing (tab + filters) with a cursor — the seq/version watermark it
+# already has from its initial REST load. Once a second a single push thread asks
+# each subscription's delta builder "what is new past this cursor?" and sends
+# exactly that (new decision rows, the moving map overlay + freshly-seen tiles, a
+# recomputed snapshot, an appended log tail) — then advances the cursor. REST is
+# used only for the first paint of a view and as the no-socket fallback; nothing
+# else pulls. The framing is hand-rolled to keep the dashboard stdlib-only.
+#
+# Race-freedom: the REST pull and the deltas share one monotonic seq per source,
+# so subscribing with "the max seq I just loaded" means the push resumes exactly
+# where REST left off — no gap, no duplicate — given the single sequential writer
+# (the bot) that the whole mirror already assumes.
 # --------------------------------------------------------------------------- #
 
 _WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"   # RFC6455 magic
@@ -455,12 +511,39 @@ def _ws_read_frame(rfile):
 
 class WSClient:
     """A connected dashboard socket. Writes are serialized by a per-client lock so
-    the watcher-thread broadcast and a handler-thread pong never interleave."""
+    the push-thread send and a handler-thread pong never interleave.
+
+    Each client also carries a *subscription* — the view it is currently showing
+    (``tab``, filter ``params``) and a ``cursor`` (the seq/version watermark it has
+    already received). The handler thread updates it from the client's ``sub``
+    frames; the push thread reads it to decide what new data to send. A separate
+    lock guards it so the two threads never tear the dict."""
 
     def __init__(self, sock):
         self._sock = sock
         self._wlock = threading.Lock()
+        self._slock = threading.Lock()
         self.alive = True
+        self.sub: dict | None = None
+
+    def set_sub(self, tab, params, cursor) -> None:
+        with self._slock:
+            self.sub = {"tab": tab, "params": params or {}, "cursor": cursor}
+
+    def get_sub(self) -> dict | None:
+        with self._slock:
+            return dict(self.sub) if self.sub is not None else None
+
+    def advance_cursor(self, tab, params, cursor) -> None:
+        """Record what the client now has, so the next tick sends only newer data.
+        Only applies if the client is still on the same view we pushed for — if it
+        re-subscribed (switched tab / changed filter) meanwhile, its fresh cursor
+        wins and this is a no-op, so a view change can't be clobbered by a stale
+        advance."""
+        with self._slock:
+            if (self.sub is not None and self.sub["tab"] == tab
+                    and self.sub["params"] == params):
+                self.sub["cursor"] = cursor
 
     def send(self, text: str) -> bool:
         """Send a text frame; returns False (and marks dead) if the peer is gone."""
@@ -485,45 +568,203 @@ class WSClient:
                 self.alive = False
 
 
-def _ws_broadcast(text: str) -> None:
-    """Push ``text`` to every live client; drop any that error out."""
-    with _ws_lock:
-        clients = list(_ws_clients)
-    for c in clients:
-        if not c.send(text):
-            with _ws_lock:
-                _ws_clients.discard(c)
+def _apply_sub(client: "WSClient", data: bytes) -> None:
+    """Record a client's ``sub`` frame (which view + cursor it wants updates for).
+    Malformed frames are ignored so a stray message can't drop the socket."""
+    try:
+        msg = json.loads(data.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return
+    if isinstance(msg, dict) and msg.get("t") == "sub":
+        client.set_sub(msg.get("tab"), msg.get("params"), msg.get("cursor"))
 
 
-def _watch_and_push(db_config, stop: threading.Event, interval: float = 1.0) -> None:
-    """One 1 Hz poll of the cheap indexed maxima; broadcast only on advance.
+# --------------------------------------------------------------------------- #
+# Per-view delta builders. Each takes the subscription's ``params`` and
+# ``cursor`` (the watermark the client already has) and returns either
+# ``(message, new_cursor)`` — the actual data to push and the advanced cursor —
+# or ``None`` when nothing has changed. They are the push counterpart of the REST
+# endpoints and deliberately return the *data*, never a "go fetch" nudge.
+#
+# The cursor handoff is race-free because the REST load and these deltas both key
+# off the same monotonic ``seq``: the page subscribes with the max seq its REST
+# pull returned, and each builder returns strictly-greater rows. This relies on a
+# single, sequential writer (the bot) so committed seqs never appear out of order
+# — the same assumption the KPI worker's MAX(seq) change-detection already makes.
+# --------------------------------------------------------------------------- #
 
-    Reopens a read-only connection each tick so MariaDB's transaction snapshot
-    can't hide freshly-committed rows (and SQLite ``mode=ro`` sees the latest WAL
-    commit either way). A DB hiccup is skipped, not fatal — the dashboard degrades
-    to its polling fallback, never crashes."""
-    last = None
+def _delta_decisions(conn, params: dict, cursor) -> tuple[dict, dict] | None:
+    since = int((cursor or {}).get("seq") or 0)
+    rows = _query_decisions(conn, params.get("char") or None,
+                            params.get("world") or None,
+                            int(params.get("limit") or 100), since=since)
+    if not rows:
+        return None
+    # rows are newest-first, so rows[0] carries the new high-water seq.
+    return {"t": "decisions", "rows": rows}, {"seq": rows[0]["seq"]}
+
+
+def _delta_map(conn, params: dict, cursor) -> tuple[dict, dict] | None:
+    world = params.get("world") or None
+    if not world:
+        return None                      # the page always names its map world
+    cur = cursor or {}
+    frame_seq = int(cur.get("seq") or 0)
+    tile_tick = -1 if cur.get("tick") is None else int(cur.get("tick"))
+    frow = conn.execute(
+        "SELECT seq, json FROM frames WHERE world=? ORDER BY seq DESC LIMIT 1",
+        (world,)).fetchone()
+    new_seq = frow["seq"] if frow else frame_seq
+    # Tiles first seen / refreshed since the client's tile watermark (small table).
+    tiles = [[r["x"], r["y"], r["kind"]] for r in conn.execute(
+        "SELECT x, y, kind FROM tiles_seen WHERE world=? AND last_tick > ?",
+        (world, tile_tick))]
+    mt = conn.execute("SELECT MAX(last_tick) FROM tiles_seen WHERE world=?",
+                      (world,)).fetchone()
+    tile_wm = mt[0] if mt and mt[0] is not None else tile_tick
+    fresh_frame = frow is not None and new_seq > frame_seq
+    if not fresh_frame and not tiles:
+        return None                      # nothing new for this world
+    # New frame -> push the moving overlay (small); otherwise just new tiles.
+    overlay = _frame_overlay(frow["json"]) if fresh_frame else None
+    msg = {"t": "map", "world": world, "tiles": tiles, "overlay": overlay}
+    return msg, {"seq": new_seq, "tick": max(tile_tick, tile_wm)}
+
+
+def _delta_snapshot(cursor) -> tuple[dict, dict] | None:
+    snap, _ = _read_snapshot()
+    if snap is None:
+        return None                      # still computing the first one
+    ver = _snap_version()
+    if isinstance(cursor, dict) and cursor.get("version") == ver:
+        return None                      # no recompute since the client's copy
+    out = dict(snap)
+    out["ok"] = True
+    out["version"] = ver
+    return {"t": "snapshot", "data": out}, {"version": ver}
+
+
+def _delta_findings(db_config, cursor) -> tuple[dict, dict] | None:
+    """The Findings tab tracks two independent sources: the authored notebook
+    file (by mtime) and the auto-derived 'observed' block (by snapshot version).
+    Push whichever advanced, carrying both cursors forward."""
+    cur = cursor or {}
+    msg: dict = {"t": "findings"}
+    new_cursor = dict(cur)
+    changed = False
+    try:
+        mtime = os.path.getmtime(FINDINGS_PATH)
+    except OSError:
+        mtime = 0
+    if cur.get("mtime") != mtime:
+        msg["rows"] = api_findings()
+        new_cursor["mtime"] = mtime
+        changed = True
+    ver = _snap_version()
+    snap, _ = _read_snapshot()
+    if snap is not None and cur.get("version") != ver:
+        msg["observed"] = api_observed(db_config)
+        new_cursor["version"] = ver
+        changed = True
+    return (msg, new_cursor) if changed else None
+
+
+def _delta_logs(params: dict, cursor) -> tuple[dict, dict] | None:
+    """Stream growth of the selected log file as an appended tail. Switching files
+    is handled by a fresh REST load, so here we only follow the same file; a
+    truncation/rotation (size shrank) re-sends the whole file."""
+    name = params.get("name") or "decisions"
+    path = LOG_FILES.get(name)
+    if not path or not os.path.exists(path):
+        return None
+    cur = cursor or {}
+    if cur.get("name") != name:
+        return None                      # file just changed; REST load owns it
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        return None
+    prev = int(cur.get("size") or 0)
+    if size == prev:
+        return None
+    if size < prev:                      # rotated/truncated: full resend
+        kind, text, wm = api_log(name)
+        return {"t": "log", "name": name, "kind": kind, "full": text}, \
+               {"name": name, "size": wm}
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(prev)
+            chunk = fh.read(size - prev)
+    except OSError:
+        return None
+    return {"t": "log", "name": name, "append": chunk.decode("utf-8", "replace")}, \
+           {"name": name, "size": size}
+
+
+def _build_delta(conn, db_config, sub: dict) -> tuple[dict, dict] | None:
+    """Dispatch a subscription to its delta builder. ``conn`` is a shared
+    read-only connection for the DB-backed views; file/cache views ignore it."""
+    tab = sub.get("tab")
+    params = sub.get("params") or {}
+    cursor = sub.get("cursor")
+    if tab == "decisions":
+        return _delta_decisions(conn, params, cursor)
+    if tab == "map":
+        return _delta_map(conn, params, cursor)
+    if tab in ("overview", "timeline"):
+        return _delta_snapshot(cursor)
+    if tab == "findings":
+        return _delta_findings(db_config, cursor)
+    if tab == "logs":
+        return _delta_logs(params, cursor)
+    return None
+
+
+def _push_loop(db_config, stop: threading.Event, interval: float = 1.0) -> None:
+    """The live-delta pump: once a second, for each subscribed client, compute
+    what changed since its cursor for the view it is on and push the *data*.
+
+    One shared read-only connection per tick serves all decision/map subscribers
+    (findings/logs/snapshot read files or the cached snapshot and need no DB). A
+    dead socket is dropped; a DB hiccup skips this tick, never crashes — the page
+    then rides its REST polling fallback until the socket recovers."""
     while not stop.is_set():
-        try:
-            conn = _db.connect(db_config, readonly=True)
+        with _ws_lock:
+            clients = [c for c in _ws_clients if c.get_sub()]
+        if clients:
+            need_db = any((c.get_sub() or {}).get("tab") in ("decisions", "map")
+                          for c in clients)
+            conn = None
+            if need_db:
+                try:
+                    conn = _db.connect(db_config, readonly=True)
+                except _db.Error:
+                    conn = None
             try:
-                fr = conn.execute("SELECT MAX(seq) FROM frames").fetchone()
-                de = conn.execute("SELECT MAX(seq) FROM decisions").fetchone()
-                rn = conn.execute("SELECT MAX(run_id) FROM runs").fetchone()
+                for c in clients:
+                    sub = c.get_sub()
+                    if not sub:
+                        continue
+                    if sub["tab"] in ("decisions", "map") and conn is None:
+                        continue         # DB down this tick; retry next
+                    try:
+                        result = _build_delta(conn, db_config, sub)
+                    except (*_db.Error, zlib.error, json.JSONDecodeError, OSError):
+                        result = None
+                    if result is None:
+                        continue
+                    msg, new_cursor = result
+                    # Echo the advanced cursor to the client so it mirrors ours and
+                    # can resume exactly here after a reconnect / filter change.
+                    msg["cursor"] = new_cursor
+                    if c.send(json.dumps(msg)):
+                        c.advance_cursor(sub["tab"], sub["params"], new_cursor)
+                    else:
+                        with _ws_lock:
+                            _ws_clients.discard(c)
             finally:
-                conn.close()
-            sig = (fr[0] if fr else None, de[0] if de else None, rn[0] if rn else None)
-        except _db.Error:
-            stop.wait(interval)
-            continue
-        if sig != last:
-            last = sig
-            with _ws_lock:
-                any_clients = bool(_ws_clients)
-            if any_clients:
-                _ws_broadcast(json.dumps(
-                    {"type": "changed", "frames": sig[0],
-                     "decisions": sig[1], "run": sig[2]}))
+                if conn is not None:
+                    conn.close()
         stop.wait(interval)
 
 
@@ -611,9 +852,11 @@ class Handler(BaseHTTPRequestHandler):
     def _serve_ws(self) -> None:
         """Upgrade this connection to a WebSocket and serve it until it closes.
 
-        Sends the RFC6455 101 handshake, registers the client for broadcasts, then
-        loops reading control frames (answering ping, exiting on close/EOF). The
-        watcher thread does the pushing; this loop just keeps the socket healthy."""
+        Sends the RFC6455 101 handshake, registers the client, then loops reading
+        frames: it answers pings, applies the client's ``sub`` messages (which view
+        + cursor it wants live updates for), and exits on close/EOF. The push
+        thread does the sending; this loop keeps the socket healthy and the
+        client's subscription current."""
         key = self.headers.get("Sec-WebSocket-Key")
         if not key:
             self._send(400, b"missing Sec-WebSocket-Key", "text/plain; charset=utf-8")
@@ -643,7 +886,9 @@ class Handler(BaseHTTPRequestHandler):
                     break
                 if opcode == 0x9:               # ping -> pong
                     client.pong(data)
-                # text/binary/pong from the client are ignored (push-only channel)
+                elif opcode == 0x1:             # text -> a subscription message
+                    _apply_sub(client, data)
+                # binary/pong from the client are ignored
         except OSError:
             pass
         finally:
@@ -679,10 +924,17 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/map":
                 self._json(api_map(self.db_config, one("world")))
             elif path == "/api/log":
-                kind, text = api_log(one("name", "decisions"))
-                self._json({"kind": kind, "text": text})
+                kind, text, size = api_log(one("name", "decisions"))
+                # ``size`` is the byte cursor the page subscribes with for the tail.
+                self._json({"kind": kind, "text": text, "size": size})
             elif path == "/api/findings":
-                self._json(api_findings())
+                # ``mtime`` is the cursor the page subscribes with; the pusher
+                # re-sends the notebook only when the file changes.
+                try:
+                    mtime = os.path.getmtime(FINDINGS_PATH)
+                except OSError:
+                    mtime = 0
+                self._json({"rows": api_findings(), "mtime": mtime})
             elif path == "/api/observed":
                 self._json(api_observed(self.db_config))
             else:
@@ -1046,9 +1298,28 @@ document.querySelectorAll("nav button").forEach(b=>{
     document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("active",x===b));
     document.querySelectorAll(".tab").forEach(t=>
       t.classList.toggle("active", t.id==="tab-"+active));
-    refresh();
+    loadActive();        // fresh REST load of the newly-shown tab, then subscribe
   };
 });
+
+/* ---- live-push cursors ----
+   The seq/version watermark the client already holds for each source. After any
+   fresh REST load we record it here and hand it back to the server on subscribe,
+   so the socket streams ONLY what is newer — the race-free handoff between the
+   REST pull and the push stream. */
+let decCursor=0, mapSeq=0, mapTick=-1, snapVersion=-1,
+    findMtime=null, obsVersion=-1, logName=null, logSize=0;
+
+/* REST-load whichever tab is showing (first paint, tab switch, filter change,
+   and the no-socket fallback). Each loadX ends by subscribing with its cursor. */
+function loadActive(){
+  if(active==="overview") loadOverview();
+  else if(active==="decisions") loadDecisions();
+  else if(active==="map") loadMap();
+  else if(active==="timeline") loadTimeline();
+  else if(active==="findings") loadFindings();
+  else if(active==="logs") loadLogs();
+}
 
 /* ---- theme toggle ---- */
 $("#theme").onclick = ()=>{
@@ -1056,7 +1327,7 @@ $("#theme").onclick = ()=>{
   const next = cur==="dark" ? "light" : cur==="light" ? "dark"
     : (matchMedia("(prefers-color-scheme:dark)").matches ? "light":"dark");
   document.documentElement.setAttribute("data-theme", next);
-  if(active==="map") loadMap();   // canvas colours are read from CSS vars
+  if(active==="map") drawMap();   // colours come from CSS vars; just repaint
 };
 
 /* ---- bar chart (single series -> blue, no legend) ---- */
@@ -1079,6 +1350,11 @@ function bars(container, obj){
 /* ---- OVERVIEW ---- */
 async function loadOverview(){
   const s = await getJSON("/api/snapshot");
+  renderOverview(s);
+  if(s && s.ok && s.version!=null) snapVersion = s.version;
+  subscribe();
+}
+function renderOverview(s){
   const tiles = $("#ov-tiles");
   if(!s || !s.ok){
     tiles.innerHTML = "";
@@ -1152,6 +1428,43 @@ async function fillDecisionFilters(){
   const ws = $("#f-world"); (worlds||[]).forEach(w=>{
     const o=el("option",null,w); o.value=w; ws.appendChild(o); });
 }
+let decRows = [];       // rows currently shown, newest-first, capped at the limit
+function decCard(d){
+  const card = el("div","decision");
+  const head = el("div","head");
+  head.appendChild(el("span","badge","tick "+esc(d.tick)));
+  if(d.world) head.appendChild(el("span","badge",d.world));
+  if(d.char_uid) head.appendChild(el("span","badge",d.char_uid));
+  head.appendChild(el("span","badge act", d.action || "rest"));
+  if(d.strategy_version) head.appendChild(el("span","badge",d.strategy_version));
+  card.appendChild(head);
+  // reasoning: preserve line breaks via CSS white-space:pre-wrap
+  card.appendChild(el("div","reasoning", d.reasoning || "(no reasoning text)"));
+  if(d.alternatives && d.alternatives.length){
+    const alts = el("div","alts");
+    for(const a of d.alternatives){
+      const row = el("div","alt"+(a.chosen?" chosen":""));
+      const sc = (a.score>=0?"+":"")+Number(a.score).toFixed(1);
+      row.appendChild(el("div","score", sc));
+      const why = el("div","why");
+      const nm = el("span","aname", (a.chosen?"→ ":"")+esc(a.action));
+      why.appendChild(nm);
+      why.appendChild(document.createTextNode("  "+esc(a.why)));
+      row.appendChild(why);
+      alts.appendChild(row);
+    }
+    card.appendChild(alts);
+  }
+  return card;
+}
+function renderDecisions(){
+  const list = $("#dec-list"); list.innerHTML="";
+  $("#dec-count").textContent = decRows.length ? (decRows.length+" shown") : "";
+  if(!decRows.length){
+    list.appendChild(el("div","empty","No decisions recorded yet.")); return;
+  }
+  for(const d of decRows) list.appendChild(decCard(d));
+}
 async function loadDecisions(){
   // Populate the char/world dropdowns in the background — do NOT block the feed
   // on them. The feed itself is a fast indexed query; the dropdown lists come
@@ -1162,40 +1475,20 @@ async function loadDecisions(){
   const qs = new URLSearchParams();
   if(char) qs.set("char",char); if(world) qs.set("world",world); qs.set("limit",limit);
   const rows = await getJSON("/api/decisions?"+qs.toString());
-  const list = $("#dec-list"); list.innerHTML="";
-  $("#dec-count").textContent = rows ? (rows.length+" shown") : "";
-  if(!rows || !rows.length){
-    list.appendChild(el("div","empty","No decisions recorded yet."));
-    return;
-  }
-  for(const d of rows){
-    const card = el("div","decision");
-    const head = el("div","head");
-    head.appendChild(el("span","badge","tick "+esc(d.tick)));
-    if(d.world) head.appendChild(el("span","badge",d.world));
-    if(d.char_uid) head.appendChild(el("span","badge",d.char_uid));
-    head.appendChild(el("span","badge act", d.action || "rest"));
-    if(d.strategy_version) head.appendChild(el("span","badge",d.strategy_version));
-    card.appendChild(head);
-    // reasoning: preserve line breaks via CSS white-space:pre-wrap
-    card.appendChild(el("div","reasoning", d.reasoning || "(no reasoning text)"));
-    if(d.alternatives && d.alternatives.length){
-      const alts = el("div","alts");
-      for(const a of d.alternatives){
-        const row = el("div","alt"+(a.chosen?" chosen":""));
-        const sc = (a.score>=0?"+":"")+Number(a.score).toFixed(1);
-        row.appendChild(el("div","score", sc));
-        const why = el("div","why");
-        const nm = el("span","aname", (a.chosen?"→ ":"")+esc(a.action));
-        why.appendChild(nm);
-        why.appendChild(document.createTextNode("  "+esc(a.why)));
-        row.appendChild(why);
-        alts.appendChild(row);
-      }
-      card.appendChild(alts);
-    }
-    list.appendChild(card);
-  }
+  decRows = Array.isArray(rows) ? rows : [];
+  // Cursor = newest seq we now hold (rows are newest-first); the push resumes
+  // strictly after it, so no decision is missed or shown twice.
+  decCursor = decRows.length ? decRows[0].seq : 0;
+  renderDecisions();
+  subscribe();
+}
+// A push carries only decisions newer than the cursor: prepend and trim to limit.
+function applyDecisions(msg){
+  const fresh = msg.rows || [];
+  if(!fresh.length) return;
+  decCursor = Math.max(decCursor, fresh[0].seq);
+  decRows = fresh.concat(decRows).slice(0, +$("#f-limit").value);
+  if(active==="decisions") renderDecisions();
 }
 
 /* ---- MAP ---- */
@@ -1387,19 +1680,27 @@ async function loadMap(){
     mapData=null; drawMap();
     info.textContent = "no tiles seen for this world yet";
     $("#map-legend").innerHTML=""; $("#mapCoords").textContent="—";
-    return;
+    mapSeq=0; mapTick=-1; subscribe(); return;
   }
   if(world!==m.world && m.world){ // server chose a default; reflect it
     const sel=$("#m-world"); if([...sel.options].some(o=>o.value===m.world)) sel.value=m.world;
   }
+  // Index tiles by coordinate so live pushes update in place (bounded memory).
+  m.tk = new Map();
+  for(const t of m.tiles) m.tk.set(t[0]+","+t[1], t);
   mapData = m;
+  mapSeq = m.seq||0; mapTick = (m.tick==null?-1:m.tick);
   // Preserve the view across refreshes: only fit when the world changed (or on
   // the very first draw of a world, when no saved view exists).
   if(mapWorld!==m.world || !mapViews[m.world]){ mapWorld=m.world; fitView(m); }
   drawMap();
-
+  renderMapMeta();
+  subscribe();
+}
+function renderMapMeta(){
+  const m=mapData; if(!m || !m.bounds) return;
   const [W,H]=m.bounds;
-  info.textContent = `${m.world} · ${W}×${H} · ${m.tiles.length} tiles seen`
+  $("#map-info").textContent = `${m.world} · ${W}×${H} · ${m.tiles.length} tiles seen`
     + (m.tick!=null?` · frame @ tick ${m.tick}`:"");
   // legend: only kinds actually present, plus overlay markers
   const present = [...new Set(m.tiles.map(t=>t[2]))].sort();
@@ -1412,10 +1713,42 @@ async function loadMap(){
   if((m.chars||[]).length) addLg("#2a78d6","our character");
   if((m.items||[]).length || (m.gold||[]).length) addLg("#eda100","loot / gold");
 }
+// Live map push: merge freshly-seen tiles (by coord — bounded memory), swap in
+// the moving overlay, extend bounds, and repaint — never re-pulling the whole map.
+function applyMap(msg){
+  const m=mapData;
+  if(!m || msg.world!==mapWorld){ if(active==="map") loadMap(); return; }
+  let grew=false;
+  for(const t of (msg.tiles||[])){
+    const key=t[0]+","+t[1], ex=m.tk.get(key);
+    if(ex){ ex[2]=t[2]; }
+    else { m.tk.set(key,t); m.tiles.push(t); grew=true; }
+  }
+  if(msg.overlay){
+    const o=msg.overlay;
+    m.tick=o.tick; m.entities=o.entities||[]; m.items=o.items||[];
+    m.gold=o.gold||[]; m.chars=o.chars||[];
+    if(Array.isArray(o.frame_bounds))
+      m.bounds=[Math.max(m.bounds[0],o.frame_bounds[0]),
+                Math.max(m.bounds[1],o.frame_bounds[1])];
+  }
+  if(grew){                      // a new coord may extend the world extent
+    let mx=m.bounds[0]-1, my=m.bounds[1]-1;
+    for(const t of m.tiles){ if(t[0]>mx)mx=t[0]; if(t[1]>my)my=t[1]; }
+    m.bounds=[mx+1,my+1];
+  }
+  if(msg.cursor){ mapSeq=msg.cursor.seq; mapTick=msg.cursor.tick; }
+  if(active==="map"){ drawMap(); renderMapMeta(); }
+}
 
 /* ---- TIMELINE ---- */
 async function loadTimeline(){
   const s = await getJSON("/api/snapshot");
+  renderTimeline(s);
+  if(s && s.ok && s.version!=null) snapVersion = s.version;
+  subscribe();
+}
+function renderTimeline(s){
   const list = $("#tl-list"); list.innerHTML="";
   const runs = (s && s.ok && s.runs) ? s.runs : [];
   if(!runs.length){
@@ -1458,6 +1791,20 @@ async function loadLogs(){
   const name = $("#log-name").value;
   const r = await getJSON("/api/log?name="+encodeURIComponent(name));
   $("#log-body").textContent = r ? (r.text||"(empty)") : "(failed to load)";
+  logName = name; logSize = (r && r.size!=null) ? r.size : 0;
+  subscribe();
+}
+// Live log push: append the streamed tail (or replace on rotation), advancing the
+// byte cursor so a reconnect resumes at the right offset.
+function applyLog(msg){
+  if(msg.name!==$("#log-name").value) return;   // a different file is selected now
+  const body=$("#log-body");
+  if(msg.full!=null){ body.textContent = msg.full || "(empty)"; }
+  else if(msg.append){
+    if(body.textContent==="(empty)") body.textContent="";
+    body.textContent += msg.append;
+  }
+  if(msg.cursor){ logName=msg.cursor.name; logSize=msg.cursor.size; }
 }
 
 /* ---- FINDINGS ---- */
@@ -1527,14 +1874,28 @@ function renderFindings(){
   $("#fx-count").textContent = shown+" / "+findingsRaw.length+" shown";
 }
 async function loadFindings(){
-  const rows = await getJSON("/api/findings");
+  const res = await getJSON("/api/findings");
+  const rows = (res && res.rows) ? res.rows : (Array.isArray(res)?res:[]);
   findingsRaw = Array.isArray(rows) ? rows : [];
+  findMtime = (res && res.mtime!=null) ? res.mtime : null;
   buildFindingFilters(findingsRaw);
   if(!findingsFiltersBuilt){ findingsFiltersBuilt=true;
     ["#fx-kind","#fx-status","#fx-tag"].forEach(id=>$(id).onchange=renderFindings);
     $("#fx-q").oninput=renderFindings; }
   renderFindings();
-  loadObserved();
+  await loadObserved();
+  subscribe();
+}
+// Live findings push carries whichever source advanced: the authored notebook
+// (rows) and/or the auto-derived observed block.
+function applyFindings(msg){
+  if(msg.rows){ findingsRaw = Array.isArray(msg.rows)?msg.rows:[];
+    buildFindingFilters(findingsRaw); if(active==="findings") renderFindings(); }
+  if(msg.observed){ renderObserved(msg.observed); }
+  if(msg.cursor){
+    if(msg.cursor.mtime!=null) findMtime=msg.cursor.mtime;
+    if(msg.cursor.version!=null) obsVersion=msg.cursor.version;
+  }
 }
 function obsTable(rows, cols){
   const t=el("table"); const thead=el("tr");
@@ -1548,6 +1909,10 @@ function obsTable(rows, cols){
 }
 async function loadObserved(){
   const o = await getJSON("/api/observed");
+  if(o && o.version!=null) obsVersion = o.version;
+  renderObserved(o);
+}
+function renderObserved(o){
   const ev=$("#obs-events"), er=$("#obs-errors"), ex=$("#obs-explore");
   ev.innerHTML=""; er.innerHTML=""; ex.innerHTML="";
   if(!o || !o.ok){
@@ -1570,27 +1935,61 @@ async function loadObserved(){
     {h:"notable", get:r=>fmtNum(r.notable_tiles)} ]));
 }
 
-/* ---- refresh orchestration ---- */
-function refresh(){
-  if(active==="overview") loadOverview();
-  else if(active==="decisions") loadDecisions();
-  else if(active==="map") loadMap();
-  else if(active==="timeline") loadTimeline();
-  else if(active==="findings") loadFindings();
-  else if(active==="logs") loadLogs();
-}
+/* ---- filters: a change is a fresh REST load, which re-subscribes with the new
+   params + cursor. ---- */
 ["#f-char","#f-world","#f-limit"].forEach(id=>$(id).onchange = loadDecisions);
-refresh();
 
-/* ---- live updates: WebSocket push, with a polling fallback ----
-   The server pushes a "changed" message when the DB advances; we refresh the
-   active tab in response (gated by the auto-refresh checkbox). If the socket
-   can't be established or drops, we fall back to a slow poll and keep trying to
-   reconnect with backoff — so the page always updates, WS or not. */
+/* auto-refresh toggle: unchecking sends a paused subscription (the server then
+   pushes nothing); re-checking does a fresh load to catch up and re-subscribes. */
+$("#autorefresh").onchange = ()=>{ if($("#autorefresh").checked) loadActive(); else subscribe(); };
+
+/* ---- live push: subscribe to the active view; apply the data the server sends ----
+   REST answers "give me this view" (first paint / tab switch / filter change /
+   fallback). The socket then streams ONLY what is newer for that view — actual
+   data, never a "go fetch" nudge — which we apply in place. */
 let ws=null, wsBackoff=1000, pollTimer=null;
+
+// The subscription for the current view: tab, filter params, and the cursor
+// (watermark) we already hold. Paused (auto-refresh off) => tab:null, so the
+// server sends nothing until we resume.
+function currentSub(){
+  if(!$("#autorefresh").checked) return {t:"sub", tab:null};
+  if(active==="decisions") return {t:"sub", tab:"decisions",
+     params:{char:$("#f-char").value, world:$("#f-world").value, limit:+$("#f-limit").value},
+     cursor:{seq:decCursor}};
+  if(active==="map") return {t:"sub", tab:"map",
+     params:{world: mapWorld||""}, cursor:{seq:mapSeq, tick:mapTick}};
+  if(active==="overview"||active==="timeline") return {t:"sub", tab:active,
+     cursor:{version:snapVersion}};
+  if(active==="findings") return {t:"sub", tab:"findings",
+     cursor:{mtime:findMtime, version:obsVersion}};
+  if(active==="logs") return {t:"sub", tab:"logs",
+     params:{name:$("#log-name").value}, cursor:{name:logName, size:logSize}};
+  return {t:"sub", tab:null};
+}
+function subscribe(){ if(ws && ws.readyState===1) ws.send(JSON.stringify(currentSub())); }
+
+function applySnapshot(msg){
+  const d=msg.data;
+  if(d && d.version!=null) snapVersion=d.version;
+  else if(msg.cursor && msg.cursor.version!=null) snapVersion=msg.cursor.version;
+  if(active==="overview") renderOverview(d);
+  else if(active==="timeline") renderTimeline(d);
+}
+function applyPush(msg){
+  if(!$("#autorefresh").checked) return;     // frozen; a fresh load will resync
+  if(msg.t==="decisions") applyDecisions(msg);
+  else if(msg.t==="map") applyMap(msg);
+  else if(msg.t==="snapshot") applySnapshot(msg);
+  else if(msg.t==="findings") applyFindings(msg);
+  else if(msg.t==="log") applyLog(msg);
+}
+
 function startPollFallback(){
+  // No socket: fall back to a slow REST reload of the active tab (which also
+  // re-subscribes — a no-op until the socket returns).
   if(pollTimer) return;
-  pollTimer=setInterval(()=>{ if($("#autorefresh").checked) refresh(); }, 5000);
+  pollTimer=setInterval(()=>{ if($("#autorefresh").checked) loadActive(); }, 5000);
 }
 function stopPollFallback(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
 function connectWS(){
@@ -1600,8 +1999,8 @@ function connectWS(){
     sock = new WebSocket(proto+"//"+location.host+"/ws");
   }catch(e){ startPollFallback(); setTimeout(connectWS, wsBackoff); return; }
   ws = sock;
-  sock.onopen=()=>{ wsBackoff=1000; stopPollFallback(); };
-  sock.onmessage=()=>{ if($("#autorefresh").checked) refresh(); };
+  sock.onopen=()=>{ wsBackoff=1000; stopPollFallback(); subscribe(); };
+  sock.onmessage=(ev)=>{ let msg; try{ msg=JSON.parse(ev.data); }catch(e){ return; } applyPush(msg); };
   sock.onclose=()=>{
     if(ws===sock) ws=null;
     startPollFallback();
@@ -1610,6 +2009,9 @@ function connectWS(){
   };
   sock.onerror=()=>{ try{ sock.close(); }catch(e){} };
 }
+
+/* first paint: REST-load the active tab, then open the socket and subscribe. */
+loadActive();
 connectWS();
 </script>
 </body>
@@ -1639,16 +2041,17 @@ def main() -> None:
     print(f"steemer dashboard on http://{args.host}:{args.port}  "
           f"db={_db.cfg_key(db_cfg)} [{ready}]  (WebSocket push at /ws)")
 
-    # Two background threads: the watcher pushes "changed" to all WS clients when
-    # the DB advances (so the page updates on write, not on a per-client timer),
-    # and the snapshot worker recomputes the heavy KPI aggregate off the request
-    # path so /api/snapshot never hangs a connection (and never starves the rest).
+    # Two background threads: the push loop sends each subscribed client the
+    # actual new data for its current view once a second (the WebSocket carries
+    # the data, not a "go fetch" nudge), and the snapshot worker recomputes the
+    # heavy KPI aggregate off the request path so /api/snapshot never hangs a
+    # connection (and never starves the rest).
     stop = threading.Event()
-    watcher = threading.Thread(
-        target=_watch_and_push, args=(db_cfg, stop), name="ws-watcher", daemon=True)
+    pusher = threading.Thread(
+        target=_push_loop, args=(db_cfg, stop), name="ws-push", daemon=True)
     snapper = threading.Thread(
         target=_snapshot_worker, args=(db_cfg, stop), name="snapshot-worker", daemon=True)
-    watcher.start()
+    pusher.start()
     snapper.start()
     try:
         httpd.serve_forever()
