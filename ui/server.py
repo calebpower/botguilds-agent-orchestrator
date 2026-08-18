@@ -1136,6 +1136,16 @@ label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13
 .observed td.k{color:var(--ink);font-variant-numeric:normal}
 .observed .col3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
 @media(max-width:820px){.observed .col3{grid-template-columns:1fr}}
+/* roster + inventory panel — a PARTIAL, swinging view of a larger persistent
+   roster, so "now" is framed against the recent range + frame age, never as an
+   authoritative headcount. */
+.roster .rhead{font-size:15px;color:var(--ink2)}
+.roster .rhead b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.roster .rline{font-size:13px;color:var(--ink2);margin-top:10px}
+.roster .rline .badge{margin:2px 6px 2px 0}
+.roster .rnote{color:var(--muted);font-size:12px;font-style:italic;margin-top:12px}
+.roster .ranom{color:var(--serious);font-size:12px;margin-top:10px;
+  font-variant-numeric:tabular-nums}
 /* logs */
 pre.log{white-space:pre-wrap;font-family:ui-monospace,"SF Mono",Menlo,Consolas,
   monospace;font-size:12.5px;background:var(--surface);border:1px solid var(--border);
@@ -1165,6 +1175,8 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   <!-- OVERVIEW -->
   <section class="tab active" id="tab-overview">
     <div class="tiles" id="ov-tiles"></div>
+    <div class="card roster" id="ov-roster-card" style="display:none;margin-top:16px">
+      <h2>Roster (server partial view)</h2><div id="ov-roster"></div></div>
     <div class="grid2" style="margin-top:16px">
       <div class="card"><h2>Actions sent</h2><div class="bars" id="ov-actions"></div></div>
       <div class="card"><h2>Decisions by action</h2><div class="bars" id="ov-decisions"></div></div>
@@ -1365,6 +1377,7 @@ function renderOverview(s){
     $("#livedot").classList.remove("live");
     ["#ov-actions","#ov-decisions","#ov-events","#ov-errors","#ov-explore"]
       .forEach(id=>$(id).innerHTML="");
+    $("#ov-roster-card").style.display="none"; $("#ov-roster").innerHTML="";
     return;
   }
   $("#livedot").classList.add("live");
@@ -1395,6 +1408,8 @@ function renderOverview(s){
     "ticks "+(vol.tick_span?vol.tick_span.join("–"):"—")));
   tiles.appendChild(stat("Wall clock", vol.wall_seconds!=null?(vol.wall_seconds+"s"):"—", "observed span"));
 
+  renderRoster(s);
+
   bars($("#ov-actions"), s.actions_by_kind);
   bars($("#ov-decisions"), s.decisions_by_action);
   bars($("#ov-events"), s.events_by_kind);
@@ -1415,6 +1430,64 @@ function renderOverview(s){
     ex.appendChild(row);
     ex.appendChild(el("div","small",
       `  ↑ max y ${esc(d.max_y_reached)} · ${fmtNum(d.notable_tiles)} notable tiles`));
+  }
+}
+
+/* ---- ROSTER + INVENTORY (a PARTIAL, swinging server view) ----
+   The single-frame roster is not an authoritative headcount: the game server
+   shows characters intermittently, so we present "now" against the recent
+   min–max range and the frame age, and surface the note, so a dip reads as a
+   transient partial view rather than "we lost characters". Handles a
+   missing/null roster by hiding the whole card. */
+function renderRoster(s){
+  const card = $("#ov-roster-card"), body = $("#ov-roster");
+  body.innerHTML = "";
+  const r = s && s.roster;
+  if(!r){ card.style.display = "none"; return; }   // no village frame yet
+  card.style.display = "";
+
+  // Headline: "<total> now · range <min>–<max> over last <samples> frames ·
+  //            frame <age>s old" — the range/age is what keeps a dip honest.
+  const rng = r.range || {}, age = r.frame_age_s;
+  const head = el("div","rhead");
+  head.appendChild(el("b", null, fmtNum(r.total)+" now"));
+  const bits = [];
+  if(rng.min!=null && rng.max!=null)
+    bits.push(`range ${fmtNum(rng.min)}–${fmtNum(rng.max)} over last ${fmtNum(rng.samples)} frames`);
+  if(age!=null) bits.push(`frame ${esc(age)}s old`);
+  if(bits.length) head.appendChild(document.createTextNode(" · "+bits.join(" · ")));
+  body.appendChild(head);
+
+  // Home count + per-world fielded (counts), each world a pill.
+  const worlds = Object.entries(r.by_world || {});
+  const wl = el("div","rline");
+  wl.appendChild(document.createTextNode(`Home ${fmtNum(r.home)}`));
+  if(worlds.length){
+    wl.appendChild(document.createTextNode(" · per-world: "));
+    for(const [w,n] of worlds) wl.appendChild(el("span","badge", `${esc(w)} ${fmtNum(n)}`));
+  } else {
+    wl.appendChild(document.createTextNode(" · none fielded"));
+  }
+  body.appendChild(wl);
+
+  // Aggregate inventory across home chars (already sorted desc by the backend).
+  const inv = Object.entries(r.inventory || {});
+  const il = el("div","rline");
+  il.appendChild(document.createTextNode("Inventory (home chars): "));
+  if(inv.length){
+    for(const [k,n] of inv) il.appendChild(el("span","badge", `${esc(k)}×${fmtNum(n)}`));
+  } else {
+    il.appendChild(el("span","small","none carried"));
+  }
+  body.appendChild(il);
+
+  if(r.note) body.appendChild(el("div","rnote", r.note));
+
+  // Recent bot-detected anomalies, if any (else the line is simply absent).
+  const an = (s.anomalies_recent || []);
+  if(an.length){
+    body.appendChild(el("div","ranom",
+      "recent anomalies: " + an.map(x=>`${esc(x.subtype)} ×${fmtNum(x.n)}`).join(" · ")));
   }
 }
 

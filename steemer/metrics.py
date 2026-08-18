@@ -13,6 +13,7 @@ occurred* rather than by hard-coding names. The analysis loop interprets them.
 from __future__ import annotations
 
 import json
+import time
 import zlib
 from typing import Any
 
@@ -48,6 +49,53 @@ def _latest_frame(conn: _db.Connection, world: str | None = None) -> dict[str, A
     return json.loads(zlib.decompress(row[0])) if row else None
 
 
+def _roster_inventory(conn: _db.Connection, recent_village: int = 40) -> dict[str, Any] | None:
+    """Roster detail + recent swing range + aggregate inventory, from the latest
+    village frames. The single-frame roster (``chars_here`` + ``chars_by_world``)
+    is a PARTIAL, swinging view of a large persistent roster — the server shows
+    chars intermittently (see findings.jsonl) — so alongside the current numbers
+    we return the recent min/max range and the frame's age, so the dashboard can
+    show a dip as a transient partial view rather than a bare, misleading count.
+    Inventory is aggregated across every home char in the latest village frame."""
+    rows = conn.execute(
+        "SELECT json, received_at FROM frames WHERE world='village' "
+        "ORDER BY seq DESC LIMIT ?", (int(recent_village),)).fetchall()
+    if not rows:
+        return None
+    latest = json.loads(zlib.decompress(rows[0][0]))
+    g = latest.get("guild", {}) or {}
+    here = len(g.get("chars_here", []) or [])
+    by_world = {k: len(v) for k, v in (g.get("chars_by_world", {}) or {}).items()}
+    total = here + sum(by_world.values())
+
+    totals = []
+    for row in rows:
+        gg = json.loads(zlib.decompress(row[0])).get("guild", {}) or {}
+        totals.append(len(gg.get("chars_here", []) or [])
+                      + sum(len(v) for v in (gg.get("chars_by_world", {}) or {}).values()))
+
+    inv: dict[str, int] = {}
+    for ch in latest.get("chars", []) or []:
+        for it in ch.get("inventory", []) or []:
+            k = it.get("kind")
+            if k:
+                inv[k] = inv.get(k, 0) + 1
+
+    age = None
+    try:
+        age = round(time.time() - float(rows[0]["received_at"]), 1)
+    except (TypeError, ValueError, KeyError):
+        pass
+    return {
+        "home": here, "by_world": by_world, "total": total,
+        "range": {"min": min(totals), "max": max(totals), "samples": len(totals)},
+        "frame_age_s": age, "at_tick": latest.get("tick"),
+        "inventory": dict(sorted(inv.items(), key=lambda kv: -kv[1])),
+        "note": "server shows chars intermittently; this is a partial view of a "
+                "larger persistent roster (see range).",
+    }
+
+
 def snapshot(db: Any = None) -> dict[str, Any]:
     """A single JSON-serializable KPI snapshot for the analysis loop.
 
@@ -60,8 +108,13 @@ def snapshot(db: Any = None) -> dict[str, Any]:
         # -- volume + span ---------------------------------------------------
         tick_min = _scalar(conn, "SELECT MIN(tick) FROM frames")
         tick_max = _scalar(conn, "SELECT MAX(tick) FROM frames")
-        t_first = _scalar(conn, "SELECT MIN(received_at) FROM frames")
-        t_last = _scalar(conn, "SELECT MAX(received_at) FROM frames")
+        # wall span = first vs last frame's received_at. `received_at` is unindexed,
+        # so MIN()/MAX() over it FULL-SCAN the frames table (~19 s each = ~38 s, the
+        # bulk of a live-MariaDB snapshot). It is written monotonically with the
+        # autoincrement `seq` PK, so the earliest/latest frame are the min/max seq —
+        # fetch received_at by seq order (an index-only PK lookup, instant).
+        t_first = _scalar(conn, "SELECT received_at FROM frames ORDER BY seq ASC LIMIT 1")
+        t_last = _scalar(conn, "SELECT received_at FROM frames ORDER BY seq DESC LIMIT 1")
         wall_s = (t_last - t_first) if (t_first and t_last) else 0.0
         out["volume"] = {
             "frames": _scalar(conn, "SELECT COUNT(*) FROM frames") or 0,
@@ -109,6 +162,18 @@ def snapshot(db: Any = None) -> dict[str, Any]:
                 "market_listings": len(g.get("market_listings", [])),
                 "at_tick": village.get("tick"),
             }
+
+        # Roster detail + swing range + aggregate inventory (dashboard panel).
+        out["roster"] = _roster_inventory(conn)
+
+        # Recent bot-detected anomalies (self-reported error-family spikes etc.).
+        out["anomalies_recent"] = [
+            {"tick": r["tick"], "subtype": r["k"], "n": r["n"]}
+            for r in conn.execute(
+                "SELECT tick, world AS k, COUNT(*) AS n FROM events "
+                "WHERE kind='bot_anomaly' GROUP BY world ORDER BY MAX(tick) DESC LIMIT 8"
+            ).fetchall()
+        ]
 
         # -- per-run windows (for before/after attribution) ------------------
         out["runs"] = _run_summaries(conn)

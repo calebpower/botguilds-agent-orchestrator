@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import nav
+from .anomaly import AnomalyMonitor
 from .reasoning import DecisionTrace
 from .storage import Storage
 from .strategy import FieldContext, Strategy, get_strategy
@@ -27,6 +28,9 @@ class GuildBot:
         self.config: dict[str, Any] = {}
         self.guild: dict[str, Any] = {}
         self.client: Any = None   # set by Client
+        # Live anomaly self-reporting: watch the action-error stream for a family
+        # that spikes (the observable symptom of a desync — see steemer/anomaly.py).
+        self.anomaly = AnomalyMonitor()
 
     # -- client callbacks -----------------------------------------------------
 
@@ -49,6 +53,28 @@ class GuildBot:
         hook = getattr(self.strategy, "on_action_error", None)
         if callable(hook):
             hook(self, message)
+        # ...and let the anomaly monitor watch the failure stream for a spike.
+        a = self.anomaly.record(message.get("tick", self.tick), message.get("reason"))
+        if a is not None:
+            self._report_anomaly(a)
+
+    # -- anomaly self-reporting ----------------------------------------------
+
+    def _report_anomaly(self, a: dict[str, Any]) -> None:
+        """Surface a detected anomaly to stdout (visible live in the screen log)
+        and a queryable ``bot_anomaly`` event (which the dashboard shows via the
+        snapshot's ``anomalies_recent`` and the analysis loop folds into the
+        notebook). We deliberately do NOT append to findings.jsonl from the live
+        bot: that file is the loop's curated notebook, and a runtime writer would
+        race the loop's rewrites and dirty the working tree. Best-effort:
+        observability must never stop the bot playing."""
+        sub = a["subtype"]
+        print(f"[anomaly] {sub} @tick {self.tick}: {a.get('detail')}", flush=True)
+        if self.storage is not None:
+            try:
+                self.storage.record_anomaly(self.tick, sub, a)
+            except Exception as e:
+                print(f"[anomaly] record failed ({e}) — continuing", flush=True)
 
     # -- field frame ----------------------------------------------------------
 

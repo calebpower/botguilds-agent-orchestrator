@@ -736,3 +736,73 @@ signature; a 0.9.0 replay produced 3151). Early absolute error counts are
 elevated (unknown_character/not_in_village) but that is fresh-roster startup
 churn + the field death-echo the guard does NOT address — judge on the amortized
 window, not the first 500 frames.
+
+## 2026-08-18 11:54 — roster desync investigated (server shows chars intermittently); shipped low-noise anomaly self-reporting + an honest roster/inventory dashboard panel
+
+**Trigger.** Operator saw the dashboard roster (7 = 5 home + 2 fielded) disagree
+with the server's own map (28). Investigated.
+
+**What the desync actually is (finding, recorded).** NOT a parsing bug. The
+BotGuilds server presents characters INTERMITTENTLY — in run #32 a live char is
+absent from every received frame for up to ~350 ticks (median max sighting gap
+342t among long-lived chars) — and the guild's true roster is large and
+PERSISTENT across runs (uids up to c7615, far more than the 13 recruits this
+run). So a single frame's `guild` snapshot (`chars_here` + `chars_by_world`) is
+an inherently PARTIAL view of a big persistent roster; the reported roster swings
+30->6->30 while only 5 chars died. The server's map knows the full roster; our
+frames carry only the currently-loaded subset.
+
+**What I did NOT do, and why.** I prototyped a frame-based RosterTracker to
+reconstruct the true count and gate recruit/embark on it. It does not work: no
+window reliably recovers the count (30t: no change to the dip; 800t: stdev only
+6.6->5.6 and dead chars then linger 800t). So I REVERTED that strategy change —
+shipping a "fix" that doesn't fix anything violates the ethic — and left the live
+strategy clean at explorer/0.10.0. The over-recruit it was meant to address is
+already curbed by 0.10.0's recruit cooldown (roster_cap 87->11 in run #32).
+
+**What I shipped instead (two honest, achievable pieces):**
+
+1. **Low-noise anomaly self-reporting (`steemer/anomaly.py`, wired in
+   `bot.on_action_error`).** The bot can't measure the true roster, but it can
+   watch its own action-error stream and flag when a FAMILY spikes — the
+   observable symptom of any desync (acting on a gone char / wrong world / full
+   roster). `AnomalyMonitor`: a rolling per-reason window (300 ticks); a family
+   with >=80 errors in it is flagged, re-reported at most once per 1200 ticks.
+   Surfaced to stdout (live in the screen log) and a queryable `bot_anomaly`
+   event (`Storage.record_anomaly`, kind=`bot_anomaly`, world=subtype), which the
+   dashboard shows via `anomalies_recent` and the analysis loop folds into the
+   notebook. The live bot deliberately does NOT write findings.jsonl directly —
+   that is the loop's curated notebook, and a runtime writer would race the
+   loop's rewrites, dirty the working tree, and (as a bug caught in review)
+   pollute it from tests/replays. Calibrated on real data: 7 flags over
+   run #28, 11 over run #32 — correctly pinpoints the chronic `unknown_character`
+   field death-echo, and a NEW family regression would trip immediately. A quiet
+   stream produces nothing.
+
+2. **Honest roster + inventory dashboard panel** (`metrics.snapshot` now returns
+   `roster` = {home, by_world, total, range{min,max,samples}, frame_age_s,
+   inventory{kind:count}, note} and `anomalies_recent`; UI panel added in
+   `ui/server.py`). The panel shows `total` as "now" ALONGSIDE the recent
+   min-max range and the frame age, plus the note that it is a partial view of a
+   larger persistent roster — so a dip reads as transient, not a lost roster.
+
+**Bonus fix (found while adding the panel).** `metrics.snapshot()` took ~50s on
+the live MariaDB — `SELECT MIN/MAX(received_at) FROM frames` full-scanned the
+table (~19s each; `received_at` is unindexed). `received_at` is monotonic with
+the `seq` PK, so first/last-by-seq gives the same wall span instantly: snapshot
+**49.7s → 11.9s**, identical result. (My additions were 0.1s, not the cause.)
+Perf-only, result-identical, so untestable in isolation beyond the existing
+wall_seconds assertion; residual ~12s is COUNT(*)/GROUP-BY over big tables, left
+for later.
+
+**Version.** No strategy bump: gameplay is unchanged (explorer/0.10.0); this is
+observability. Runs attribute by git_sha. Redeploy needed for the live bot to
+emit anomalies; UI restart needed for the panel (both operator-restarted — the
+daemon detach dies under the harness).
+
+**Verify.** pytest all green (incl. new tests/test_anomaly.py; anomaly logic
+mutation-checked: eviction, cooldown, per-family isolation). End-to-end: a real
+GuildBot driven over run #32's error stream wrote 11 bot_anomaly events + stdout.
+metrics snapshot live-verified to populate roster/inventory/anomalies_recent.
+Falsified if: the anomaly fires on a healthy stream (noise) or never fires on a
+real storm; the panel presents the dip as an authoritative count.

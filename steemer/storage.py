@@ -123,6 +123,18 @@ class Storage:
              message.get("action"), message.get("reason"), self.run_id))
         self._tick_commit()
 
+    def record_anomaly(self, tick: int, subtype: str, detail: dict[str, Any]) -> None:
+        """Persist a bot-detected anomaly as an ``events`` row with a distinct
+        ``bot_anomaly`` kind (so it is queryable/analysable and never confused
+        with a server-emitted game event). ``world`` carries the subtype for a
+        cheap GROUP BY; the full payload is in ``payload_json``."""
+        payload = {"kind": "bot_anomaly", "subtype": subtype, **detail}
+        self.conn.execute(
+            "INSERT INTO events(tick, world, kind, payload_json, run_id) "
+            "VALUES(?,?,?,?,?)",
+            (tick, subtype, "bot_anomaly", json.dumps(payload), self.run_id))
+        self._tick_commit()
+
     # -- verbose decisions ----------------------------------------------------
 
     def record_decision(
