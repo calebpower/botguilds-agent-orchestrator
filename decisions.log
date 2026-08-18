@@ -496,3 +496,95 @@ ops/retention.md now points at config, not a personal path. `git grep` confirms 
 private dest fragment remains in tracked files. Verify: 145 pytest green; dry-run
 resolves dest from config and --dest still overrides. FYI still in tracked docs
 (lower sensitivity, left as-is): the NAS host/share names and cred-file locations.
+
+## 2026-08-18 05:24 — explorer/0.9.0: stamina headroom on FIELD moves (not the village); + fixed a latent MariaDB schema bug the deploy surfaced
+
+WHAT. Bumped explorer 0.8.0 -> 0.9.0. Added a stamina *headroom* to the field
+move gate: a `move`/`ride` is only offered when `stamina >= 1.5 x raw cost`
+(MOVE_STAMINA_SAFETY), instead of the bare `stamina >= cost`. Move-only —
+attack/use/etc. keep the raw cost.
+
+WHY (and why NOT the advice's #1). advice.md ranked "stamina-gate the village
+loop" first, on the theory that ungated village actions spam not_enough_stamina.
+A DB drill-down REFUTED that before writing any code:
+  - Village economy actions (sell/buy/brew/equip/spend_xp) produce ZERO
+    not_enough_stamina across ALL history (they cost no stamina; they only ever
+    fail on gold/xp/slot/item). Gating them is a provable no-op.
+  - not_enough_stamina (45% of 0.8.0 errors) is 98% FIELD `move` (83,361) vs
+    attack 1,042. So the advice's mechanism #2 (cost underestimation) was the
+    right family but the wrong action — move, not attack.
+  - Measured floor move cost = 20 (stamina drop 14/15 per successful move +
+    5/6 regen), matching the known move_stamina=20; web/rime double it but are
+    rare. So the base gate (>=20) is CORRECT for floor.
+  - Yet moves fail at a *shown* stamina of 13-29 (median 23, p95 28) on 94%
+    plain floor (web/rime = 0% of failures). The bot only issues a move it
+    believes it affords, but the server rejects it — the signature of a ~1-tick
+    STALE frame: the acted-on stamina reading is higher than the server's live
+    value (a prior move's cost not yet reflected). The headroom absorbs that
+    staleness so a stale-high reading still affords the step; otherwise the char
+    rests (double-rate regen) instead of spamming a doomed move.
+
+EXPECTED EFFECT. move/not_enough_stamina share falls sharply next window vs the
+0.8.0 baseline; overall action-error rate drops toward M1's <5% exit criterion
+(0.8.0 sat ~0.5). Early read on run #15 (~3 min in): 3 errors / 2057 actions
+(0.15%) vs 0.8.0 ~0.27 err/action — promising but PRELIMINARY (fresh window,
+chars still stamina-rich); judge on a multi-hour window.
+FALSIFIED IF. move not_enough_stamina does NOT fall vs the 0.8.0 window, or the
+overall error rate stays ~0.5. Watch exploration depth for throttling from the
+extra rest ticks (if depth drops materially, lower the 1.5x).
+RESIDUAL / DEEPER CAUSE. The staleness itself (bot acting on a frame ~1 tick
+behind the server's applied state) is a client-layer issue; the headroom is a
+robust decision-layer mitigation, not a client fix. Logged as a conjecture in
+findings for a future iteration (drop stale frames / act only on the latest per
+world).
+
+--- unplanned but necessary: MariaDB schema splitter bug (be184e6) ---
+The redeploy jumped the live bot forward across several committed-but-never-
+deployed infra commits (the SQLite/MariaDB backend seam + config.toml, dashboard,
+retention). config.toml selects type=mariadb, so the new runner tried to start on
+MariaDB and CRASH-LOOPED at Storage() init: apply_schema -> executescript ->
+_split_statements split the `decisions` DDL on a ';' that lives inside a `--`
+comment ("... via SELECT DISTINCT;"), handing the driver a truncated CREATE TABLE
+(1064). SQLite never hit it (native executescript). Root-cause fix: strip `--`
+line comments before splitting on ';'. Verified: apply_schema now applies the full
+schema cleanly against the live MariaDB (all 7 tables) and the env-gated
+test_mariadb_roundtrip passes end-to-end. So the operator's staged MariaDB
+migration is now UNBLOCKED.
+
+DEPLOY DECISION: shipped 0.9.0 on SQLITE (redeploy ... --db guild_log.db), NOT
+MariaDB, deliberately:
+  1. The 0.8.0 baseline (runs #10-#14) lives in guild_log.db (sqlite). Migrating
+     to a fresh, empty MariaDB mirror would split the 0.9.0 window from its
+     baseline and BREAK this iteration's before/after attribution.
+  2. The MariaDB backend has never run a live session; switching prod to it as a
+     side-effect of a strategy iteration risks "the game must keep playing."
+  Migrating to MariaDB should be a deliberate, separate operator step (it also
+  needs a history migration + dashboard/retention reconciliation).
+
+OPERATOR FLAGS (need attention):
+  * redeploy.sh's `daemon -f` detachment did NOT survive in the Claude-Code Bash
+    harness: BOTH daemon-launched supervisor trees vanished within minutes
+    (the crash-looping MariaDB one AND the working SQLite one), while the
+    operator's original screen-hosted `make run-live` lived 4h. The harness
+    appears to reap processes spawned by a tool call. I relaunched 0.9.0 inside
+    the durable screen session 1672.bot (new window "steemer09" -> run-live.sh
+    --db guild_log.db); its tree roots at the screen daemon (pid 1672) and is
+    accumulating run #15 steadily. ACTION: verify redeploy.sh detachment when
+    *you* invoke it from a plain shell, or move the supervisor into screen/tmux
+    so the autonomous loop can redeploy durably.
+  * config.toml=mariadb + the dashboard/retention pointing at an EMPTY mariadb is
+    a pre-existing artifact of the half-finished migration; the live data is all
+    in sqlite guild_log.db. Reconcile when you do the migration.
+  * screen window 0 (old `make run-live`) is now a dead shell prompt. If it or a
+    script restarts `make run-live` WITHOUT `--db guild_log.db`, it will start on
+    MariaDB (now that the schema bug is fixed) and supersede the sqlite #15,
+    fragmenting attribution. Prefer launching with `--db guild_log.db` until the
+    migration is done deliberately.
+
+VERIFY. uv run pytest -q (149 passed, 1 skipped — the skip is the env-gated
+mariadb roundtrip); STEEMER_TEST_MARIADB=1 roundtrip passed; replay ran clean over
+history; reaper gate GREEN (147 passed in the pinned container) for the strategy
+commit. Two commits: 371874d (strategy) + be184e6 (db fix), both pushed.
+Submodule: reference_starter_kit is 2 commits behind upstream (doc condensation +
+a market shop `req` field the explorer doesn't consume) — reviewed, nothing to
+port, pin left as-is.
