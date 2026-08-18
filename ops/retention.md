@@ -25,7 +25,7 @@ disk when the NAS is down).
 
 ## Infrastructure (set up once, persists across reboots)
 
-- **Mount:** TrueNAS SMB share `//truenas/samba_share` → `/mnt/nas` via
+- **Mount:** an SMB share (e.g. TrueNAS) `//<your-nas>/<your-share>` → `/mnt/nas` via
   `smbnetfs` (SMB2/3 over FUSE; FreeBSD base `mount_smbfs` is SMB1-only and
   TrueNAS has SMB1 disabled). The share mounts under
   `/mnt/nas/<host>/<share>/`. The archive **destination is set by

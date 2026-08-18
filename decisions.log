@@ -389,7 +389,7 @@ rsync/scp over SSH) implements the same 2-method Shipper; then the orchestrator
 retention. events/decisions/metrics stay local (cheap, mined signal).
 
 ## 2026-08-17 12:54 — retention live: NAS mount + daily archival cron (walk-away disk safety)
-Mounted TrueNAS //truenas/samba_share at /mnt/nas over SMB2/3 (smbnetfs FUSE;
+Mounted the NAS //<your-nas>/<your-share> at /mnt/nas over SMB2/3 (smbnetfs FUSE;
 base mount_smbfs is SMB1-only and TrueNAS has SMB1 off). Permanent via rc.d
 (ops/smbnetfs.rc) + kld_list=fusefs + smbnetfs_enable. Creds in /root/.smb (600),
 never in repo (verified). Built + tested end-to-end against the real NAS the full
