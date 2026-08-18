@@ -158,3 +158,44 @@ def test_cfg_key_is_stable_and_secretfree():
                      "db_name": "botguilds", "password": "secret"})
     assert k == "mariadb:127.0.0.1:3306/botguilds"
     assert "secret" not in k
+
+
+# --- statement splitter (MariaDB executescript) ----------------------------- #
+
+def test_split_ignores_semicolons_inside_line_comments():
+    # A `;` inside a `--` comment is prose, not a separator. The MariaDB path
+    # sends one statement per execute(), so splitting mid-statement hands the
+    # driver a truncated fragment (1064). This is exactly the shape of the
+    # `decisions` DDL bug: a comment ending in ';' between two KEY clauses.
+    script = (
+        "CREATE TABLE t (\n"
+        "    a INT,\n"
+        "    -- keep a and b; they feed the dropdowns\n"
+        "    KEY ka (a),\n"
+        "    KEY kb (b)\n"
+        ");\n"
+        "CREATE TABLE u (c INT);"
+    )
+    stmts = _db._split_statements(script)
+    assert len(stmts) == 2                         # the comment's ';' did NOT split
+    assert stmts[0].startswith("CREATE TABLE t")
+    assert "KEY ka (a)" in stmts[0] and "KEY kb (b)" in stmts[0]   # not truncated
+    assert stmts[0].rstrip().endswith(")")         # closing paren survived
+    assert stmts[1].startswith("CREATE TABLE u")
+
+
+def test_schema_mariadb_splits_into_whole_create_statements():
+    # Guard the real DDL: every split piece must be a complete CREATE TABLE, and
+    # the `decisions` table (whose comment contains a ';') must keep the KEY
+    # clauses that follow the comment. Under the old naive split(';') the
+    # decisions statement truncated and a bare-comment fragment appeared -> both
+    # of these assertions fail (the mutation check).
+    stmts = _db._split_statements(_db.SCHEMA_MARIADB)
+    assert stmts, "schema produced no statements"
+    assert all(s.upper().startswith("CREATE TABLE") for s in stmts), \
+        [s[:40] for s in stmts if not s.upper().startswith("CREATE TABLE")]
+    decisions = [s for s in stmts if "decisions" in s]
+    assert len(decisions) == 1                     # one whole statement, not two halves
+    d = decisions[0]
+    assert "idx_decisions_world" in d and "idx_decisions_char" in d   # tail survived
+    assert d.rstrip().endswith(")")

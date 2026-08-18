@@ -285,9 +285,17 @@ class Connection:
 
 
 def _split_statements(script: str) -> list[str]:
-    """Split a multi-statement DDL script on ``;`` (our schema has no ``;`` inside
-    a literal, so a naive split is correct and keeps the MariaDB path dependency-free)."""
-    return [s.strip() for s in script.split(";") if s.strip()]
+    """Split a multi-statement DDL script into individual statements for the
+    MariaDB path (mysql.connector executes one statement per ``execute()``).
+
+    ``--`` line comments are stripped FIRST, because a ``;`` inside a comment is
+    prose, not a statement separator — the ``decisions`` DDL has exactly that
+    (``-- ... via SELECT DISTINCT;``), and a naive ``split(";")`` truncated the
+    CREATE TABLE mid-statement (1064 syntax error). SQLite never hit this: its
+    ``executescript`` splits natively. Safe because our DDL contains no string
+    literal or identifier with ``--`` or ``;`` — only comments and column names."""
+    no_comments = "\n".join(line.split("--", 1)[0] for line in script.splitlines())
+    return [s.strip() for s in no_comments.split(";") if s.strip()]
 
 
 # --------------------------------------------------------------------------- #
