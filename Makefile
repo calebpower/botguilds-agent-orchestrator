@@ -75,8 +75,44 @@ dashboard: ## Serve the read-only web dashboard; HOST=/PORT= to change bind
 	uv run python ui/server.py --host $(HOST) --port $(PORT)
 
 .PHONY: sidecar
-sidecar: ## Web sidecar: rainbow guild color + intel polling (allies/rivals/tiles) -> DB
+sidecar: ## Web sidecar (foreground): rainbow guild color + intel polling -> DB
 	uv run python tools/web_sidecar.py $(ARGS)
+
+# ---- service control (detached daemons via svc.sh) ------------------------
+# Each service — bot (game runner), web (sidecar), dash (dashboard) — has
+# up / down / restart. `restart` = down then up (picks up new on-disk code).
+# The bare up / down / restart act on ALL THREE.
+
+.PHONY: bot-up bot-down bot-restart
+bot-up: ## Start the game bot, detached
+	./svc.sh up bot
+bot-down: ## Stop the game bot
+	./svc.sh down bot
+bot-restart: ## Restart the game bot (pick up new code)
+	./svc.sh restart bot
+
+.PHONY: web-up web-down web-restart
+web-up: ## Start the web sidecar, detached
+	./svc.sh up web
+web-down: ## Stop the web sidecar
+	./svc.sh down web
+web-restart: ## Restart the web sidecar
+	./svc.sh restart web
+
+.PHONY: dash-up dash-down dash-restart
+dash-up: ## Start the dashboard, detached; DASH_HOST=/DASH_PORT= to change bind
+	./svc.sh up dash
+dash-down: ## Stop the dashboard
+	./svc.sh down dash
+dash-restart: ## Restart the dashboard
+	./svc.sh restart dash
+
+.PHONY: up down restart status
+up: bot-up web-up dash-up          ## Start all three (bot + web + dash)
+down: bot-down web-down dash-down  ## Stop all three
+restart: bot-restart web-restart dash-restart  ## Restart all three
+status: ## Show up/down for all three
+	@./svc.sh status bot; ./svc.sh status web; ./svc.sh status dash
 
 # ---- the improvement loop -------------------------------------------------
 

@@ -43,6 +43,11 @@ steemer-live.log
 # local archive staging (frames shipped off-box, then pruned)
 /archive/
 
+# svc.sh runtime state: pid files + service logs (bot log already listed above)
+/run/
+web-sidecar.log
+ui-server.log
+
 # analyze-iteration.sh's local window cursor (which window it last advised on)
 orchestrator/.analyze-window
 # the analyze->apply handoff file (regenerated each analyze pass)
