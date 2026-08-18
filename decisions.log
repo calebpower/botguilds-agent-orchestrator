@@ -473,3 +473,26 @@ does loop.md step 7 PUSH (not just commit), step 9 CURATION of findings.jsonl
 (resolve open conjectures, mark shipped, fold dups — not append-only), and step 10
 check_submodule. Verify: 145 pytest green (test_scripts.py `sh -n` under dash
 covers both scripts); guard paths exercised end-to-end. No bot/strategy change.
+
+## 2026-08-18 03:34 — retention was silently broken; fixed + made the NAS dest config-driven (public-repo hygiene)
+Audited "is the NAS archival actually set up?" It was NOT working, though it had
+never fired yet (first cron was tonight 04:17). Two bugs, both would have failed
+the very first run: (1) the crontab ran `uv run tools/archive_frames.py` with no
+`cd` — cron's cwd is $HOME, where uv finds no project and tools/ doesn't exist
+(reproduced: "Failed to spawn tools/archive_frames.py"); fixed the crontab to
+`cd <repo> && uv run ...`. (2) archive_frames.py carried a PEP 723 `# /// script`
+header, so `uv run tools/archive_frames.py` (the documented + cron form) ran it in
+an ISOLATED env WITHOUT the project deps -> "config selects mariadb but
+mysql-connector-python is not installed"; removed the header so it uses the
+project env like the other tools. Confirmed good: /mnt/nas mounted + boot-
+persistent (fusefs kld + smbnetfs_enable), share writable by cal, tool loads and
+enumerates all closed runs in a dry-run.
+Separately, per "we're publishing this repo": the archive destination was a
+hardcoded private NAS path in the source. Moved it to `[retention].dest` in
+config.toml (new db.load_retention_config; resolution --dest > config > a generic
+/mnt/nas/steemer-archives fallback). config.toml is git-ignored so the real path
+stays local; config.example.toml documents the section with a placeholder;
+ops/retention.md now points at config, not a personal path. `git grep` confirms no
+private dest fragment remains in tracked files. Verify: 145 pytest green; dry-run
+resolves dest from config and --dest still overrides. FYI still in tracked docs
+(lower sensitivity, left as-is): the NAS host/share names and cred-file locations.

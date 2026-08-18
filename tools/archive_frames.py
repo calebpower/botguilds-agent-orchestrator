@@ -1,6 +1,3 @@
-# /// script
-# requires-python = ">=3.12"
-# ///
 """Retention pass: archive aged-out runs' frames off-box, then reclaim locally.
 
 For every CLOSED run whose newest frame is older than the hot window
@@ -33,7 +30,12 @@ from steemer import db as _db  # noqa: E402
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DB = os.path.join(REPO, "guild_log.db")
 DEFAULT_STAGE = os.path.join(REPO, "archive")
-DEFAULT_DEST = "/mnt/nas/truenas.chack.internal/samba_share/steemer-archives"
+DEFAULT_MOUNT_ROOT = "/mnt/nas"
+DEFAULT_HOT_HOURS = 48.0
+# Generic, public-safe fallback ONLY. The real NAS destination is an operator's
+# private path and must come from config ([retention].dest in config.toml) or
+# --dest — it is deliberately NOT hardcoded in this published source tree.
+DEFAULT_DEST = os.path.join(DEFAULT_MOUNT_ROOT, "steemer-archives")
 
 
 def _log(msg: str) -> None:
@@ -65,46 +67,60 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--db", default=None,
                     help="SQLite path override; else use --config/config.toml")
     ap.add_argument("--config", default=None, help="path to config.toml")
-    ap.add_argument("--dest", default=DEFAULT_DEST, help="NAS archive directory")
-    ap.add_argument("--stage", default=DEFAULT_STAGE, help="local staging dir")
-    ap.add_argument("--hot-hours", type=float, default=48.0,
-                    help="keep full frames younger than this locally")
+    ap.add_argument("--dest", default=None,
+                    help="NAS archive dir (else [retention].dest in config, else a generic default)")
+    ap.add_argument("--stage", default=None,
+                    help="local staging dir (else [retention].stage, else <repo>/archive)")
+    ap.add_argument("--hot-hours", type=float, default=None,
+                    help="keep full frames younger than this locally (else [retention].hot_hours, else 48)")
+    ap.add_argument("--mount-root", default=None,
+                    help="mount that must be live before archiving (else [retention].mount_root, else /mnt/nas)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
-    if not args.dry_run and not _mounted(args.dest):
-        _log(f"ABORT: {args.dest} is not on a live mount (/mnt/nas). "
+    # Resolve retention settings: explicit flag > [retention] in config.toml >
+    # generic default. The destination is intentionally config-driven, never
+    # hardcoded, since it is an operator's private NAS path in a public repo.
+    ret = _db.load_retention_config(args.config)
+    dest = args.dest or ret.get("dest") or DEFAULT_DEST
+    stage = args.stage or ret.get("stage") or DEFAULT_STAGE
+    mount_root = args.mount_root or ret.get("mount_root") or DEFAULT_MOUNT_ROOT
+    hot_hours = args.hot_hours if args.hot_hours is not None \
+        else float(ret.get("hot_hours", DEFAULT_HOT_HOURS))
+
+    if not args.dry_run and not _mounted(dest, mount_root):
+        _log(f"ABORT: {dest} is not on a live mount ({mount_root}). "
              "Is the smbnetfs service up? Refusing to stage archives on local disk.")
         return 2
 
-    os.makedirs(args.stage, exist_ok=True)
+    os.makedirs(stage, exist_ok=True)
     # --db (a SQLite path) overrides config; otherwise resolve the backend from
     # --config/config.toml (default DEFAULT_DB when no config exists).
     db_cfg = {"type": "sqlite", "path": args.db} if args.db \
         else _db.load_db_config(args.config)
     conn = _db.connect(db_cfg)
 
-    before_ts = time.time() - args.hot_hours * 3600.0
+    before_ts = time.time() - hot_hours * 3600.0
     runs = archive.archivable_runs(conn, before_ts)
     if not runs:
-        _log(f"nothing to archive (no closed run older than {args.hot_hours}h)")
+        _log(f"nothing to archive (no closed run older than {hot_hours}h)")
         archive.checkpoint(conn)
         return 0
 
-    _log(f"{len(runs)} run(s) eligible (older than {args.hot_hours}h): "
+    _log(f"{len(runs)} run(s) eligible (older than {hot_hours}h): "
          + ", ".join(str(r["run_id"]) for r in runs))
     if args.dry_run:
         for r in runs:
             _log(f"  DRY run {r['run_id']}: {r['rows']} frames "
-                 f"-> {_archive_name(conn, r['run_id'])}")
+                 f"-> {dest}/{_archive_name(conn, r['run_id'])}")
         return 0
 
-    shipper = shippers.LocalDirShipper(args.dest)
+    shipper = shippers.LocalDirShipper(dest)
     archived = failed = 0
     for r in runs:
         rid = r["run_id"]
         name = _archive_name(conn, rid)
-        stage_path = os.path.join(args.stage, name)
+        stage_path = os.path.join(stage, name)
         try:
             res = archive.export_run(conn, rid, stage_path)
             archive.record_archive(conn, rid, stage_path, res["sha256"], res["rows"],

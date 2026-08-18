@@ -27,15 +27,19 @@ disk when the NAS is down).
 
 - **Mount:** TrueNAS SMB share `//truenas/samba_share` → `/mnt/nas` via
   `smbnetfs` (SMB2/3 over FUSE; FreeBSD base `mount_smbfs` is SMB1-only and
-  TrueNAS has SMB1 disabled). The share content is at
-  `/mnt/nas/truenas.chack.internal/samba_share/`; archives go under
-  `steemer-archives/`.
+  TrueNAS has SMB1 disabled). The share mounts under
+  `/mnt/nas/<host>/<share>/`. The archive **destination is set by
+  `[retention].dest` in `config.toml`** (a private path — never hardcoded in this
+  repo); `--dest` overrides per run. Optional `[retention]` keys: `stage`,
+  `hot_hours`, `mount_root`.
 - **Boot persistence:** `kld_list += fusefs`, `smbnetfs_enable=YES`, and the
   rc.d service in `ops/smbnetfs.rc` (installed at
   `/usr/local/etc/rc.d/smbnetfs`). Verify: `service smbnetfs status`.
 - **Credentials:** `/root/.smb/smbnetfs.auth` (mode 600, root-only). **Never in
   this repo.** Config: `/root/.smb/smbnetfs.{conf,host}`, `/usr/local/etc/smb4.conf`.
-- **Schedule:** cron for `cal`, daily 04:17 → `uv run tools/archive_frames.py`,
+- **Schedule:** cron for `cal`, daily 04:17 → `cd <repo> && uv run
+  tools/archive_frames.py` (the `cd` is required — cron's cwd is `$HOME`, where
+  `uv run` finds no project),
   logging to `archive/cron.log` (gitignored).
 
 ## Restore

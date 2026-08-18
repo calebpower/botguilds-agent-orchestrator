@@ -90,6 +90,28 @@ def load_db_config(path: str | None = None) -> dict[str, Any]:
     return {"type": "sqlite", "path": DEFAULT_DB}
 
 
+def load_retention_config(path: str | None = None) -> dict[str, Any]:
+    """Resolve the optional ``[retention]`` table (same file + resolution order as
+    :func:`load_db_config`). Keys are all optional — ``dest`` (NAS archive dir),
+    ``stage`` (local staging dir), ``hot_hours`` (retention window), ``mount_root``
+    (mount that must be live) — and callers apply their own defaults for any that
+    are absent. A missing file or section yields ``{}``, so the archival tool runs
+    with built-in defaults and no config is required for a fresh checkout.
+
+    Deliberately config-driven and NOT hardcoded: the destination is an operator's
+    private NAS path, which must never live in this (public) source tree.
+    """
+    candidate = path or os.environ.get("STEEMER_CONFIG") \
+        or os.path.join(_repo_root(), DEFAULT_CONFIG)
+    if candidate and os.path.exists(candidate):
+        with open(candidate, "rb") as fh:
+            data = tomllib.load(fh)
+        ret = data.get("retention")
+        if isinstance(ret, dict):
+            return ret
+    return {}
+
+
 def normalize(db: Any) -> dict[str, Any]:
     """Coerce the flexible ``db`` argument the entry points accept into a config
     dict: ``None`` -> load from config; a ``str`` -> a SQLite path; a dict -> as-is."""

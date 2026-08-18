@@ -35,3 +35,15 @@ db_name  = "botguilds"
 
 # --- sqlite backend (set `type = "sqlite"` above to use) ---
 # path   = "guild_log.db"
+
+# Frames retention (tools/archive_frames.py, run daily by cron). OPTIONAL — omit
+# the whole section to keep everything local. `dest` is the only setting you must
+# provide to enable off-box archival; it is your PRIVATE NAS path, which is why it
+# lives here (git-ignored) and is never hardcoded in the source. See ops/retention.md.
+[retention]
+# Where archived frame files are shipped, on a mounted network share.
+dest       = "/mnt/nas/YOUR_SHARE/steemer-archives"
+# Optional overrides (defaults shown):
+# stage      = "archive"        # local staging dir (relative to repo root)
+# hot_hours  = 48               # closed runs older than this are archived + pruned
+# mount_root = "/mnt/nas"       # must be a live mount or the pass refuses to run
