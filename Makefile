@@ -74,6 +74,10 @@ replay: ## Replay recorded history through the current decision engine; WORLD=va
 dashboard: ## Serve the read-only web dashboard; HOST=/PORT= to change bind
 	uv run python ui/server.py --host $(HOST) --port $(PORT)
 
+.PHONY: sidecar
+sidecar: ## Web sidecar: rainbow guild color + intel polling (allies/rivals/tiles) -> DB
+	uv run python tools/web_sidecar.py $(ARGS)
+
 # ---- the improvement loop -------------------------------------------------
 
 .PHONY: test

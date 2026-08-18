@@ -899,3 +899,50 @@ or roster_cap regresses.
 **Verify.** pytest 177 passed / 2 skipped; the recruit-uses-spectate /
 embark-uses-frame split is mutation-checked (each side broken -> its test fails).
 Reaper gate: pending. Redeploy needed.
+
+## 2026-08-18 15:58 — web sidecar: rainbow color + web-API intel (allies/rivals/world) actively fed into analysis
+
+**What.** A new always-on companion process, `tools/web_sidecar.py` (`make
+sidecar`), that owns the guild's HTTP-API surface — orthogonal to gameplay (which
+runs over ZeroMQ), so it lives in its own process and survives strategy
+redeploys. Three jobs:
+
+1. **Rainbow guild color.** Every 2 s it `POST /api/guild/color` with the next
+   hue (`web.rainbow_hex`, full spectrum every 24 s).
+2. **Intel polling → the `intel` table.** Every 30 s it records
+   `/api/spectate/guilds` (the whole-world roster: our allies AND the rival
+   guilds — names, per-char world/level/gear); hourly it records `/api/tiles`
+   (the world's sprite/tile vocabulary).
+3. **Analysis integration.** `metrics.snapshot` (hence `tools/analyze.py`, hence
+   the analyze subagent) now carries an `intel` block: `summarize_spectate`
+   splits the latest observation into `us` vs `rivals` with size / by-world /
+   level histogram / gear counts and a `vs_biggest_rival` head-to-head.
+
+**Auth.** The write endpoints need a session cookie: `POST /api/login
+{guild_id, token}` (the same creds as the ZeroMQ `hello`) sets it;
+`steemer.web.WebClient` holds it and re-logs-in transparently on a 401. Spectate
+and tiles are public. HTTP base derives from the token's server URL.
+
+**New infra.** `steemer/web.py` (client + rainbow), `steemer/intel.py` (persist +
+summarize), an `intel` table added to both SQLite and MariaDB schemas (the
+sidecar `apply_schema`s it, idempotent). No gameplay code touched; no strategy
+version change.
+
+**Why.** The frames only show our guild and our vision. `/api/spectate/guilds`
+exposes the competition — and it is genuinely multiplayer now (rival guild
+"WillMorr", g_63837f). First live read already shows a real signal: **WillMorr 30
+chars vs our 15** — we are being out-grown, which is exactly the kind of thing
+analysis should now weigh.
+
+**Notes / honesty.** `/api/tiles` is thinner than the web client implied — its
+`tiles`/`types`/`tier_tiles` maps come back empty; only `count`, `surface_tiles`,
+`fx_tiles`, `looks` carry data — so the tile intel is minor; the spectate roster
+is the valuable part. The spectate roster's `equipment` shows armed/armored 0 for
+both guilds, which may be a summary-view limitation rather than truth — treat
+those two fields as low-confidence until cross-checked against our own frames.
+
+**Verify.** pytest 186 passed / 2 skipped; web re-login-on-401 and the us/rivals
+split are mutation-checked. Live end-to-end: sidecar signed in, set the color,
+recorded spectate (2 guilds) + tiles (714 sprites); `metrics.snapshot.intel`
+renders the head-to-head. **Operator runs `make sidecar` in its own screen
+window** (like the bot and dashboard) — reaper gate: pending.

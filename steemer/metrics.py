@@ -18,6 +18,7 @@ import zlib
 from typing import Any
 
 from . import db as _db
+from . import intel as _intel
 
 
 def _ro(db: Any) -> _db.Connection:
@@ -174,6 +175,24 @@ def snapshot(db: Any = None) -> dict[str, Any]:
                 "WHERE kind='bot_anomaly' GROUP BY world ORDER BY MAX(tick) DESC LIMIT 8"
             ).fetchall()
         ]
+
+        # -- web-API intel (allies + rivals + world), from the sidecar ------
+        # Actively surfaced to the analysis loop: the whole-world roster the ZeroMQ
+        # frames can't see (our size vs rival guilds, level distributions, gear),
+        # plus whether the tile vocabulary has been captured.
+        spectate = _intel.latest(conn, "spectate")
+        if spectate:
+            our_gid = ((village or {}).get("guild", {}) or {}).get("guild_id")
+            tiles = _intel.latest(conn, "tiles")
+            td = (tiles or {}).get("data") or {}
+            out["intel"] = {
+                "spectate": _intel.summarize_spectate(spectate["data"], our_gid),
+                "spectate_observed_at": spectate["observed_at"],
+                "tiles": ({"sprite_count": td.get("count"),
+                           "categories": {k: len(v) for k, v in td.items()
+                                          if isinstance(v, dict) and v},
+                           "observed_at": tiles["observed_at"]} if tiles else None),
+            }
 
         # -- per-run windows (for before/after attribution) ------------------
         out["runs"] = _run_summaries(conn)

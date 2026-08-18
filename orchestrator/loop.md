@@ -64,6 +64,11 @@ keep playing** — so protection is layered:
    Ask it: what is the current KPI state; what changed vs the previous run
    window; what does the game appear to reward; and the top few concrete,
    testable improvements, ranked. Keep the raw data out of the main thread.
+   The snapshot's **`intel`** block (from the web sidecar — `make sidecar`)
+   carries the whole-world roster the ZeroMQ frames can't see: our size / level
+   distribution / gear vs each rival guild (`us` vs `rivals`, `vs_biggest_rival`),
+   and the tile vocabulary. Have the analyst use it — are we out-growing or being
+   out-grown, out-levelled, out-geared; is a rival a threat or an opportunity.
 
 4. **Pick a change.** Advance the lowest unmet milestone in
    [`gameplan.md`](gameplan.md) (it holds the goals, exit criteria, and

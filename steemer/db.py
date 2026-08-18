@@ -433,6 +433,14 @@ CREATE TABLE IF NOT EXISTS runs (
     git_sha TEXT, strategy_version TEXT,
     started_at REAL, stopped_at REAL, note TEXT
 );
+-- intel: periodic HTTP-API observations the ZeroMQ frames do not carry — every
+-- guild's roster (allies + rivals) from /api/spectate/guilds, and the world's
+-- tile vocabulary from /api/tiles. Written by the web sidecar, read by analysis.
+CREATE TABLE IF NOT EXISTS intel (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    observed_at REAL, tick INTEGER, kind TEXT, payload_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_intel_kind_seq ON intel(kind, seq);
 CREATE INDEX IF NOT EXISTS idx_frames_tick ON frames(tick);
 -- (kind, tick) composite: serves GROUP BY kind AND lets the dashboard's
 -- "first seen per kind" (MIN(tick) per kind) be an index lookup instead of a
@@ -503,6 +511,11 @@ CREATE TABLE IF NOT EXISTS runs (
     run_id INT AUTO_INCREMENT PRIMARY KEY,
     git_sha VARCHAR(255), strategy_version VARCHAR(255),
     started_at DOUBLE, stopped_at DOUBLE, note TEXT
+);
+CREATE TABLE IF NOT EXISTS intel (
+    seq INT AUTO_INCREMENT PRIMARY KEY,
+    observed_at DOUBLE, tick INT, kind VARCHAR(255), payload_json LONGTEXT,
+    KEY idx_intel_kind_seq (kind, seq)
 );
 """
 
