@@ -402,3 +402,53 @@ DB (3.4 GiB) will plateau well under the 40 GiB free as the cron ages runs out.
 KNOWN LIMIT: archival is per-CLOSED-run, so a long-open run during a loop pause
 isn't archived (logged as a finding; fix = timed run rotation or age-based
 partial archival). Hardware verdict stands: CPU/RAM idle, no new hardware needed.
+
+## 2026-08-18 02:08 — dashboard unusable on the grown DB: fix the cause (indexes + snapshot off the request thread)
+Every dashboard tab hung/blank. Diagnosed against the live server: not the
+WebSocket — several read paths ran unindexed scans / heavy aggregates on a mirror
+that has grown to ~5.4 GB (917K frames, 2.2M decisions, 1.5M events), taking
+45–300s, and because a browser caps ~6 conns/host the hung sockets starved even
+the fast endpoints. Four causes fixed: (1) snapshot() ran on the HTTP request
+thread with only a post-compute cache, so concurrent tabs/refreshes STAMPEDED N
+full computes at once (caught dozens piled up live, COUNTs at 180s) — moved to one
+background worker that recomputes ≤ every 5 min and only when data advanced;
+request threads read a cache or get "computing", never block. (2) _run_gold_delta
+used `seq IN (SELECT MIN…UNION SELECT MAX…)`, which MariaDB plans as a DEPENDENT
+subquery and full-scans every frame blob per run — 294s/snapshot; compute the two
+seqs first, fetch by PK: 294s→40s. (3) decisions.world/char_uid unindexed
+(60s DISTINCT that the page awaited before rendering) and events(kind) couldn't
+serve MIN(tick)-per-kind (22s) — added decisions(world), decisions(char_uid),
+swapped events(kind)→(kind,tick); all built ONLINE (LOCK=NONE) on the live DB, no
+writer interruption, and added to the schema for fresh DBs. (4) front-end: render
+each tab before filling filter dropdowns, and an AbortController timeout per fetch
+so one slow endpoint can't starve the pool.
+Verify: 138 pytest green; endpoints re-timed on the live server (worlds/chars
+60s→<0.1s via EXPLAIN loose-scan; snapshot 294→40s; observed 22.6→1.5s; all tabs
+load). Gold-delta ships a query-SHAPE regression test (a small SQLite DB returns
+the right answer either way, so only the shape catches a revert). Commit 5149ba3.
+
+## 2026-08-18 02:41 — dashboard WebSocket: push the data, not a "go fetch" nudge (operator directive)
+Operator: the socket "should push the entire update, not ask the frontend to
+pull it; the only RESTful thing should be on first load." The old socket sent a
+bare "changed" nudge 1×/s and the page re-fetched its active tab over REST — so
+every tab was effectively polled at 1 Hz (the DB advances every game tick), and
+Overview/Timeline re-pulled a 5-min-cached snapshot ~300× between changes.
+Rebuilt as a subscription/push channel: each client subscribes to its view (tab +
+filters) with a cursor, and a per-client push loop sends only what is new past the
+cursor — new decision rows (prepend), the moving map overlay + freshly-seen tiles
+(merge by coord), a recomputed snapshot (only on a new version), an appended log
+tail. REST is used only for first paint of a view + no-socket fallback.
+Race-freedom (operator caught it): the REST pull and the deltas share one
+monotonic seq — the page subscribes with the max seq its REST pull returned and
+each delta returns strictly-greater rows, so nothing is missed or duplicated,
+given the single sequential writer the mirror already assumes. REST responses now
+carry that watermark (frame seq /api/map, publish counter /api/snapshot+observed,
+byte size /api/log, mtime /api/findings). Deliberate trade: map tile pushes stay
+keyed on last_tick (not a cheaper tile-count) so a tile changing KIND at a known
+coord (a chest opening) still updates live — ~10 KB/s while the Map tab is open,
+26× under the old full-map refetch.
+Verify: 145 pytest green; reworked test_ws.py (framing, sub parser + cursor-clobber
+guard, each delta builder over temp SQLite, end-to-end subscribe→write→receive-rows
+from both sides). Mutation-checked: nulling the decisions delta fails the e2e
+oracle. Live-probed against the running bot: Decisions/Map stream data ~1/s,
+Overview pushed nothing in 2.5s (only on recompute). Commit 6315b97.
