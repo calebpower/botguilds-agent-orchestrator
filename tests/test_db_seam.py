@@ -199,3 +199,41 @@ def test_schema_mariadb_splits_into_whole_create_statements():
     d = decisions[0]
     assert "idx_decisions_world" in d and "idx_decisions_char" in d   # tail survived
     assert d.rstrip().endswith(")")
+
+
+# --- streaming cursor for large reads (archive export) ---------------------- #
+
+class _FakeCur:
+    def __init__(self, buffered): self.buffered = buffered; self.description = [("x",)]
+    def execute(self, sql, params=None): self.sql = sql
+    @property
+    def with_rows(self): return True
+    def __iter__(self): return iter(())
+    def close(self): pass
+
+class _FakeRaw:
+    def __init__(self): self.buffered_flags = []
+    def cursor(self, buffered=False):
+        self.buffered_flags.append(buffered)
+        return _FakeCur(buffered)
+
+def test_execute_streams_unbuffered_while_execute_buffers_on_mariadb():
+    # export_run reads a whole run's frames; on MariaDB that MUST be an unbuffered
+    # cursor or a multi-GB run is materialised in memory (OOM). execute() stays
+    # buffered (safe for the nested-query read paths). Break either flag -> fail.
+    raw = _FakeRaw()
+    conn = _db.Connection(raw, "mariadb")
+    conn.execute("SELECT 1")
+    assert raw.buffered_flags[-1] is True         # normal reads buffer
+    conn.execute_stream("SELECT json FROM frames WHERE run_id=?", (1,))
+    assert raw.buffered_flags[-1] is False        # export streams (no OOM)
+
+def test_execute_stream_on_sqlite_delegates_and_streams(tmp_path):
+    p = tmp_path / "s.db"
+    conn = _db.connect({"type": "sqlite", "path": str(p)})
+    conn.execute("CREATE TABLE t(a INT)")
+    conn.executemany("INSERT INTO t(a) VALUES(?)", [(1,), (2,), (3,)])
+    conn.commit()
+    got = sorted(r[0] for r in conn.execute_stream("SELECT a FROM t"))
+    assert got == [1, 2, 3]
+    conn.close()

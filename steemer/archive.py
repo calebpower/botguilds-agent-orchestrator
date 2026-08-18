@@ -80,7 +80,11 @@ def export_run(conn: _db.Connection, run_id: int, out_path: str) -> dict[str, An
               "stopped_at": meta[3] if meta else None,
               "note": meta[4] if meta else None}
     rows = 0
-    cur = conn.execute(
+    # STREAM the frames (execute_stream, not execute): a run can be many GB of
+    # blobs, and the MariaDB seam's default cursor is buffered — it would
+    # materialise the whole run in memory. The loop below issues no other query
+    # mid-iteration, so an unbuffered cursor is safe here.
+    cur = conn.execute_stream(
         "SELECT seq, tick, world, received_at, run_id, json FROM frames "
         "WHERE run_id=? ORDER BY seq", (run_id,))
     with gzip.open(out_path, "wt", encoding="utf-8") as gz:

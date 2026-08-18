@@ -254,6 +254,21 @@ class Connection:
         cur.close()
         return res
 
+    def execute_stream(self, sql: str, params: Iterable[Any] = ()):
+        """Like :meth:`execute` but for a read whose result set can be arbitrarily
+        large (a whole run's frames): it does NOT buffer the rows client-side. On
+        MariaDB this uses an UNBUFFERED cursor, so the caller MUST consume the
+        returned iterator fully before issuing another statement on this
+        connection (no nested query mid-iteration). On SQLite, ``execute`` already
+        streams, so this just delegates. Without it, exporting a multi-GB run
+        through the buffered cursor would materialise the entire run in memory."""
+        if self.dialect == "sqlite":
+            return self._raw.execute(sql, tuple(params))
+        cur = self._raw.cursor(buffered=False)
+        p = tuple(params)
+        cur.execute(self._xlate(sql), p if p else None)
+        return _Cursor(cur)
+
     def executemany(self, sql: str, seq_of_params: Iterable[Sequence[Any]]):
         rows = [tuple(p) for p in seq_of_params]
         if self.dialect == "sqlite":

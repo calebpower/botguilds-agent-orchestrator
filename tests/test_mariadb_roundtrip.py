@@ -117,6 +117,25 @@ def test_mariadb_write_read_roundtrip():
         assert s.conn.execute(
             "SELECT COUNT(*) FROM tiles_seen WHERE world=? AND x=2 AND y=3",
             (TEST_WORLD,)).fetchone()[0] == 1
+
+        # export_run must STREAM the run's frames off MariaDB (unbuffered cursor)
+        # and produce a faithful archive — the retention path that made cutover
+        # to MariaDB unsafe until now. Export to a temp file, read it back, and
+        # confirm the blob decompresses to exactly the frame we wrote.
+        import tempfile
+        from steemer import archive
+        out = tempfile.mktemp(suffix=".jsonl.gz")
+        try:
+            res = archive.export_run(s.conn, run_id, out)
+            assert res["rows"] >= 1
+            back = list(archive.read_archive(out))
+            blobs = [bytes(r["blob"]) for r in back
+                     if r["run_id"] == run_id and r["tick"] == 424242]
+            assert blobs, "export_run yielded no frame for the test run"
+            assert json.loads(zlib.decompress(blobs[0]))["world"] == TEST_WORLD
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
     finally:
         _cleanup(s.conn, run_id)
         s.close()
