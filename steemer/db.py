@@ -372,7 +372,10 @@ CREATE TABLE IF NOT EXISTS runs (
     started_at REAL, stopped_at REAL, note TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_frames_tick ON frames(tick);
-CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind);
+-- (kind, tick) composite: serves GROUP BY kind AND lets the dashboard's
+-- "first seen per kind" (MIN(tick) per kind) be an index lookup instead of a
+-- full-table scan. Supersedes the old single-column events(kind) index.
+CREATE INDEX IF NOT EXISTS idx_events_kind_tick ON events(kind, tick);
 CREATE INDEX IF NOT EXISTS idx_events_tick ON events(tick);
 CREATE INDEX IF NOT EXISTS idx_decisions_tick ON decisions(tick);
 CREATE INDEX IF NOT EXISTS idx_actionerr_reason ON action_errors(reason);
@@ -382,6 +385,10 @@ CREATE INDEX IF NOT EXISTS idx_actions_run ON actions_sent(run_id);
 CREATE INDEX IF NOT EXISTS idx_actionerr_run ON action_errors(run_id);
 CREATE INDEX IF NOT EXISTS idx_actions_action ON actions_sent(action);
 CREATE INDEX IF NOT EXISTS idx_decisions_action ON decisions(action);
+-- world/char_uid feed the dashboard's filter dropdowns via SELECT DISTINCT; without
+-- these the DISTINCT is a full scan of the (large) decisions table.
+CREATE INDEX IF NOT EXISTS idx_decisions_world ON decisions(world);
+CREATE INDEX IF NOT EXISTS idx_decisions_char ON decisions(char_uid);
 """
 
 SCHEMA_MARIADB = """
@@ -396,7 +403,9 @@ CREATE TABLE IF NOT EXISTS frames (
 CREATE TABLE IF NOT EXISTS events (
     seq INT AUTO_INCREMENT PRIMARY KEY,
     tick INT, world VARCHAR(255), kind VARCHAR(255), payload_json TEXT, run_id INT,
-    KEY idx_events_kind (kind),
+    -- (kind, tick) composite: serves GROUP BY kind AND makes the dashboard's
+    -- MIN(tick)-per-kind "first seen" an index lookup, not a 1.5M-row scan.
+    KEY idx_events_kind_tick (kind, tick),
     KEY idx_events_tick (tick)
 );
 CREATE TABLE IF NOT EXISTS actions_sent (
@@ -422,7 +431,11 @@ CREATE TABLE IF NOT EXISTS decisions (
     action VARCHAR(255), chosen_json TEXT, alternatives_json TEXT, reasoning TEXT,
     strategy_version VARCHAR(255), run_id INT,
     KEY idx_decisions_tick (tick),
-    KEY idx_decisions_action (action)
+    KEY idx_decisions_action (action),
+    -- world/char_uid feed the dashboard's filter dropdowns via SELECT DISTINCT;
+    -- without these the DISTINCT is a full scan of the (large) decisions table.
+    KEY idx_decisions_world (world),
+    KEY idx_decisions_char (char_uid)
 );
 CREATE TABLE IF NOT EXISTS runs (
     run_id INT AUTO_INCREMENT PRIMARY KEY,

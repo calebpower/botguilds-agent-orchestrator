@@ -148,18 +148,28 @@ def _run_summaries(conn: _db.Connection) -> list[dict[str, Any]]:
 def _run_gold_delta(conn: _db.Connection, run_id: int) -> int | None:
     """First vs last observed guild gold within a run (village frames only).
 
-    Decompress only the first and last village frame — the min/max seq rows,
-    found via idx_frames_run_world_seq — instead of every village frame in the
-    run. That turns this from O(frames-in-run) (tens of thousands of blob reads +
-    zlib per snapshot) into O(1), which was the bulk of the /api/snapshot cost.
+    Two steps, each genuinely O(1): first find the min/max village-frame ``seq``
+    for the run (an index-only lookup on idx_frames_run_world_seq — "tables
+    optimized away"), then fetch exactly those 1-2 rows by PRIMARY KEY.
+
+    This must NOT be written as ``WHERE seq IN (SELECT MIN(seq) … UNION SELECT
+    MAX(seq) …)``: MariaDB plans that as a *dependent* subquery re-checked per
+    row, so the outer query degrades to a full index scan of every frame that
+    decompresses each ~2.4 GB of blobs — minutes per snapshot, and it was the
+    real bulk of the /api/snapshot cost. Computing the two seq values first and
+    binding them as literals keeps the outer fetch a two-row PK lookup.
     """
+    bounds = conn.execute(
+        "SELECT MIN(seq), MAX(seq) FROM frames WHERE run_id=? AND world='village'",
+        (run_id,)).fetchone()
+    if not bounds or bounds[0] is None:
+        return None
+    lo, hi = bounds[0], bounds[1]
+    seqs = (lo,) if lo == hi else (lo, hi)
+    placeholders = ",".join(["?"] * len(seqs))
     rows = conn.execute(
-        "SELECT json FROM frames WHERE seq IN ("
-        "  SELECT MIN(seq) FROM frames WHERE run_id=? AND world='village' "
-        "  UNION "
-        "  SELECT MAX(seq) FROM frames WHERE run_id=? AND world='village'"
-        ") ORDER BY seq",
-        (run_id, run_id)).fetchall()
+        f"SELECT json FROM frames WHERE seq IN ({placeholders}) ORDER BY seq",
+        seqs).fetchall()
     golds = []
     for (blob,) in rows:
         g = json.loads(zlib.decompress(blob)).get("guild", {}).get("gold")

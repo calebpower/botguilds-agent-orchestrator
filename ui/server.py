@@ -86,75 +86,125 @@ def _db_ready(db_cfg) -> bool:
     return _db.db_ready(db_cfg)
 
 
-# The KPI snapshot is a non-trivial aggregate over a large log; cache it briefly
-# so the dashboard's ~1s polling coalesces onto one recompute every few seconds
-# instead of stacking, and so /api/snapshot and /api/observed share one compute.
-# Sub-TTL staleness is irrelevant for a dashboard.
-_SNAP_TTL = 3.0
-_snap_cache: dict[str, tuple[float, dict]] = {}
+# The filter-dropdown lists (distinct worlds / character uids) change only when a
+# new world is entered or a new character is fielded — rare — but the query still
+# touches large tables (SELECT DISTINCT world FROM frames is a full index scan).
+# A short TTL keeps a tab-switch or reconnect storm from re-running them, without
+# ever serving a stale-by-more-than-a-few-seconds list.
+_LIST_TTL = 15.0
+_list_lock = threading.Lock()
+_list_cache: dict[str, tuple[float, list]] = {}
 
 
-def _cache_key(db_cfg) -> str:
-    """Hashable, secret-free cache key for a backend config (or a raw path str)."""
-    return db_cfg if isinstance(db_cfg, str) else _db.cfg_key(db_cfg)
-
-
-def _snapshot_cached(db_cfg) -> dict:
+def _cached_list(key: str, fn) -> list:
     now = time.monotonic()
-    key = _cache_key(db_cfg)
-    cached = _snap_cache.get(key)
-    if cached is not None and now - cached[0] < _SNAP_TTL:
-        return cached[1]
-    snap = metrics.snapshot(db_cfg)
-    _snap_cache[key] = (now, snap)
-    return snap
+    with _list_lock:
+        hit = _list_cache.get(key)
+        if hit is not None and now - hit[0] < _LIST_TTL:
+            return hit[1]
+    val = fn()
+    with _list_lock:
+        _list_cache[key] = (now, val)
+    return val
+
+
+# The KPI snapshot is a heavy aggregate over a multi-GB mirror: dozens of
+# full-scan COUNT(*)/GROUP BY queries that take tens of seconds on a large
+# guild_log. Computing it on the HTTP request thread made /api/snapshot (and
+# /api/observed, which reuses it) hang for the whole compute — and because a
+# browser caps ~6 connections per host, those hung sockets starved every *other*
+# endpoint too, so the whole dashboard appeared dead. Instead a dedicated
+# background thread (see _snapshot_worker) recomputes it off the request path and
+# publishes it here; request threads only ever read this cache and never block on
+# a compute. The read is intentionally non-blocking: a cold cache returns
+# "computing" rather than triggering an inline recompute.
+_snap_lock = threading.Lock()
+_snap_state: dict = {"snap": None, "computed_at": 0.0, "error": None}
+# One full snapshot is a genuinely heavy aggregate over the multi-GB mirror
+# (full COUNT(*)s on frames/decisions/events plus a per-run gold-delta blob read),
+# minutes of wall time on a large guild_log. A KPI overview does not need
+# sub-minute freshness, and recomputing tightly would keep the DB perpetually
+# busy competing with the live writer — so the background worker recomputes at
+# most this often, and only when the data has actually advanced (see below).
+_SNAP_REFRESH = 300.0
+
+
+def _publish_snapshot(db_cfg) -> None:
+    """Compute the snapshot and publish it. Called only from the background
+    worker thread — never from an HTTP request thread."""
+    try:
+        snap = metrics.snapshot(db_cfg)
+    except _db.Error as exc:      # empty/partial DB or a transient hiccup
+        with _snap_lock:
+            _snap_state["error"] = str(exc)
+        return
+    with _snap_lock:
+        _snap_state["snap"] = snap
+        _snap_state["computed_at"] = time.monotonic()
+        _snap_state["error"] = None
+
+
+def _read_snapshot() -> tuple[dict | None, str | None]:
+    """The latest published snapshot (or None) and the last compute error."""
+    with _snap_lock:
+        return _snap_state["snap"], _snap_state["error"]
 
 
 def api_snapshot(db_path: str) -> dict:
-    """KPI overview — reuse :func:`steemer.metrics.snapshot`, cached briefly."""
+    """KPI overview — served from the background-published cache, never computed
+    on the request thread. ``ok:false, reason:"computing"`` until the first
+    background compute lands (a few tens of seconds after startup)."""
     if not _db_ready(db_path):
         return {"ok": False, "reason": "no_db"}
-    try:
-        snap = _snapshot_cached(db_path)
-        snap["ok"] = True
-        return snap
-    except _db.Error as exc:  # empty/partial DB: degrade, don't crash
-        return {"ok": False, "reason": str(exc)}
+    snap, err = _read_snapshot()
+    if snap is None:
+        return {"ok": False, "reason": err or "computing"}
+    out = dict(snap)
+    out["ok"] = True
+    return out
 
 
 def api_worlds(db_path: str) -> list[str]:
     """Distinct worlds we have any record of (tiles or frames), for dropdowns."""
     if not _db_ready(db_path):
         return []
-    conn = _ro(db_path)
-    try:
-        worlds: set[str] = set()
-        for table in ("tiles_seen", "frames", "decisions"):
-            for (w,) in conn.execute(f"SELECT DISTINCT world FROM {table}"):
-                if w:
-                    worlds.add(w)
-        return sorted(worlds)
-    except _db.Error:
-        return []
-    finally:
-        conn.close()
+
+    def compute() -> list[str]:
+        conn = _ro(db_path)
+        try:
+            worlds: set[str] = set()
+            for table in ("tiles_seen", "frames", "decisions"):
+                for (w,) in conn.execute(f"SELECT DISTINCT world FROM {table}"):
+                    if w:
+                        worlds.add(w)
+            return sorted(worlds)
+        except _db.Error:
+            return []
+        finally:
+            conn.close()
+
+    return _cached_list(f"worlds:{_db.cfg_key(db_path)}", compute)
 
 
 def api_chars(db_path: str) -> list[str]:
     """Distinct character uids that appear in decisions, for the feed filter."""
     if not _db_ready(db_path):
         return []
-    conn = _ro(db_path)
-    try:
-        rows = conn.execute(
-            "SELECT DISTINCT char_uid FROM decisions WHERE char_uid IS NOT NULL "
-            "ORDER BY char_uid"
-        ).fetchall()
-        return [r[0] for r in rows]
-    except _db.Error:
-        return []
-    finally:
-        conn.close()
+
+    def compute() -> list[str]:
+        conn = _ro(db_path)
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT char_uid FROM decisions WHERE char_uid IS NOT NULL "
+                "ORDER BY char_uid"
+            ).fetchall()
+            return [r[0] for r in rows]
+        except _db.Error:
+            return []
+        finally:
+            conn.close()
+
+    return _cached_list(f"chars:{_db.cfg_key(db_path)}", compute)
 
 
 def api_decisions(db_path: str, char: str | None, world: str | None,
@@ -324,12 +374,11 @@ def api_observed(db_path: str) -> dict:
                 "SELECT reason, COUNT(*) FROM action_errors "
                 "GROUP BY reason ORDER BY 2 DESC")
         ]
-        # Exploration frontier: reuse the *cached* snapshot's exploration block
-        # (was a full second snapshot() compute on every Findings-tab poll).
-        try:
-            out["exploration"] = _snapshot_cached(db_path).get("exploration", {})
-        except _db.Error:
-            out["exploration"] = {}
+        # Exploration frontier: reuse the background-published snapshot's
+        # exploration block (never compute one inline — that reintroduces the
+        # request-thread hang this endpoint used to suffer).
+        snap, _ = _read_snapshot()
+        out["exploration"] = (snap or {}).get("exploration", {})
         return out
     except _db.Error:
         return empty
@@ -476,6 +525,60 @@ def _watch_and_push(db_config, stop: threading.Event, interval: float = 1.0) -> 
                     {"type": "changed", "frames": sig[0],
                      "decisions": sig[1], "run": sig[2]}))
         stop.wait(interval)
+
+
+def _data_signature(db_config) -> tuple | None:
+    """A cheap "has anything been written?" fingerprint: the PRIMARY-KEY maxima
+    of the two hot tables (an instant index lookup on both backends). ``None`` on
+    any DB hiccup, which the caller treats as "recompute to be safe"."""
+    try:
+        conn = _db.connect(db_config, readonly=True)
+        try:
+            fr = conn.execute("SELECT MAX(seq) FROM frames").fetchone()
+            de = conn.execute("SELECT MAX(seq) FROM decisions").fetchone()
+        finally:
+            conn.close()
+        return (fr[0] if fr else None, de[0] if de else None)
+    except _db.Error:
+        return None
+
+
+def _snapshot_step(db_config, last_sig):
+    """One worker iteration: (re)compute the snapshot iff the data has advanced
+    since ``last_sig`` (or nothing has been published yet, or the signature is
+    unavailable), and return the ``last_sig`` to carry into the next iteration.
+
+    Extracted from the worker loop so the change-detection guard — the thing that
+    stops a static DB from being re-aggregated (minutes of load) every cycle — is
+    unit-testable without driving the thread."""
+    sig = _data_signature(db_config)
+    published, _ = _read_snapshot()
+    # Recompute when the data changed, when we've never published, or when the
+    # signature is unavailable (a hiccup — recompute rather than serve nothing).
+    if sig is None or sig != last_sig or published is None:
+        _publish_snapshot(db_config)
+        fresh, err = _read_snapshot()
+        if fresh is not None and err is None:
+            return sig
+    return last_sig
+
+
+def _snapshot_worker(db_config, stop: threading.Event,
+                     refresh: float = _SNAP_REFRESH) -> None:
+    """Recompute and publish the KPI snapshot off the HTTP request path.
+
+    The snapshot is a heavy multi-GB aggregate (minutes of wall time); running it
+    on a request thread hung /api/snapshot and, via the browser's connection cap,
+    starved the whole dashboard. This owns that cost on a background thread:
+    (re)compute only when the data has advanced, publish, wait ``refresh``
+    seconds, repeat. The first compute starts at startup, so Overview/Timeline
+    show a "computing…" placeholder until it lands, then update each cycle. A slow
+    compute simply defers the next one — never a pile-up, since the next compute
+    begins only after this one returns."""
+    last_sig = object()          # sentinel: guarantees a compute on the first pass
+    while not stop.is_set():
+        last_sig = _snapshot_step(db_config, last_sig)
+        stop.wait(refresh)
 
 
 # --------------------------------------------------------------------------- #
@@ -923,10 +1026,16 @@ const el = (t, cls, txt) => { const e=document.createElement(t);
 const fmtNum = n => (n==null?"—":Number(n).toLocaleString());
 const esc = s => (s==null?"":String(s));
 
-async function getJSON(url){
-  try{ const r = await fetch(url,{cache:"no-store"}); if(!r.ok) return null;
-       return await r.json(); }
+async function getJSON(url, timeoutMs){
+  // Bound every request: a browser caps ~6 connections per host, so an endpoint
+  // that hangs (a heavy query on a large DB) would otherwise hold its socket open
+  // and starve every other tab. AbortController frees the connection on timeout.
+  const ctl = new AbortController();
+  const t = setTimeout(()=>ctl.abort(), timeoutMs||15000);
+  try{ const r = await fetch(url,{cache:"no-store", signal:ctl.signal});
+       if(!r.ok) return null; return await r.json(); }
   catch(e){ return null; }
+  finally{ clearTimeout(t); }
 }
 
 /* ---- tabs ---- */
@@ -973,7 +1082,10 @@ async function loadOverview(){
   const tiles = $("#ov-tiles");
   if(!s || !s.ok){
     tiles.innerHTML = "";
-    tiles.appendChild(el("div","empty","No data yet — waiting for the bot to write guild_log.db."));
+    const msg = (s && s.reason==="computing")
+      ? "Computing KPIs… the first snapshot is being built in the background; this refreshes automatically."
+      : "No data yet — waiting for the bot to write guild_log.db.";
+    tiles.appendChild(el("div","empty",msg));
     $("#livedot").classList.remove("live");
     ["#ov-actions","#ov-decisions","#ov-events","#ov-errors","#ov-explore"]
       .forEach(id=>$(id).innerHTML="");
@@ -1041,7 +1153,11 @@ async function fillDecisionFilters(){
     const o=el("option",null,w); o.value=w; ws.appendChild(o); });
 }
 async function loadDecisions(){
-  await fillDecisionFilters();
+  // Populate the char/world dropdowns in the background — do NOT block the feed
+  // on them. The feed itself is a fast indexed query; the dropdown lists come
+  // from heavier DISTINCT scans, and awaiting them here used to leave the whole
+  // tab blank whenever those were slow.
+  fillDecisionFilters();
   const char=$("#f-char").value, world=$("#f-world").value, limit=$("#f-limit").value;
   const qs = new URLSearchParams();
   if(char) qs.set("char",char); if(world) qs.set("world",world); qs.set("limit",limit);
@@ -1123,6 +1239,9 @@ async function fillMapWorlds(){
   const sel=$("#m-world"); sel.innerHTML="";
   (worlds||[]).filter(w=>w!=="village").forEach(w=>{
     const o=el("option",null,w); o.value=w; sel.appendChild(o); });
+  // The map may already be drawn (we no longer block on this list) — reflect the
+  // world actually on screen so the dropdown and canvas agree.
+  if(mapWorld && [...sel.options].some(o=>o.value===mapWorld)) sel.value=mapWorld;
   // Explicit world switch = a fresh frame-the-world view (drop any saved one).
   sel.onchange = ()=>{ delete mapViews[sel.value]; mapWorld=null; loadMap(); };
 }
@@ -1256,7 +1375,10 @@ function wireMap(){
 }
 
 async function loadMap(){
-  await fillMapWorlds();
+  // Populate the world dropdown in the background; draw the map now. With no
+  // selection yet the server picks the most-mapped world, so the canvas renders
+  // immediately instead of waiting on the (heavier) world-list query.
+  fillMapWorlds();
   wireMap();
   const world = $("#m-world").value;
   const m = await getJSON("/api/map"+(world?("?world="+encodeURIComponent(world)):""));
@@ -1296,7 +1418,12 @@ async function loadTimeline(){
   const s = await getJSON("/api/snapshot");
   const list = $("#tl-list"); list.innerHTML="";
   const runs = (s && s.ok && s.runs) ? s.runs : [];
-  if(!runs.length){ list.appendChild(el("div","empty","No runs recorded yet.")); return; }
+  if(!runs.length){
+    const computing = s && !s.ok && s.reason==="computing";
+    list.appendChild(el("div","empty", computing
+      ? "Computing… building the first KPI snapshot; this refreshes automatically."
+      : "No runs recorded yet."));
+    return; }
   const fmtTime = t => t==null ? "—" : new Date(t*1000).toLocaleString();
   // newest last in table; show newest first in the timeline
   for(const r of [...runs].reverse()){
@@ -1512,12 +1639,17 @@ def main() -> None:
     print(f"steemer dashboard on http://{args.host}:{args.port}  "
           f"db={_db.cfg_key(db_cfg)} [{ready}]  (WebSocket push at /ws)")
 
-    # One watcher thread pushes "changed" to all WS clients when the DB advances,
-    # so the page updates on write instead of every client polling on a timer.
+    # Two background threads: the watcher pushes "changed" to all WS clients when
+    # the DB advances (so the page updates on write, not on a per-client timer),
+    # and the snapshot worker recomputes the heavy KPI aggregate off the request
+    # path so /api/snapshot never hangs a connection (and never starves the rest).
     stop = threading.Event()
     watcher = threading.Thread(
         target=_watch_and_push, args=(db_cfg, stop), name="ws-watcher", daemon=True)
+    snapper = threading.Thread(
+        target=_snapshot_worker, args=(db_cfg, stop), name="snapshot-worker", daemon=True)
     watcher.start()
+    snapper.start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

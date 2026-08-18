@@ -88,6 +88,40 @@ def test_gold_delta_reads_first_and_last_village_only(tmp_path):
     assert snap["runs"][0]["gold_delta"] == 30      # 130 - 100, ignores 999
 
 
+def test_gold_delta_fetches_by_pk_not_correlated_subquery(tmp_path):
+    """Regression guard on query *shape*, not answer.
+
+    The first/last village frames must be fetched by their concrete seq values (a
+    two-row PRIMARY KEY lookup). Written as ``seq IN (SELECT MIN(seq) … UNION
+    SELECT MAX(seq) …)`` MariaDB plans a *dependent subquery* and full-scans every
+    frame blob — minutes per snapshot. A small SQLite test returns the right
+    number either way, so only the shape catches this regression."""
+    from steemer import db as _db
+    from steemer.metrics import _run_gold_delta
+
+    db, rid = _build(tmp_path)                       # first village gold 100, last 175
+    conn = _db.connect(db, readonly=True)
+    executed = []
+    real = conn.execute
+
+    def spy(sql, params=()):
+        executed.append(sql)
+        return real(sql, params)
+
+    conn.execute = spy
+    try:
+        assert _run_gold_delta(conn, rid) == 75      # 175 - 100
+    finally:
+        conn.close()
+
+    json_fetch = [q for q in executed
+                  if "json" in q.lower() and "from frames" in q.lower()]
+    assert json_fetch, "expected a fetch of frame json"
+    for q in json_fetch:
+        # exactly one SELECT -> the IN-list holds bound seq values, not a subquery
+        assert q.lower().count("select") == 1, f"correlated subquery reintroduced: {q}"
+
+
 def test_storage_creates_run_id_indexes(tmp_path):
     # These indexes are what keep /api/snapshot from full-scanning the log.
     s = Storage(str(tmp_path / "i.db"))
