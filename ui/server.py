@@ -1387,8 +1387,14 @@ function renderOverview(s){
   }
   $("#livedot").classList.add("live");
   const cur = s.current || {}, vol = s.volume || {};
-  const errRate = s.action_error_rate;
-  const errCls = errRate==null ? "" : errRate>0.25 ? "crit" : errRate>0.1 ? "warn" : "good";
+  // The meaningful error number is the CURRENT run's AVOIDABLE rate — the lifetime
+  // action_error_rate blends bad old eras, and most errors are the un-fixable
+  // phantom-character death-echo. Headline the avoidable slice; show the rest as
+  // context so nothing is hidden.
+  const ec = s.errors_current || {};
+  const avoid = ec.avoidable_rate;
+  const errCls = avoid==null ? "" : avoid>0.1 ? "crit" : avoid>0.05 ? "warn" : "good";
+  const pct = x => x==null ? "—" : (100*x).toFixed(x<0.1?1:0)+"%";
   const byWorld = cur.chars_by_world || {};
   const fielded = Object.values(byWorld).reduce((a,b)=>a+b,0);
   const roster = (cur.chars_here||0) + fielded;
@@ -1407,8 +1413,11 @@ function renderOverview(s){
   tiles.appendChild(stat("Fielded by world", "", worldStr));
   tiles.appendChild(stat("Decisions", fmtNum(vol.decisions), "traces recorded"));
   tiles.appendChild(stat("Actions sent", fmtNum(vol.actions_sent), fmtNum(vol.action_errors)+" errored"));
-  tiles.appendChild(stat("Action error rate",
-    errRate==null?"—":(100*errRate).toFixed(1)+"%", "lower is healthier", errCls));
+  tiles.appendChild(stat("Avoidable error rate",
+    avoid==null ? "—" : (100*avoid).toFixed(1)+"%",
+    ec.phantom_rate!=null
+      ? `run #${esc(ec.run_id)} · ${pct(ec.phantom_rate)} phantom-echo (unfixable) · ${pct(s.action_error_rate)} lifetime`
+      : "current run · lower is healthier", errCls));
   tiles.appendChild(stat("Frames", fmtNum(vol.frames),
     "ticks "+(vol.tick_span?vol.tick_span.join("–"):"—")));
   tiles.appendChild(stat("Wall clock", vol.wall_seconds!=null?(vol.wall_seconds+"s"):"—", "observed span"));

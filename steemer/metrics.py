@@ -203,9 +203,38 @@ def snapshot(db: Any = None) -> dict[str, Any]:
                 "strategy_version": latest["strategy_version"],
                 **latest.get("productivity", {}),
             }
+            # A MEANINGFUL error view: the CURRENT run only (not the lifetime
+            # average, which blends bad old eras), split into the largely
+            # un-fixable phantom-character death-echo vs the AVOIDABLE remainder.
+            out["errors_current"] = _current_errors(conn, latest)
         return out
     finally:
         conn.close()
+
+
+# The phantom-character family: the server echoes these for actions queued to a
+# char that died/left mid-field, or lost a world-transition race — largely NOT
+# bot-fixable from the frame. Split out so the headline error rate reflects the
+# errors we can actually do something about, not this floor.
+PHANTOM_REASONS = frozenset({"no_such_character", "unknown_character", "not_in_village"})
+
+
+def _current_errors(conn: _db.Connection, latest_run: dict[str, Any]) -> dict[str, Any]:
+    rid, sent = latest_run["run_id"], latest_run.get("actions_sent") or 0
+    by_reason: dict[str, int] = {}
+    for reason, n in conn.execute(
+            "SELECT reason, COUNT(*) FROM action_errors WHERE run_id=? GROUP BY reason", (rid,)):
+        by_reason[reason or ""] = n
+    total = sum(by_reason.values())
+    phantom = sum(n for r, n in by_reason.items() if r in PHANTOM_REASONS)
+    rate = (lambda n: round(n / sent, 3)) if sent else (lambda n: None)
+    return {
+        "run_id": rid, "strategy_version": latest_run["strategy_version"],
+        "actions_sent": sent, "errors": total, "rate": rate(total),
+        "phantom_echo": phantom, "phantom_rate": rate(phantom),
+        "avoidable": total - phantom, "avoidable_rate": rate(total - phantom),
+        "by_reason": dict(sorted(by_reason.items(), key=lambda kv: -kv[1])),
+    }
 
 
 def _run_summaries(conn: _db.Connection) -> list[dict[str, Any]]:

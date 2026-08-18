@@ -168,3 +168,21 @@ def test_snapshot_field_productivity(tmp_path):
     # and it's mirrored per-run in the runs timeline
     assert snapshot(str(tmp_path / "p.db"))["runs"][-1]["productivity"]["move_failed_rate"] == 0.25
     s.close()
+
+
+def test_snapshot_current_errors_splits_phantom_from_avoidable(tmp_path):
+    # the meaningful error view: current run only, with the un-fixable
+    # phantom-character death-echo split from the AVOIDABLE remainder.
+    s = Storage(str(tmp_path / "e.db"), commit_every=1)
+    s.begin_run("sha", "explorer/0.12.0")
+    s.record_frame({"type": "frame", "tick": 1, "world": "village",
+                    "guild": {"gold": 5, "chars_here": [], "chars_by_world": {}}, "chars": []})
+    s.record_actions(1, [{"char_uid": "c", "action": "move", "dir": "N"} for _ in range(10)])
+    for reason in ("unknown_character", "unknown_character", "no_such_character", "out_of_range"):
+        s.record_error({"tick": 1, "char_uid": "c", "action": "move", "reason": reason})
+    s.flush()
+    ec = snapshot(str(tmp_path / "e.db"))["errors_current"]
+    assert ec["errors"] == 4
+    assert ec["phantom_echo"] == 3 and ec["avoidable"] == 1   # 2 unknown + 1 no_such vs 1 out_of_range
+    assert ec["avoidable_rate"] == 0.1                        # 1 avoidable / 10 sent
+    s.close()

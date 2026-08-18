@@ -1048,3 +1048,20 @@ mutation-checked (break sell_waste → test fails). Live snapshot renders
 field_productivity (run #37: move_failed_rate 0.075 vs 0.23/0.199 on 0.11.1,
 economy_per_1k 6.96 vs 0). Deploy: read-side — `make dash-restart` (no bot
 restart). Reaper gate: running (config has reaper_gate:true).
+
+## 2026-08-18 18:25 — dashboard: headline the AVOIDABLE current-run error rate, not the misleading lifetime 27.3%
+
+Operator saw "Action error rate 27.3%" on the dashboard and asked if it was
+accurate. It was — but as a *lifetime cumulative* (512k/1.88M actions across ~18
+runs incl. the ~50% 0.8/0.9 eras), and it is dominated by the un-fixable
+phantom-character death-echo. The current run (0.12.0) is 15.2%, of which 14.4%
+is phantom-echo and only **0.8% is avoidable**. So the headline was doubly
+misleading (historical baggage + unfixable floor).
+
+Fix: metrics.snapshot gains `errors_current` (current run only: rate, phantom_rate,
+avoidable_rate, by_reason; PHANTOM_REASONS = no_such_character / unknown_character
+/ not_in_village). The dashboard tile now headlines the **avoidable** current-run
+rate with "run #N · X% phantom-echo (unfixable) · Y% lifetime" as honest context.
+Read-side only; make dash-restart. pytest 191 passed / 2 skipped, phantom/avoidable
+split mutation-checked, UI JS parses + renders the tile. (Gold 14 IS accurate and
+current — the real thing to worry about; the poverty-trap bootstrap is next.)
