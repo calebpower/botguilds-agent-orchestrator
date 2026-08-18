@@ -10,6 +10,17 @@ top of **Open**.
 
 ## Open
 
+- [ ] **Analyze *why* a tile was impassable → hidden-opportunity discovery** — the
+  0.12.0 nav fix now records per-world "learned-blocked" tiles (things chars
+  bounced off). Feed those into the analysis loop with a two-layer read: a
+  "dummy" first pass that discards the obvious (literal rock/wall/water), leaving
+  the *interesting* blockers for interpretation — a `fence`/`bush`/`tree` that
+  **breaks after a few attacks** (docs 08), a `vein` that **drops ore when
+  broken** (feeds M3a!), or a tile that looks solid but might be a secret door.
+  Cross-reference the blocked tile's `kind` (from `tiles_seen`) against what's
+  known to be breakable, and surface "maybe break this?" candidates. Could drive
+  active game discovery (attack-the-obstacle probes) rather than just routing
+  around. (operator request)
 - [ ] **Dashboard "how navigation works" explainer** — a tab (or a section of the
   Decisions tab) that explains the character navigation algorithm in plain terms:
   why a char rests / retreats / pushes a frontier / routes around a learned-blocked
