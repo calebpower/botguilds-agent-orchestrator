@@ -10,31 +10,47 @@ top of **Open**.
 
 ## Open
 
-- [ ] **The Campaign Layer — treat characters as individuals, keep a fellowship
-  alive** ⭐ (operator idea, flushed out). Overlay a persistent D&D-style
-  narrative on the mechanical roster. The event log already records each
-  `char_uid`'s whole life (embarks, kills, deaths, xp, close calls, loot), so
-  this is an *analysis + presentation* layer, not new game content:
-  - **Character sheets** — a persistent record per char: a real name (not
-    "Recruit-7679"), an archetype inferred from stats/gifts (the gifted-VIT
-    "Tank", the high-STR "Bruiser"), and a running list of deeds.
-  - **Relationships** — chars who field together / fight side-by-side / survive a
-    scary run together form bonds; a survivor who witnessed a comrade die
-    **mourns** them (a grief mood, maybe a `say` eulogy — ties to #7). Track it as
-    a small relationship graph (bonded-with, avenged, rivals).
-  - **Attitudes, likes/dislikes, preferences from lived events** — a char nearly
-    killed by poison on the spire grows to **fear the spire**; one who struck it
-    rich in the mines **favors the mines**. These become soft preferences that can
-    *gently* bias strategy (a tiny score nudge to embark toward a favored map, or
-    beside a friend, or away from where it nearly died) — flavor that must never
-    override survival/productivity.
-  - **Keep the fellowship alive** — identify a core party of veterans (level,
-    deeds) and protect them: don't throw a beloved 6-veteran into a suicide run;
-    prioritize *their* continuity as a soft objective. A campaign you're rooting
-    for, not just a headcount.
-  - **Story mode** — the dashboard renders each life as a short saga ("The Ballad
-    of Recruit-7679: 43 ticks, 2 rats, fell poisoned at the spire"). Dovetails
-    with the memorial (#6), death post-mortem (#2), and `say` banter (#7).
+- [ ] **The Campaign Layer — characters as individuals who actually *play*
+  differently** ⭐⭐ (operator idea). Not just a narrative overlay — a layer that
+  **shapes play**. Each character is a persistent individual with a role and
+  preferences that drive its own in-game behavior, and the roster becomes a live
+  experimentation platform. The event log already records each `char_uid`'s whole
+  life, so the narrative is cheap; the new part is letting it feed back into
+  decisions.
+  - **Characters as A/B test beds** ⭐ (the strategically valuable part) — the
+    game is one-guild-per-session, so we can't A/B two guilds; but we CAN run
+    different nav/combat policies on different characters in the SAME world at the
+    SAME time and compare their productivity head-to-head. A *real simultaneous
+    experiment* that fixes the loop's core attribution weakness (today: noisy
+    sequential windows). Try a new idea on one char, measure, promote it if it
+    beats its siblings. Needs **per-character productivity KPIs** (a natural
+    extension of the per-run ones just shipped).
+  - **Per-character roles / division of labor** — instead of one policy for all,
+    chars specialize: a Forager works safe loot/gold, an Explorer pushes
+    frontiers, a **Miner breaks veins for ore** (feeds the stalled M3a smelt/forge
+    chain!), a Hunter seeks monsters for xp, a Homebody tends the economy.
+    Specialization likely beats everyone-generalist — and some just *like fishing*.
+  - **Adaptive preferences from lived experience** — a char grows to favor what's
+    worked FOR IT (struck it rich in the mines → prefers mines) and avoid what hurt
+    it (nearly died on the spire → fears it). Preferences reinforce from outcomes:
+    D&D-charming AND a sound "do more of what works for you" heuristic that biases
+    (never overrides) its scored decisions.
+  - **Occasional group raids** — chars mostly spread out, but every so often a
+    party bands up and coordinates on something a lone char can't take (a tough
+    zone, the boss guarding the great forge). Coordinated multi-char tactics vs.
+    the current thin one-per-map spread.
+  - **The narrative that makes it legible** — character sheets (real names,
+    stat/gift archetypes, deeds), relationships (bonds from fighting together;
+    **mourning** a fallen friend, maybe via a `say` eulogy — ties to trash-talk),
+    "keep the fellowship alive" (protect veterans from suicide runs), and
+    story-mode on the dashboard ("The Ballad of Recruit-7679") so you can *see* and
+    root for why each character does what it does. Dovetails with the memorial and
+    death post-mortem items.
+  - **Path** — incremental: (1) per-char role tags that softly bias existing
+    decisions → (2) adaptive preferences from outcomes → (3) the A/B harness +
+    per-char KPIs → (4) coordinated raids. Guardrail: an experimental per-char
+    policy risks that one char underperforming — bounded (one char, not the guild),
+    and that's the point (measure, keep winners).
 - [ ] **Cross-run KPI regression alarm** — the loop auto-flags when *any* metric
   regresses vs the prior window. The direct meta-fix for the blindness that let
   `move_failed` rot for 8 runs; never get blind-sided again.
