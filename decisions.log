@@ -721,3 +721,18 @@ hard-codes the `str>=4 → shortsword else club` heuristic and does not read
 buy; an over-strong weapon is already caught by the `stat_requirement` equip
 error), logged as a future nicety, not ported. **Pin left unchanged; nothing to
 port.**
+
+**Redeploy confirmed (2026-08-18 ~11:35).** run #28 (0.9.0, sha 3da2d32) closed;
+**run #32 opened on sha 7c86ee8 / explorer/0.10.0** (stopped_at NULL, live).
+Redeploy method note for the record: the daemon-detach path in redeploy.sh dies
+under the Claude harness, so the operator restarted the bot in-place in the
+resilient `1672.bot` screen (window 0 "bot", `make run-live` → run-live.sh
+supervisor, rooted at PID 1). The supervisor relaunched the runner on the new
+on-disk code — same hard-kill semantics as redeploy (finding [48]: end_run
+skipped on the outgoing runner, so #28's window was closed by the new begin_run,
+not a graceful end). LIVE VERIFICATION of the guard: over run #32's first ~510
+frames, **0 same-char re-embarks within the 8-tick cooldown** (the storm
+signature; a 0.9.0 replay produced 3151). Early absolute error counts are
+elevated (unknown_character/not_in_village) but that is fresh-roster startup
+churn + the field death-echo the guard does NOT address — judge on the amortized
+window, not the first 500 frames.
