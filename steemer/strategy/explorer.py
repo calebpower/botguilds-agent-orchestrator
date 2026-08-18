@@ -151,6 +151,23 @@ per-world learned-blocked set (TTL `STUCK_BLOCK_TTL`) that nav routes around, so
 a stuck char frees itself next tick. Expected: move_failed collapses, chars
 explore/loot/earn again, and the village economy (equip/sell/brew/smelt/spend_xp,
 all at 0 for 8 runs) restarts.
+
+v0.13.0 — 0.12.0 fixed the freeze (move_failed 30%->7.5%, economy 0->128
+actions/run) but the guild stayed hard-broke: gold flat at ~14 for a whole
+30k-tick run, home chars empty and bare-handed, pickup/xp ~0, 11 chars died. The
+economic diagnosis found a SELF-INFLICTED deadlock: the buy-weapon gate was a
+hardcoded `gold >= 45` (the shortsword's price) while a **club costs 15**, so a
+broke guild never armed a char — and in the 25-44 gold band it bought 20-gold
+POTIONS instead (that is where the guild's 10-potion stockpile came from), draining
+the treasury while chars fought bare-handed and lost. Fix: buy the CHEAPEST
+affordable weapon from the live shop stock (`_afford_weapon`, prices/reqs read
+from the frame, never hardcoded), which lowers the bootstrap escape from 45 gold
+to 15; and never buy a potion for a still-bare-handed char, so scarce gold arms
+a weapon first. One armed char can then survive → loot → sell → fund the next.
+Expected: the moment the guild scrapes ~15 gold it arms a char (not at 45, never
+reached), gold starts rising, kills/xp/pickups climb. Falsified if gold stays
+pinned at ~14 (then the binding constraint is field income — chars not reaching
+loot — not spending, and that is the next target).
 """
 
 from __future__ import annotations
@@ -176,6 +193,10 @@ EQUIP_SLOTS = ("hand", "offhand", "outfit", "trinket", "boots")
 BREW_MIN = 2               # a brew takes 2-4 ingredients
 BREW_MAX = 4
 BREW_MIN_GOLD = 10         # keep a little gold buffer before buying bottles
+# Hand-weapon kinds the shop sells (observed; the offhand shield, tool pickaxe/
+# sickle, and consumables are excluded). Used to buy the cheapest affordable one
+# to arm a bare-handed char — v0.13.0's poverty-bootstrap unlock.
+WEAPON_KINDS = frozenset({"club", "dagger", "shortsword", "spear", "bow"})
 
 
 MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina before
@@ -194,7 +215,7 @@ RECRUIT_COOLDOWN = 8  # v0.10.0: same staleness for recruit — a just-recruited
 
 
 class Explorer:
-    version = "explorer/0.12.0"
+    version = "explorer/0.13.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -263,15 +284,26 @@ class Explorer:
                         bot, uid, {"char_uid": uid, "action": "sell",
                                    "item_id": item["item_id"]},
                         f"selling {item['kind']} (tier {item.get('tier')}) to bank gold")]
-            # 3) still bare-handed with nothing to equip? buy a basic weapon.
-            weapon = "shortsword" if char.get("stats", {}).get("str", 0) >= 4 else "club"
-            if eqp.get("hand") is None and gold >= 45:
-                return [self._village_act(
-                    bot, uid, {"char_uid": uid, "action": "buy", "kind": weapon},
-                    f"buying a {weapon} (nothing to equip; STR {char.get('stats',{}).get('str')})")]
-            # 4) stock a field potion (the only heal fast enough to beat poison).
+            # 3) still bare-handed with nothing to equip? buy the best weapon we
+            #    can AFFORD and qualify for (v0.13.0). The old gate was a hardcoded
+            #    `gold >= 45` = shortsword's price, so a broke guild NEVER bought
+            #    the 15-gold club and instead drained gold into 20-gold potions —
+            #    a self-inflicted piece of the poverty deadlock. Read the live shop
+            #    prices + stat reqs; a club at 15 lowers the bootstrap escape from
+            #    45 gold to 15, so the guild can arm a char the moment it scrapes
+            #    a little loot, and that char can then survive → loot → recover.
+            if eqp.get("hand") is None:
+                buy = self._afford_weapon(char, frame, gold)
+                if buy is not None:
+                    kind, price = buy
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "buy", "kind": kind},
+                        f"buying a {kind} ({price}g; bare-handed — arming to break the poverty trap)")]
+            # 4) stock a field potion — but only for an ARMED char (v0.13.0): a
+            #    bare-handed char can't fight anyway, so gold goes to a weapon
+            #    first, never a 20-gold potion while chars are unarmed and broke.
             potions = sum(1 for i in inv if i["kind"] == "potion_red")
-            if potions < POTION_KEEP and gold >= POTION_MIN_GOLD:
+            if eqp.get("hand") is not None and potions < POTION_KEEP and gold >= POTION_MIN_GOLD:
                 return [self._village_act(
                     bot, uid, {"char_uid": uid, "action": "buy", "kind": "potion_red"},
                     "buying a red potion for the field (survival)")]
@@ -509,6 +541,26 @@ class Explorer:
                     "_why": f"equipping {kind} -> {slot} "
                             f"(wrong so far: {sorted(self.slot_wrong[kind]) or 'none'})"}
         return None
+
+    @staticmethod
+    def _afford_weapon(char: dict[str, Any], frame: dict[str, Any],
+                       gold: int) -> tuple[str, int] | None:
+        """The CHEAPEST hand-weapon the char can afford and meets the stat
+        requirement for, from the live shop stock — so a broke guild arms the most
+        chars per gold (a 15-gold club beats waiting for a 45-gold shortsword).
+        Prices/reqs are read from the frame, never hardcoded (the economy shuffles
+        per world). ``None`` if we can't afford any."""
+        stock = (frame.get("shop", {}) or {}).get("stock", []) or []
+        stats = char.get("stats", {}) or {}
+        affordable = [
+            s for s in stock
+            if s.get("kind") in WEAPON_KINDS and isinstance(s.get("buy_price"), int)
+            and gold >= s["buy_price"]
+            and all(stats.get(k, 0) >= v for k, v in (s.get("req") or {}).items())]
+        if not affordable:
+            return None
+        best = min(affordable, key=lambda s: s["buy_price"])
+        return best["kind"], best["buy_price"]
 
     @staticmethod
     def _choose_brew(brewables: list[dict[str, Any]]

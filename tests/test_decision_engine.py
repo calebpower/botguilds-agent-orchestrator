@@ -654,3 +654,45 @@ def test_decisions_are_persisted(tmp_path):
     assert row[0] == "c1" and row[1] == "attack"
     assert "attack adjacent" in row[2]     # the verbose reasoning was stored
     s.close()
+
+
+_SHOP = {"stock": [
+    {"kind": "club", "buy_price": 15, "sell_price": 3},
+    {"kind": "dagger", "buy_price": 20, "sell_price": 4},
+    {"kind": "shortsword", "buy_price": 45, "sell_price": 9, "req": {"str": 4}},
+    {"kind": "potion_red", "buy_price": 20, "sell_price": 4}]}
+
+
+def _barehand_frame(gold, str_=1, potions=0):
+    char = {"char_uid": "c1", "hp": 30, "max_hp": 30,
+            "inventory": [{"kind": "potion_red", "item_id": f"p{i}", "tier": 1} for i in range(potions)],
+            "equipment": {"hand": None, "offhand": None, "outfit": None, "trinket": None, "boots": None},
+            "stats": {"str": str_, "vit": 8, "end": 8}, "gifts": [], "xp": 0}
+    return {"world": "village", "tick": 3, "shop": _SHOP,
+            "guild": {"gold": gold, "chars_here": ["c1"], "chars_by_world": {}}, "chars": [char]}
+
+
+def test_bare_handed_char_buys_the_cheapest_affordable_weapon_at_15_not_45():
+    # v0.13.0: a broke guild must arm with the 15-gold club, not wait for a 45-gold
+    # shortsword (the deadlock). gold 15 -> buys the club.
+    bot = _bot()
+    assert bot.on_frame(_barehand_frame(15)) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
+
+
+def test_broke_char_below_cheapest_weapon_buys_nothing():
+    bot = _bot()
+    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(14)))
+
+
+def test_gold_arms_a_weapon_before_a_potion_while_bare_handed():
+    # gold 20 could buy a 20-gold potion, but a bare-handed char must arm first.
+    bot = _bot()
+    acts = bot.on_frame(_barehand_frame(20))
+    assert acts and acts[0]["action"] == "buy" and acts[0]["kind"] in ("club", "dagger")
+    assert acts[0]["kind"] != "potion_red"
+
+
+def test_weapon_purchase_respects_the_stat_requirement():
+    # str 1 can't qualify for the shortsword (req str4) even at gold 45 -> buys club.
+    bot = _bot()
+    assert bot.on_frame(_barehand_frame(45, str_=1)) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]

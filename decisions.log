@@ -1065,3 +1065,42 @@ rate with "run #N · X% phantom-echo (unfixable) · Y% lifetime" as honest conte
 Read-side only; make dash-restart. pytest 191 passed / 2 skipped, phantom/avoidable
 split mutation-checked, UI JS parses + renders the tile. (Gold 14 IS accurate and
 current — the real thing to worry about; the poverty-trap bootstrap is next.)
+
+## 2026-08-18 19:03 — iteration 3: explorer/0.13.0 — break the poverty deadlock's SPENDING half (arm cheap, weapons before potions)
+
+**Measured 0.12.0 (run #37, ~2.5h/31k ticks): still hard-deadlocked.** Gold flat at
+13->14 the WHOLE run; home chars empty (inv 0) + bare-handed throughout; pickup 1,
+xp 1, sale 1; attack 370 but 0 kills; 11 of our chars died. The economy did NOT
+self-recover.
+
+**Economic diagnosis (using the new field_productivity KPIs + decision traces):**
+1. Recruits arrive totally empty (no inventory, no weapon, xp 0). Bare-handed
+   level-1s can't kill -> no xp/loot.
+2. SELF-INFLICTED spending deadlock: the buy-weapon gate was hardcoded
+   `gold >= 45` (shortsword's price) while a CLUB costs 15 — so a broke guild
+   never armed anyone; and in the 25-44 gold band it bought 20-gold POTIONS
+   instead (that is where the 10-potion guild stockpile came from), draining the
+   treasury while chars fought bare-handed and lost. Shop prices confirmed live:
+   club 15 / dagger 20 / shortsword 45(req str4); potion_red 20.
+3. sell_waste=127: the ONE looted sungrass sold once (+1 gold, 13->14) then the
+   bot re-issued the stale sell 127x -> 54 no_such_item errors (a village-action
+   re-send storm, like the old embark one).
+
+**Fix (0.13.0, spending half):** buy the CHEAPEST affordable weapon the char
+qualifies for from the LIVE shop stock (`_afford_weapon`, prices/reqs read from
+the frame — never hardcoded, the economy shuffles per world). This lowers the
+bootstrap escape from 45 gold to 15. And never buy a potion for a still-bare-handed
+char, so scarce gold arms a weapon (15) before a potion (20/25). One armed char
+can then survive -> loot -> sell -> fund the next.
+
+**Expected/falsify:** the moment the guild scrapes ~15 gold it now arms a char
+(not 45, never reached); gold should start rising and kills/xp/pickups climb.
+FALSIFIED if gold stays pinned ~14 — then the binding constraint is INCOME (chars
+not reaching loot: pickup~1 even post-freeze-fix), not spending, and iteration 4
+targets that (why pickup=1; and the sell re-send guard for the waste). NOTE the
+income half is likely still binding at ~0 gold/run, so 0.13.0 may need income help
+to visibly fire — measuring next window will tell.
+
+**Verify.** pytest 195 passed / 2 skipped; the 45->15 threshold + arm-before-potion
++ stat-req are mutation-checked; replay clean on 0.13.0. Reaper gate: running.
+Self-deploy: make bot-restart.
