@@ -28,6 +28,10 @@ class GuildBot:
         self.config: dict[str, Any] = {}
         self.guild: dict[str, Any] = {}
         self.client: Any = None   # set by Client
+        # Authoritative roster from the public spectate HTTP endpoint. Attached
+        # (and its poller started) only by the live runner — None under tests and
+        # offline replay, where the strategy falls back to the frame snapshot.
+        self.spectate: Any = None
         # Live anomaly self-reporting: watch the action-error stream for a family
         # that spikes (the observable symptom of a desync — see steemer/anomaly.py).
         self.anomaly = AnomalyMonitor()

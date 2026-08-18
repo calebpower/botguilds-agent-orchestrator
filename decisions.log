@@ -826,3 +826,45 @@ open consideration; not built this turn (it is a strategy change touching the
 live bot — needs the HTTP base in config + a version bump + gate). Other
 endpoints (/events/spectate SSE, /api/tiles metadata, /api/me = our own frames)
 noted in reference_web/README.md.
+
+## 2026-08-18 12:37 — explorer/0.11.0: authoritative roster gating via the public /api/spectate/guilds endpoint
+
+**What.** The recruit/embark gates now use the TRUE roster from the server's
+public web endpoint instead of the lagged/partial village-frame snapshot.
+`steemer/spectate.py` `SpectateRoster` polls `GET /api/spectate/guilds` on a
+background daemon thread (every 45s, 5s timeout, best-effort), parses our guild's
+`characters` (total) and per-char `world` into `(total, {field_world: n}, home)`,
+and caches it (marked unavailable if a fetch hasn't succeeded within 3× the poll
+interval). The live runner attaches it as `bot.spectate`, warms it with one fetch
+before the first frame, and stops it on exit. `explorer.village()` gates recruit
+on the authoritative `total` vs `roster_cap` and embark on the authoritative
+`fielded`/per-world vs `world_cap`/`party_cap`, **falling back to the frame
+snapshot** when spectate is stale/absent. The embark TARGET char still comes from
+the frame's `chars_here` (only a char the frame shows home can embark). Tests and
+offline replay have no `bot.spectate`, so they use the snapshot fallback and
+never touch the network (`--no-spectate` also disables it).
+
+**Why.** The frame `guild` snapshot is a partial view of a large persistent
+roster (the server shows chars intermittently — gaps ~350 ticks; count swings
+30->6->30 with ~no deaths), so gating on it over-recruits (`roster_cap`) and
+over-embarks. The count can't be reconstructed from frames, but the web endpoint
+returns it directly. Discovered by vendoring the web client (git ccb4123).
+
+**HTTP base** derives from the token's ZeroMQ `server` (`tcp://host:port` ->
+`https://host`), so no new config; default `https://bot.willmorrison.net`.
+
+**Expected effect.** `roster_cap` rejections should fall further (0.10.0's
+cooldown already cut them 87->11; authoritative gating should approach 0 — we
+stop recruiting the moment the TRUE roster hits the cap, not when the swinging
+snapshot briefly reads low). Embark/`world_cap` waste similarly. Gameplay
+throughput otherwise unchanged. **Falsified if** `roster_cap` (and `world_cap`)
+error rates do NOT fall vs the run #32/#33 baseline, or if the bot under-deploys
+(idle home chars while fielded < world_cap) — which would mean the authoritative
+`fielded` is over-counting (e.g. dead chars lingering in the spectate roster).
+
+**Verify.** pytest 177 passed / 2 skipped; new tests/test_spectate.py +
+authoritative-gating tests in test_decision_engine.py, mutation-checked (gate
+ignoring spectate, and the home=total-fielded split, both caught). Live fetch of
+/api/spectate/guilds verified (our guild total=22, fielded vale:5/mines:1/spire:1,
+home 15). Replay clean on 0.11.0 (snapshot fallback). Reaper gate: pending.
+Redeploy needed (bot restart) for it to go live.

@@ -553,6 +553,55 @@ def test_village_smelts_only_the_matching_kind_not_a_mismatched_pair():
     assert acts and acts[0]["action"] == "sell"            # stranded -> sold
 
 
+class _FakeSpectate:
+    """Stands in for bot.spectate — returns a fixed authoritative (total, {field
+    world: n}, home) or None (stale/unavailable)."""
+    def __init__(self, counts):
+        self._counts = counts
+
+    def counts(self):
+        return self._counts
+
+
+def test_gate_uses_the_authoritative_roster_over_the_frame_snapshot():
+    # The frame snapshot says the village is EMPTY (snapshot roster 0 -> would
+    # recruit), but the spectate endpoint says the roster is already at cap (10).
+    # v0.11.0 must trust the authoritative count and NOT recruit.
+    bot = _bot()
+    bot.spectate = _FakeSpectate((10, {}, 10))     # total 10 == roster_cap 10
+    assert all(a.get("action") != "recruit" for a in bot.on_frame(_deploy_frame([], {}, [])))
+
+
+def test_gate_falls_back_to_the_snapshot_when_spectate_is_unavailable():
+    # spectate stale/None -> behave exactly as 0.10.0 did (snapshot roster 0 < cap
+    # -> recruit). Guards the fallback path.
+    bot = _bot()
+    bot.spectate = _FakeSpectate(None)
+    assert bot.on_frame(_deploy_frame([], {}, [])) == [{"action": "recruit"}]
+
+
+def test_authoritative_fielded_blocks_embark_at_the_world_cap():
+    # spectate reports 10 already fielded on vale (== world_cap): a home char must
+    # NOT embark, even though the frame's chars_by_world would (mutation of the
+    # snapshot could disagree). Uses the authoritative fielded count.
+    bot = _bot()
+    bot.spectate = _FakeSpectate((11, {"vale": 10}, 1))
+    char = _idle_village_char("c1")
+    acts = bot.on_frame(_deploy_frame(["c1"], {}, [char]))
+    assert all(a.get("action") != "embark" for a in acts)
+
+
+def test_authoritative_counts_still_embark_a_home_char_when_there_is_room():
+    # roster at cap (no recruit) but only 2 fielded (room under world_cap 10): the
+    # home char embarks, targeting the emptiest map from the authoritative per-world.
+    bot = _bot()
+    bot.spectate = _FakeSpectate((10, {"vale": 2}, 8))
+    char = _idle_village_char("c1")
+    acts = bot.on_frame(_deploy_frame(["c1"], {}, [char]))
+    assert any(a.get("action") == "embark" and a["char_uids"] == ["c1"]
+               and a["map"] in ("mines", "spire") for a in acts)   # emptiest (0) map
+
+
 def test_decisions_are_persisted(tmp_path):
     s = Storage(str(tmp_path / "d.db"), commit_every=1)
     bot = _bot(storage=s)

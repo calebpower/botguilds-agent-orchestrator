@@ -111,6 +111,23 @@ pot infers the product so a blind brew never errors — a guessed forge product 
 an `unknown_product` action error, the exact class this version is reducing. So
 smelting banks the ingots and logs the metal `tells`; forging lands once a
 product name is learned (see decisions.log / findings.jsonl).
+
+v0.11.0 — the recruit/embark gates were built on the village frame's `guild`
+snapshot (`chars_here` + `chars_by_world`), which the operator caught disagreeing
+with the server's map (our UI read 7 while the true roster was 28). The snapshot
+is a lagged, PARTIAL view of a large persistent roster — the server shows
+characters intermittently (a live char is absent from every frame for up to ~350
+ticks), so the count swings 30->6->30 with almost no real deaths, and gating on
+it over-recruits (`roster_cap`) and over-embarks. The true count is NOT
+reconstructable from frames, but the public web endpoint `GET
+/api/spectate/guilds` returns it directly: our guild's `characters` total plus
+each char's current `world`. The bot now polls it in the background
+(`steemer/spectate.py`, attached by the live runner) and the gates use that
+authoritative `(roster, fielded, per-world)` when it is fresh, falling back to
+the frame snapshot otherwise. `here` (who we can embark *this* frame) still comes
+from the frame's `chars_here` — only a char the frame shows in the village can be
+embarked. Offline replay and tests have no `bot.spectate`, so they use the
+snapshot fallback and never touch the network.
 """
 
 from __future__ import annotations
@@ -154,7 +171,7 @@ RECRUIT_COOLDOWN = 8  # v0.10.0: same staleness for recruit — a just-recruited
 
 
 class Explorer:
-    version = "explorer/0.10.0"
+    version = "explorer/0.11.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -288,11 +305,24 @@ class Explorer:
         crafting = {c["char_uid"] for c in chars if c.get("craft")}
         chars_here = guild.get("chars_here", [])
         here = [u for u in chars_here if u not in crafting]
-        by_world = guild.get("chars_by_world", {})
-        fielded = sum(len(v) for v in by_world.values())
-        roster = len(here) + fielded
         world_cap = cfg.get("world_cap", 10)
         roster_cap = cfg.get("roster_cap", world_cap)
+
+        # Roster counts for the gates (v0.11.0). The village frame's guild snapshot
+        # is a lagged, partial view of a large persistent roster (it undercounts
+        # 30->6 during embark waves), which over-recruits/over-embarks. Prefer the
+        # AUTHORITATIVE count from the public spectate endpoint (bot.spectate) when
+        # it is attached and fresh; else fall back to the frame snapshot. `by_world`
+        # is normalised to {world: count} either way. `here` (who we can embark
+        # *now*) always comes from the current frame's chars_here.
+        auth = bot.spectate.counts() if getattr(bot, "spectate", None) else None
+        if auth is not None:
+            roster, by_world, _home = auth        # (total, {field_world: n}, home)
+            fielded = sum(by_world.values())
+        else:
+            by_world = {k: len(v) for k, v in (guild.get("chars_by_world", {}) or {}).items()}
+            fielded = sum(by_world.values())
+            roster = len(here) + fielded
 
         # In-flight guard (v0.10.0): drop embark records for chars that have left
         # the village (their embark landed), then treat the rest as still pending
@@ -318,8 +348,8 @@ class Explorer:
         if here_avail and fielded + len(inflight) < world_cap:
             maps = [m["id"] for m in cfg.get("maps", [])] or list(DEFAULT_MAPS)
             party_cap = cfg.get("party_cap", 5)
-            target = min(maps, key=lambda m: len(by_world.get(m, [])))
-            if len(by_world.get(target, [])) < party_cap:
+            target = min(maps, key=lambda m: by_world.get(m, 0))
+            if by_world.get(target, 0) < party_cap:
                 uid = here_avail[0]
                 self._embark_at[uid] = tick
                 return [self._village_act(

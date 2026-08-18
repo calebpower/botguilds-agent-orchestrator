@@ -42,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--ticks", type=int, default=None, help="stop after N frames")
     ap.add_argument("--no-log", action="store_true")
     ap.add_argument("--note", default="", help="note recorded on this run window")
+    ap.add_argument("--no-spectate", action="store_true",
+                    help="don't poll the /api/spectate/guilds authoritative roster")
     args = ap.parse_args(argv)
 
     db_cfg = {"type": "sqlite", "path": args.db} if args.db \
@@ -52,11 +54,25 @@ def main(argv: list[str] | None = None) -> int:
         storage.begin_run(git_sha(), bot.strategy.version, note=args.note)
 
     client = Client(bot, server=args.server, token_file=args.token, storage=storage)
+
+    # Authoritative roster (the frame snapshot lags/undercounts): poll the public
+    # spectate endpoint in the background and let the strategy's gates use it. Live
+    # path only — best-effort, so a network hiccup just falls back to the snapshot.
+    if not args.no_spectate:
+        from .spectate import SpectateRoster
+        creds = client.creds
+        bot.spectate = SpectateRoster(
+            creds["guild_id"], server=args.server or creds.get("server"))
+        bot.spectate.fetch_once()          # warm the cache before the first frame
+        bot.spectate.start()
+
     try:
         client.run(max_ticks=args.ticks)   # blocks; closes itself in its finally
     except KeyboardInterrupt:
         pass
     finally:
+        if bot.spectate is not None:
+            bot.spectate.stop()
         if storage is not None:
             storage.end_run()
             storage.close()
