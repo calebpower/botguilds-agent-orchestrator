@@ -10,6 +10,16 @@ top of **Open**.
 
 ## Open
 
+- [ ] **Behavioral analysis of mobs and rival players** — learn the *patterns* of
+  the things we share the world with. Two kinds: (a) **monsters** — the
+  game-programmed behavior (aggro range, movement, attack cadence, retreat,
+  status application) inferred from the `visible.entities` (faction=monster) we
+  already log per field frame; a learned bestiary would let the bot predict and
+  exploit them. (b) **rival players** — extrapolate the *algorithms* other guilds
+  encoded for their characters (do they park in the village, rush a map, hunt
+  loot, avoid us?) from `/events/spectate` + the periodic spectate roster. Both
+  feed strategy: counter mob patterns, and anticipate/avoid/outcompete rivals.
+  Builds on the existing intel pipeline. (operator request)
 - [ ] **Analyze *why* a tile was impassable → hidden-opportunity discovery** — the
   0.12.0 nav fix now records per-world "learned-blocked" tiles (things chars
   bounced off). Feed those into the analysis loop with a two-layer read: a
