@@ -28,6 +28,68 @@ bot, verifies the change in a `reaper` ephemeral-VM session, hot-redeploys with
 | `server_bugs.md` | game-server bugs to report to the server developer |
 | `reference_starter_kit/` | upstream starter kit (git submodule) — **inspiration only, never imported** |
 
+## Configuration
+
+Runtime configuration lives in `config.toml` at the repo root — the one place
+that decides **where the guild's accumulated memory lives**. It is read by the
+bot (writer), the dashboard (reader), and the analysis/retention tools, all via
+`steemer.db.load_db_config()`.
+
+The config is resolved in this order, first hit wins:
+
+1. an explicit `--config <path>` flag,
+2. the `STEEMER_CONFIG` environment variable,
+3. `config.toml` at the repo root,
+4. the built-in default — **SQLite at `./guild_log.db`**.
+
+So a fresh checkout with **no `config.toml` runs immediately on SQLite, zero
+setup**. Add a `config.toml` only when you want MariaDB (or a non-default
+SQLite path).
+
+> **Secret:** `config.toml` carries the MariaDB password (it authenticates as
+> the guild's data store), so like `guild_token.json` it is **git-ignored and
+> never committed**. Create it locally on each host.
+
+### SQLite (default)
+
+Nothing to do — omit `config.toml` and the bot uses `./guild_log.db`. To pin an
+explicit path, write:
+
+```toml
+[database]
+type = "sqlite"
+path = "guild_log.db"
+```
+
+### MariaDB
+
+For a shared/durable backend, create `config.toml` with the `mariadb` block:
+
+```toml
+[database]
+type     = "mariadb"
+host     = "127.0.0.1"
+port     = 3306
+user     = "botguilds"
+password = "<your-db-password>"   # secret — this file is git-ignored
+db_name  = "botguilds"
+```
+
+Provision the database and user once (adjust to taste):
+
+```sh
+sudo mariadb -e "CREATE DATABASE botguilds CHARACTER SET utf8mb4;
+  CREATE USER 'botguilds'@'127.0.0.1' IDENTIFIED BY '<your-db-password>';
+  GRANT ALL PRIVILEGES ON botguilds.* TO 'botguilds'@'127.0.0.1';
+  FLUSH PRIVILEGES;"
+```
+
+The schema is created automatically by the bot on first connect. Every command
+below (runner, dashboard, `tools/analyze.py`, replay, retention) then reads the
+same `config.toml`, so they all share one backend with no extra flags. To point
+a single command elsewhere without editing the file, use
+`--config /path/to/other.toml` or `STEEMER_CONFIG=/path/to/other.toml`.
+
 ## Running it (without Claude)
 
 Requires [`uv`](https://docs.astral.sh/uv/) and Python ≥ 3.15. All dependencies
@@ -65,6 +127,36 @@ reaper test               # same battery, pinned reproducible environment
 The loop — analyze metrics → improve → verify (local, then reaper) →
 commit/push → hot-redeploy → log — is documented in
 [`orchestrator/loop.md`](orchestrator/loop.md).
+
+### One-shotting a single iteration (both scripts)
+
+The fully-autonomous loop self-paces with `ScheduleWakeup`. When you'd rather
+drive **one** iteration by hand and supervise it, run the two split-phase
+scripts. They read whatever backend `config.toml` selects, so no DB flags are
+needed.
+
+```sh
+# 1. ANALYZE — "look, don't touch" (loop.md steps 1-4).
+#    Computes the KPI snapshot from the configured backend, then a headless
+#    Claude pass reads the docs + gameplan and writes the ranked path forward
+#    to orchestrator/advice.md. Edits no strategy code; safe to re-run.
+./analyze-iteration.sh
+
+#    Review orchestrator/advice.md before applying.
+
+# 2. APPLY — "build it" (loop.md steps 5-11).
+#    Reads advice.md and launches a SUPERVISED (interactive) Claude session that
+#    implements the change, bumps the strategy version, adds tests, verifies
+#    (pytest → replay → reaper gate), commits, hot-redeploys, and logs.
+#    Optionally pass one-off operator guidance that overrides advice.md:
+./apply-iteration.sh
+./apply-iteration.sh "prefer fixing the curdle action-error class first"
+```
+
+Each script does **exactly one pass and never re-arms** — neither schedules a
+wakeup. `analyze-iteration.sh` runs headless (`claude -p`, `acceptEdits`) so it
+only writes `advice.md`; `apply-iteration.sh` is interactive on purpose, since
+it edits code, commits, and redeploys the live bot under your watch.
 
 ## License
 
