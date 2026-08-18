@@ -868,3 +868,34 @@ ignoring spectate, and the home=total-fielded split, both caught). Live fetch of
 /api/spectate/guilds verified (our guild total=22, fielded vale:5/mines:1/spire:1,
 home 15). Replay clean on 0.11.0 (snapshot fallback). Reaper gate: pending.
 Redeploy needed (bot restart) for it to go live.
+
+## 2026-08-18 12:55 — MEASURED 0.11.0 + refined to explorer/0.11.1 (authoritative recruit, fresh-snapshot embark)
+
+**Actual effect of 0.11.0 (run #34, ~1.6k frames):** honest correction — the
+`roster_cap` errors 0.11.0 aimed at were ALREADY ~0 under 0.10.0. roster_cap by
+run: 0.9.0 #28 = 97; 0.10.0 #32 = 0, #33 = 1; 0.11.0 #34 = 0. The 97->0 collapse
+happened at 0.9.0->0.10.0 (the recruit cooldown), NOT at 0.11.0. So authoritative
+gating did not reduce a live error — I should have measured the 0.10.0 roster_cap
+rate before building it. Worse, using the ~45 s-stale spectate count for the
+EMBARK gate added 5 world_cap/party_cap errors, ALL in the first ~46 ticks (the
+restart deploy wave) — a small, self-correcting staleness artifact. Steady-state
+embark rate unchanged (0.170/frame vs 0.166/0.153 on 0.10.0), so no
+over/under-deploy.
+
+**Decision (operator: "refine").** Split the two gates by which view is accurate
+for each: RECRUIT keeps the authoritative spectate TOTAL (the frame total swings
+30->6->30, so this is the right source and it keeps the roster/dashboard count
+honest), EMBARK reverts to the frame's fresh, per-tick `chars_by_world` (accurate
+for the current per-map field; no staleness). `here` still from chars_here.
+Shipped as explorer/0.11.1.
+
+**Expected effect.** The 0.11.0 startup world_cap/party_cap blip disappears
+(embark no longer trusts a stale count); roster_cap stays ~0; roster count stays
+authoritative for the dashboard. Net vs 0.10.0: error-neutral, but the roster
+TOTAL is now correct (fixes the "7 vs 28" for observability) with no embark
+staleness cost. **Falsified if** world_cap/party_cap errors persist past startup,
+or roster_cap regresses.
+
+**Verify.** pytest 177 passed / 2 skipped; the recruit-uses-spectate /
+embark-uses-frame split is mutation-checked (each side broken -> its test fails).
+Reaper gate: pending. Redeploy needed.

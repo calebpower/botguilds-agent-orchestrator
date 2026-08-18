@@ -580,26 +580,31 @@ def test_gate_falls_back_to_the_snapshot_when_spectate_is_unavailable():
     assert bot.on_frame(_deploy_frame([], {}, [])) == [{"action": "recruit"}]
 
 
-def test_authoritative_fielded_blocks_embark_at_the_world_cap():
-    # spectate reports 10 already fielded on vale (== world_cap): a home char must
-    # NOT embark, even though the frame's chars_by_world would (mutation of the
-    # snapshot could disagree). Uses the authoritative fielded count.
+def test_embark_gates_on_the_fresh_frame_fielded_not_the_stale_spectate_count():
+    # v0.11.1: spectate says only 1 fielded (would allow embark) but the FRESH
+    # frame shows the field already at world_cap (10 on vale). Embark must gate on
+    # the frame's per-tick distribution and NOT embark. (Guards the split that
+    # fixed 0.11.0's stale-spectate world_cap blip.)
     bot = _bot()
-    bot.spectate = _FakeSpectate((11, {"vale": 10}, 1))
+    bot.spectate = _FakeSpectate((11, {"vale": 1}, 10))          # stale-low fielded
     char = _idle_village_char("c1")
-    acts = bot.on_frame(_deploy_frame(["c1"], {}, [char]))
-    assert all(a.get("action") != "embark" for a in acts)
+    frame = _deploy_frame(["c1"], {"vale": [f"v{i}" for i in range(10)]}, [char])
+    assert all(a.get("action") != "embark" for a in bot.on_frame(frame))
 
 
-def test_authoritative_counts_still_embark_a_home_char_when_there_is_room():
-    # roster at cap (no recruit) but only 2 fielded (room under world_cap 10): the
-    # home char embarks, targeting the emptiest map from the authoritative per-world.
+def test_embarks_a_home_char_toward_the_emptiest_map_from_the_frame_distribution():
+    # roster at cap per spectate (no recruit), and the FRAME shows 4 on vale with
+    # room under world_cap 10: the home char embarks toward the emptiest map
+    # (mines/spire at 0) per the fresh frame per-world counts.
     bot = _bot()
-    bot.spectate = _FakeSpectate((10, {"vale": 2}, 8))
+    bot.spectate = _FakeSpectate((10, {"vale": 99}, 0))          # total at cap; its
+    #   per-world is IGNORED for embark now — the frame's is used instead.
     char = _idle_village_char("c1")
-    acts = bot.on_frame(_deploy_frame(["c1"], {}, [char]))
+    frame = _deploy_frame(["c1"], {"vale": [f"v{i}" for i in range(4)]}, [char])
+    acts = bot.on_frame(frame)
+    assert all(a.get("action") != "recruit" for a in acts)       # spectate total at cap
     assert any(a.get("action") == "embark" and a["char_uids"] == ["c1"]
-               and a["map"] in ("mines", "spire") for a in acts)   # emptiest (0) map
+               and a["map"] in ("mines", "spire") for a in acts)  # emptiest (0) map
 
 
 def test_decisions_are_persisted(tmp_path):

@@ -128,6 +128,15 @@ the frame snapshot otherwise. `here` (who we can embark *this* frame) still come
 from the frame's `chars_here` — only a char the frame shows in the village can be
 embarked. Offline replay and tests have no `bot.spectate`, so they use the
 snapshot fallback and never touch the network.
+
+v0.11.1 — measuring 0.11.0 (run #34) showed `roster_cap` was ALREADY ~0 under
+0.10.0 (the recruit cooldown had fixed it), so authoritative gating didn't reduce
+a live error — and using the ~45 s-stale spectate count for the EMBARK gate added
+a small `world_cap`/`party_cap` blip on the restart deploy wave (5 errors in the
+first ~46 ticks). Fix: split the two gates — RECRUIT keeps the authoritative
+spectate TOTAL (the frame total swings, so this is the right source and it keeps
+the dashboard/roster count honest), but EMBARK reverts to the frame's fresh,
+per-tick `chars_by_world` (accurate for the current per-map field, no staleness).
 """
 
 from __future__ import annotations
@@ -171,7 +180,7 @@ RECRUIT_COOLDOWN = 8  # v0.10.0: same staleness for recruit — a just-recruited
 
 
 class Explorer:
-    version = "explorer/0.11.0"
+    version = "explorer/0.11.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -308,21 +317,21 @@ class Explorer:
         world_cap = cfg.get("world_cap", 10)
         roster_cap = cfg.get("roster_cap", world_cap)
 
-        # Roster counts for the gates (v0.11.0). The village frame's guild snapshot
-        # is a lagged, partial view of a large persistent roster (it undercounts
-        # 30->6 during embark waves), which over-recruits/over-embarks. Prefer the
-        # AUTHORITATIVE count from the public spectate endpoint (bot.spectate) when
-        # it is attached and fresh; else fall back to the frame snapshot. `by_world`
-        # is normalised to {world: count} either way. `here` (who we can embark
-        # *now*) always comes from the current frame's chars_here.
+        # Roster counts for the gates, split by which view is more accurate for each
+        # (v0.11.1):
+        #  * EMBARK gates on the CURRENT per-map field distribution — the frame's
+        #    `chars_by_world` is fresh every tick and accurate for "who is on each
+        #    map right now". (v0.11.0 used the spectate count here; being ~45 s
+        #    stale it briefly over-embarked on a restart deploy wave -> world_cap.)
+        #  * RECRUIT gates on the TOTAL roster vs roster_cap. The frame snapshot's
+        #    total is a lagged, partial view that swings 30->6->30, so prefer the
+        #    AUTHORITATIVE total from the public spectate endpoint (bot.spectate)
+        #    when it is attached and fresh; else fall back to the snapshot total.
+        # `here` (who we can embark *now*) always comes from the frame's chars_here.
+        by_world = {k: len(v) for k, v in (guild.get("chars_by_world", {}) or {}).items()}
+        fielded = sum(by_world.values())
         auth = bot.spectate.counts() if getattr(bot, "spectate", None) else None
-        if auth is not None:
-            roster, by_world, _home = auth        # (total, {field_world: n}, home)
-            fielded = sum(by_world.values())
-        else:
-            by_world = {k: len(v) for k, v in (guild.get("chars_by_world", {}) or {}).items()}
-            fielded = sum(by_world.values())
-            roster = len(here) + fielded
+        roster = auth[0] if auth is not None else len(here) + fielded
 
         # In-flight guard (v0.10.0): drop embark records for chars that have left
         # the village (their embark landed), then treat the rest as still pending
