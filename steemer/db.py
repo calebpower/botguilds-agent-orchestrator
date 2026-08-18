@@ -31,8 +31,11 @@ Design notes / known constraints:
   factory) so equality-with-tuple assertions in the storage tests hold.
 * **Read-only.** SQLite opens ``file:...?mode=ro`` so a reader can never mutate
   the guild's memory. MariaDB has no per-connection read-only URI and the
-  configured user holds write grants, so ``readonly=True`` is a *documented
-  no-op* there — read-only-ness for the UI rests on the UI issuing only SELECTs.
+  configured user holds write grants, so ``readonly=True`` cannot enforce
+  no-writes there (that rests on the reader issuing only SELECTs) — but it is
+  NOT a no-op: it opens the connection ``autocommit=True`` under READ COMMITTED
+  so reads see the latest committed rows instead of freezing an InnoDB
+  REPEATABLE READ snapshot at the first query (see :func:`connect`).
 * **Buffered cursors.** MariaDB reads use buffered cursors so nested queries
   (e.g. a per-world loop that runs sub-queries mid-iteration) don't trip
   "Unread result found". The one streaming consumer — archive export of a whole
@@ -321,9 +324,16 @@ def connect(db: Any, *, readonly: bool = False) -> Connection:
     """Open a connection for ``db`` (config dict, path str, or None->config).
 
     ``readonly`` opens SQLite ``mode=ro`` (real read-only) and applies the
-    read-only ``sqlite3.Row`` factory so reads get name access; it is a
-    documented no-op for MariaDB. A non-read-only SQLite connection keeps default
-    tuple rows (the writer's storage tests assert row==tuple)."""
+    read-only ``sqlite3.Row`` factory so reads get name access. On MariaDB it
+    opens the connection ``autocommit=True`` under ``READ COMMITTED`` so each
+    SELECT is its own statement-consistent read that always sees the latest
+    committed rows — without this, InnoDB's default REPEATABLE READ + the
+    ``autocommit=False`` writer default freezes an MVCC snapshot at the first
+    query for the connection's whole life, so a reused read connection never sees
+    the running bot's new frames (the "MariaDB stalls" artifact; see
+    decisions.log / findings.jsonl) and leaves an open transaction pinning a
+    metadata lock and undo history. A non-read-only SQLite connection keeps
+    default tuple rows (the writer's storage tests assert row==tuple)."""
     cfg = normalize(db)
     kind = cfg.get("type")
     if kind == "sqlite":
@@ -344,7 +354,14 @@ def connect(db: Any, *, readonly: bool = False) -> Connection:
         raw = _mysql.connect(
             host=cfg.get("host", "127.0.0.1"), port=int(cfg.get("port", 3306)),
             user=cfg["user"], password=cfg["password"], database=cfg["db_name"],
-            autocommit=False)
+            autocommit=bool(readonly))
+        if readonly:
+            # Each SELECT is its own fresh snapshot: no frozen REPEATABLE READ
+            # view, no open transaction pinning locks/undo. (The writer keeps
+            # autocommit=False so it can batch commits per frame.)
+            cur = raw.cursor()
+            cur.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+            cur.close()
         return Connection(raw, "mariadb")
     raise ValueError(f"unknown database type: {kind!r}")
 

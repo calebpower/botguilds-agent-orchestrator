@@ -111,6 +111,6 @@ def test_brew_keep_ids_keeps_batchable_drops_singletons():
 def test_should_sell_sells_stranded_brewable_keeps_batchable():
     exp = Explorer()
     lone = _herb("moonbell", 1)
-    assert exp._should_sell(lone, {}, brew_keep=set()) is True        # stranded -> sell
+    assert exp._should_sell(lone, {}, brew_keep=set(), smelt_keep=set()) is True   # stranded -> sell
     keep_item = _herb("bone", 2)
-    assert exp._should_sell(keep_item, {}, brew_keep={"bone-2"}) is False  # batchable -> keep
+    assert exp._should_sell(keep_item, {}, brew_keep={"bone-2"}, smelt_keep=set()) is False  # batchable -> keep

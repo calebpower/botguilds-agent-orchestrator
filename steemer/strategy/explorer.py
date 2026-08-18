@@ -83,6 +83,34 @@ affords the move on the server; otherwise the char rests and regens (double
 rate) rather than spamming a doomed step. Applied to `move`/`ride` only —
 attack/use/etc. barely ever error on stamina, and margining them would needlessly
 throttle combat and healing.
+
+v0.10.0 — the 0.9.0 window's residual error rate is dominated by the
+*phantom-character* family (no_such_character / unknown_character /
+not_in_village ≈ 60% of the live-backend errors). A DB drill-down pinned the
+cause: NOT rival players (the failing uids are all our own guild) but a
+DUPLICATE-SEND STORM. `village()` re-issues the *same* `embark`/`recruit` every
+tick because it decides on a ~few-tick-stale village frame — the just-commanded
+char still shows in `chars_here` before the command lands — so the bot fires
+1408 embarks for ~28 chars in one run, and the tail bounces `no_such_character`
+(294) / `roster_cap` (48) once the char finally leaves the village. Fix: an
+in-flight guard — track the tick each char was embarked and each recruit, and
+don't re-send while one is pending (EMBARK/RECRUIT_COOLDOWN), counting in-flight
+embarks toward the world cap so we don't over-deploy either. (The field-move
+`unknown_character` remainder is a *different* mechanism — the server's lagging
+echo of moves already queued for a char that then died mid-field; those actions
+were legitimate when sent and are not bot-fixable from the frame.)
+
+Also v0.10.0 — start of M3a (forging supply, the top durability lever): the
+guild loots `ore_copper`/`ore_iron` and was *selling* it. Now, in the village, a
+character that holds two matching ore `smelt`s them into an ingot (metal
+feedstock), reusing the craft-busy handling brewing already proved and needing
+no per-world vocabulary (`smelt` takes only item_ids). `forge` itself is
+deliberately NOT wired yet: it requires a per-world `product` NAME that no
+`forged` event in all recorded history reveals, and — unlike brewing, where the
+pot infers the product so a blind brew never errors — a guessed forge product is
+an `unknown_product` action error, the exact class this version is reducing. So
+smelting banks the ingots and logs the metal `tells`; forging lands once a
+product name is learned (see decisions.log / findings.jsonl).
 """
 
 from __future__ import annotations
@@ -115,9 +143,18 @@ MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina be
 #   the server (moves failed not_enough_stamina at shown-sta up to ~29 for a cost-20
 #   move; the gap is staleness, not terrain). Rest/regen instead of a doomed step.
 
+EMBARK_COOLDOWN = 8   # v0.10.0: after commanding a char to embark, don't re-send
+#   that char's embark for this many ticks. The village frame we decide on is a few
+#   ticks stale, so a just-embarked char still shows in `chars_here` — without the
+#   guard the bot re-embarks it every tick and the tail bounces no_such_character
+#   once it finally leaves. Observed embark latency ~3 ticks; 8 is safe headroom and
+#   still retries a genuinely-failed embark after ~2 s.
+RECRUIT_COOLDOWN = 8  # v0.10.0: same staleness for recruit — a just-recruited char
+#   isn't in the roster for a few frames, so re-firing recruit storms roster_cap.
+
 
 class Explorer:
-    version = "explorer/0.9.0"
+    version = "explorer/0.10.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -125,6 +162,12 @@ class Explorer:
         self.slot_wrong: dict[str, set[str]] = defaultdict(set)
         self.wont_fit: set[str] = set()
         self.equipping: dict[str, tuple[str, str]] = {}   # uid -> (kind, slot) in flight
+        # In-flight guild-command tracking (v0.10.0): the tick each char was last
+        # embarked, and the tick recruit last fired — so a stale village frame does
+        # not make us re-send the same command every tick (the phantom-character
+        # duplicate-send storm). Pruned once the char leaves `chars_here`.
+        self._embark_at: dict[str, int] = {}
+        self._recruit_at: int | None = None
 
     def on_action_error(self, bot: "Any", message: dict[str, Any]) -> None:
         """Learn equip slots from the server's rejections. We send at most one
@@ -161,6 +204,11 @@ class Explorer:
             brewables = [i for i in inv
                          if "brew" in (i.get("uses") or []) and i["kind"] not in KEEP]
             brew_keep = self._brew_keep_ids(brewables)
+            # Ore we can smelt (M3a): kept only while a matching pair exists — a
+            # lone ore can't smelt, so it's stranded and sold (same rule as a
+            # singleton brewable, v0.8.0, so it never clogs carry).
+            smeltables = [i for i in inv if "smelt" in (i.get("uses") or [])]
+            smelt_keep = self._smelt_keep_ids(smeltables)
             # 1) EQUIP carried gear into empty slots — BEFORE selling, or we sell
             #    the weapons/armor we ought to be wearing (the original bug: 0
             #    equips ever, everyone bare-handed and unarmored).
@@ -170,7 +218,7 @@ class Explorer:
             # 2) sell what we can't use: loot, gear that won't fit, and brewables
             #    that can't form a batch (stranded singletons).
             for item in inv:
-                if self._should_sell(item, eqp, brew_keep):
+                if self._should_sell(item, eqp, brew_keep, smelt_keep):
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "sell",
                                    "item_id": item["item_id"]},
@@ -207,6 +255,18 @@ class Explorer:
                     bot, uid, {"char_uid": uid, "action": "brew",
                                "item_ids": [i["item_id"] for i in picks]},
                     f"brewing {label}: {[i['kind'] for i in picks]}")]
+            # 4c) smelt a matching pair of ore into an ingot (M3a forge feedstock).
+            #     Needs no bottle and no per-world vocabulary — `smelt` takes only
+            #     the two ore item_ids — so, unlike forging, it can never earn an
+            #     unknown_* action error. The ingot is banked as metal for forging
+            #     (wired once a `product` name is learned; see the class docstring).
+            smelt_pair = self._choose_smelt(smeltables)
+            if smelt_pair:
+                a, b = smelt_pair
+                return [self._village_act(
+                    bot, uid, {"char_uid": uid, "action": "smelt",
+                               "item_ids": [a["item_id"], b["item_id"]]},
+                    f"smelting 2×{a['kind']} into an ingot (M3a forge feedstock)")]
             # 5) spend banked XP on durability (safe in the village).
             stat = self._pick_xp_stat(char)
             if stat is not None:
@@ -226,25 +286,46 @@ class Explorer:
                 return []
 
         crafting = {c["char_uid"] for c in chars if c.get("craft")}
-        here = [u for u in guild.get("chars_here", []) if u not in crafting]
+        chars_here = guild.get("chars_here", [])
+        here = [u for u in chars_here if u not in crafting]
         by_world = guild.get("chars_by_world", {})
         fielded = sum(len(v) for v in by_world.values())
         roster = len(here) + fielded
         world_cap = cfg.get("world_cap", 10)
         roster_cap = cfg.get("roster_cap", world_cap)
-        if roster < min(world_cap, roster_cap):
+
+        # In-flight guard (v0.10.0): drop embark records for chars that have left
+        # the village (their embark landed), then treat the rest as still pending
+        # so we neither re-embark them nor count them as home for the world cap.
+        tick = bot.tick
+        here_set = set(chars_here)
+        self._embark_at = {u: t for u, t in self._embark_at.items() if u in here_set}
+        inflight = {u for u, t in self._embark_at.items() if tick - t < EMBARK_COOLDOWN}
+
+        # RECRUIT — but at most once per RECRUIT_COOLDOWN ticks: a just-recruited
+        # char is not in the roster for a few frames, so re-firing every tick
+        # storms roster_cap once we reach the cap.
+        if roster < min(world_cap, roster_cap) and (
+                self._recruit_at is None or tick - self._recruit_at >= RECRUIT_COOLDOWN):
+            self._recruit_at = tick
             return [self._village_act(bot, None, {"action": "recruit"},
                                       f"recruiting (roster {roster} < cap)")]
 
-        if here and fielded < world_cap:
+        # EMBARK — skip chars whose embark is already in flight (the stale-frame
+        # duplicate-send storm that bounced no_such_character), and count those
+        # in-flight embarks toward the world cap so we don't over-deploy either.
+        here_avail = [u for u in here if u not in inflight]
+        if here_avail and fielded + len(inflight) < world_cap:
             maps = [m["id"] for m in cfg.get("maps", [])] or list(DEFAULT_MAPS)
             party_cap = cfg.get("party_cap", 5)
             target = min(maps, key=lambda m: len(by_world.get(m, [])))
             if len(by_world.get(target, [])) < party_cap:
+                uid = here_avail[0]
+                self._embark_at[uid] = tick
                 return [self._village_act(
                     bot, None, {"action": "embark", "map": target,
-                                "char_uids": [here[0]]},
-                    f"embarking to {target} (fewest of us there — spread to explore)")]
+                                "char_uids": [uid]},
+                    f"embarking {uid} to {target} (fewest of us there — spread to explore)")]
         return []
 
     # -- field: per-character scored decision ---------------------------------
@@ -429,19 +510,51 @@ class Explorer:
                 keep.update(it["item_id"] for it in g[:BREW_MAX])
         return keep
 
+    @staticmethod
+    def _choose_smelt(smeltables: list[dict[str, Any]]
+                      ) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        """Two matching ore (same kind) to smelt into an ingot, or None. `smelt`
+        needs a MATCHING pair — a lone ore or two different ores can't smelt — so
+        we group by kind and take the first kind with >=2."""
+        by_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for it in smeltables:
+            by_kind[it["kind"]].append(it)
+        for kind in sorted(by_kind):
+            g = by_kind[kind]
+            if len(g) >= 2:
+                return g[0], g[1]
+        return None
+
+    @staticmethod
+    def _smelt_keep_ids(smeltables: list[dict[str, Any]]) -> set[str]:
+        """Item_ids of ore worth keeping to smelt — every ore of a kind that has a
+        matching pair (>=2 of that kind). A lone ore of its kind can't smelt, so it
+        is stranded and sold rather than hoarded (the v0.8.0 carry lesson)."""
+        by_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for it in smeltables:
+            by_kind[it["kind"]].append(it)
+        keep: set[str] = set()
+        for g in by_kind.values():
+            if len(g) >= 2:
+                keep.update(it["item_id"] for it in g)
+        return keep
+
     def _should_sell(self, item: dict[str, Any], eqp: dict[str, Any],
-                     brew_keep: set[str]) -> bool:
+                     brew_keep: set[str], smelt_keep: set[str]) -> bool:
         """Sell only what we can't use. Keep: field supplies (KEEP), consumables
         and food (`drink`), brew ingredients that can still form a batch
-        (`brew_keep`), and gear we might still equip. Everything else — pure loot
-        AND stranded singleton brewables (v0.8.0) — is banked for gold, so lone
-        herbs don't hoard up and clog carry."""
+        (`brew_keep`), ore that can still form a smelt pair (`smelt_keep`), and
+        gear we might still equip. Everything else — pure loot AND stranded
+        singleton brewables/ore (v0.8.0/v0.10.0) — is banked for gold, so lone
+        herbs and ore don't hoard up and clog carry."""
         kind = item["kind"]
         uses = item.get("uses") or []
         if kind in KEEP or "drink" in uses:
             return False
         if "brew" in uses:
             return item["item_id"] not in brew_keep   # sell stranded brewables
+        if "smelt" in uses:
+            return item["item_id"] not in smelt_keep   # sell stranded (unpaired) ore
         if "equip" not in uses:
             return True                     # pure loot -> bank it
         if kind in self.wont_fit:

@@ -139,3 +139,38 @@ def test_mariadb_write_read_roundtrip():
     finally:
         _cleanup(s.conn, run_id)
         s.close()
+
+
+def test_readonly_connection_sees_writes_committed_after_its_first_read():
+    """A ``readonly=True`` MariaDB connection must see rows committed by another
+    connection AFTER it has already issued a read. Before the fix, readonly
+    connections were opened ``autocommit=False`` under InnoDB's default
+    REPEATABLE READ, so the first SELECT froze an MVCC snapshot for the
+    connection's whole life — a reused reader (a monitor, the analysis tool held
+    open across samples) never advanced past the data as of its first query,
+    which read as the DB being "stalled"/"gated". This is the code-level fix for
+    the artifact that decisions.log/findings.jsonl previously only worked around
+    by habit ("use a fresh connection per sample")."""
+    cfg = _cfg()
+    writer = _db.connect(cfg)                       # autocommit=False writer
+    run_id = _make_test_run(writer)
+    reader = _db.connect(cfg, readonly=True)
+    try:
+        # The reader takes its FIRST snapshot here (0 rows for our isolated run).
+        before = reader.execute(
+            "SELECT COUNT(*) FROM action_errors WHERE run_id=?", (run_id,)).fetchone()[0]
+        assert before == 0
+        # A different connection commits a new row.
+        writer.execute(
+            "INSERT INTO action_errors(tick, char_uid, action, reason, run_id) "
+            "VALUES(?,?,?,?,?)", (1, "rt", "move", "snapshot_probe", run_id))
+        writer.commit()
+        # A fresh read on the SAME reader must now see it. Under the old frozen
+        # REPEATABLE READ snapshot this stayed 0 — the regression this guards.
+        after = reader.execute(
+            "SELECT COUNT(*) FROM action_errors WHERE run_id=?", (run_id,)).fetchone()[0]
+        assert after == 1, "read-only connection is pinned to a stale snapshot"
+    finally:
+        reader.close()
+        _cleanup(writer, run_id)
+        writer.close()

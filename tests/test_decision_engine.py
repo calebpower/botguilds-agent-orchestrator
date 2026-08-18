@@ -435,6 +435,124 @@ def test_village_leaves_a_crafting_character_alone():
     assert bot.on_frame(frame) == []
 
 
+def _idle_village_char(uid="c1", inv=None, gold_ok=True, **over):
+    # armed + stats capped + full HP so every per-char step (equip/sell/buy/brew/
+    # smelt/xp/heal) no-ops and control reaches the recruit/embark tail.
+    char = {"char_uid": uid, "hp": 30, "max_hp": 30,
+            "inventory": inv if inv is not None
+            else [{"kind": "potion_red", "item_id": "p1", "tier": 1}],
+            "equipment": {"hand": {"kind": "club"}, "offhand": None, "outfit": None,
+                          "trinket": None, "boots": None},
+            "stats": {"vit": 8, "end": 8, "str": 8}, "gifts": [], "xp": 0}
+    char.update(over)
+    return char
+
+
+def _deploy_frame(here, by_world, chars, tick=3, gold=5):
+    return {"world": "village", "tick": tick,
+            "guild": {"gold": gold, "chars_here": here, "chars_by_world": by_world},
+            "chars": chars}
+
+
+def test_embark_is_not_resent_while_in_flight():
+    # v0.10.0: the stale village frame still lists a just-embarked char in
+    # chars_here for a few ticks. Without the in-flight guard the bot re-embarks
+    # the SAME char every tick (1408 embarks / 28 chars in the 0.9.0 window) and
+    # the tail bounces no_such_character once it finally leaves.
+    bot = _bot()
+    # roster 1 home + 9 fielded = 10 = cap -> no recruit; fielded 9 < world_cap
+    # 10 and mines/spire empty -> the one home char embarks.
+    frame = _deploy_frame(["c1"], {"vale": [f"v{i}" for i in range(9)]},
+                          [_idle_village_char("c1")])
+    first = bot.on_frame(frame)
+    assert first and first[0]["action"] == "embark" and first[0]["char_uids"] == ["c1"]
+    # same tick, same stale frame (c1 still shown home): must NOT re-embark it.
+    second = bot.on_frame(frame)
+    assert all(a.get("action") != "embark" for a in second)
+
+
+def test_embark_retries_after_the_cooldown_elapses():
+    # if the embark genuinely failed (char still home after EMBARK_COOLDOWN), we
+    # retry rather than stranding it forever.
+    from steemer.strategy.explorer import EMBARK_COOLDOWN
+    bot = _bot()
+    by_world = {"vale": [f"v{i}" for i in range(9)]}
+    bot.on_frame(_deploy_frame(["c1"], by_world, [_idle_village_char("c1")], tick=3))
+    later = bot.on_frame(_deploy_frame(["c1"], by_world, [_idle_village_char("c1")],
+                                       tick=3 + EMBARK_COOLDOWN))
+    assert later and later[0]["action"] == "embark" and later[0]["char_uids"] == ["c1"]
+
+
+def test_embark_deploys_a_different_available_char_while_one_is_in_flight():
+    # in-flight c1 shouldn't freeze deployment — a second home char still embarks.
+    bot = _bot()
+    by_world = {"vale": [f"v{i}" for i in range(8)]}   # fielded 8 -> room for two
+    f1 = _deploy_frame(["c1", "c2"], by_world,
+                       [_idle_village_char("c1"), _idle_village_char("c2")])
+    first = bot.on_frame(f1)
+    assert first[0]["char_uids"] == ["c1"]
+    second = bot.on_frame(f1)          # c1 in flight -> c2 goes instead
+    assert second and second[0]["action"] == "embark" and second[0]["char_uids"] == ["c2"]
+
+
+def test_recruit_is_not_resent_within_the_cooldown():
+    # v0.10.0: a just-recruited char isn't in the roster for a few frames; re-firing
+    # recruit every tick storms roster_cap once at the cap.
+    bot = _bot()
+    frame = _deploy_frame([], {}, [])       # empty roster -> wants to recruit
+    assert bot.on_frame(frame) == [{"action": "recruit"}]
+    assert bot.on_frame(frame) == []        # cooldown holds the duplicate
+
+
+def test_recruit_retries_after_the_cooldown_elapses():
+    from steemer.strategy.explorer import RECRUIT_COOLDOWN
+    bot = _bot()
+    assert bot.on_frame(_deploy_frame([], {}, [], tick=3)) == [{"action": "recruit"}]
+    assert bot.on_frame(_deploy_frame([], {}, [], tick=3 + RECRUIT_COOLDOWN)) == \
+        [{"action": "recruit"}]
+
+
+ORE = lambda iid: {"kind": "ore_copper", "item_id": iid, "uses": ["smelt"]}
+
+
+def test_village_smelts_a_matching_pair_of_ore():
+    # M3a: two matching ore -> one ingot. No bottle, no vocabulary needed.
+    bot = _bot()
+    char = _idle_village_char("c1", inv=[ORE("o1"), ORE("o2")])
+    frame = _deploy_frame(["c1"], {}, [char])
+    assert bot.on_frame(frame) == \
+        [{"char_uid": "c1", "action": "smelt", "item_ids": ["o1", "o2"]}]
+
+
+def test_village_keeps_a_smeltable_pair_rather_than_selling_it():
+    # the paired ore must be KEPT (so it smelts), not sold as loot. If _should_sell
+    # sold it, the sell step would fire first and this would be a `sell`, not `smelt`.
+    bot = _bot()
+    char = _idle_village_char("c1", inv=[ORE("o1"), ORE("o2")])
+    acts = bot.on_frame(_deploy_frame(["c1"], {}, [char]))
+    assert all(a.get("action") != "sell" for a in acts)
+    assert acts and acts[0]["action"] == "smelt"
+
+
+def test_village_sells_a_stranded_single_ore():
+    # a lone ore can't smelt -> stranded -> sold (the v0.8.0 anti-clog rule).
+    bot = _bot()
+    char = _idle_village_char("c1", inv=[ORE("o1")])
+    assert bot.on_frame(_deploy_frame(["c1"], {}, [char])) == \
+        [{"char_uid": "c1", "action": "sell", "item_id": "o1"}]
+
+
+def test_village_smelts_only_the_matching_kind_not_a_mismatched_pair():
+    # two DIFFERENT ores don't smelt (needs a matching pair); both are stranded.
+    bot = _bot()
+    char = _idle_village_char(
+        "c1", inv=[{"kind": "ore_copper", "item_id": "o1", "uses": ["smelt"]},
+                   {"kind": "ore_iron", "item_id": "o2", "uses": ["smelt"]}])
+    acts = bot.on_frame(_deploy_frame(["c1"], {}, [char]))
+    assert all(a.get("action") != "smelt" for a in acts)   # no mismatched smelt
+    assert acts and acts[0]["action"] == "sell"            # stranded -> sold
+
+
 def test_decisions_are_persisted(tmp_path):
     s = Storage(str(tmp_path / "d.db"), commit_every=1)
     bot = _bot(storage=s)

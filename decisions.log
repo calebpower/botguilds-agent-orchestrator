@@ -631,3 +631,93 @@ MariaDB, now safe via the streaming export. reclaim after prune is a MariaDB
 no-op (InnoDB reuses freed pages; OPTIMIZE TABLE only if the file must shrink).
 Dangling-open MariaDB run rows from the killed #24/#25 episode are closed by
 begin_run's defensive close on the next start.
+
+## 2026-08-18 10:43 — explorer/0.10.0: kill the embark/recruit duplicate-send storm (phantom-character family) + start M3a smelt; and fix read-only MariaDB snapshot pinning
+
+**What.** Three changes this iteration:
+
+1. **In-flight guard on guild commands (the phantom-character fix).** `village()`
+   re-issued the *same* `embark`/`recruit` every tick because it decides on a
+   few-tick-stale village frame — the just-commanded char still shows in
+   `chars_here` before the command lands. So run #28 sent **3135 embarks for ~28
+   chars**, and the tail bounced `no_such_character` (294) / `roster_cap` (48)
+   once the char finally left. Fix: track the tick each char was embarked
+   (`self._embark_at`) and each recruit (`self._recruit_at`); skip re-sending
+   while one is in flight (`EMBARK_COOLDOWN`/`RECRUIT_COOLDOWN` = 8 ticks), prune
+   the record once the char leaves `chars_here`, and count in-flight embarks
+   toward `world_cap` so we don't over-deploy distinct chars either.
+
+2. **M3a smelt (ore → ingot).** The guild loots `ore_copper`/`ore_iron`
+   (`uses=['smelt']`) and was *selling* it. Now, in the village, a char holding a
+   matching ore pair `smelt`s them into an ingot (metal feedstock); paired ore is
+   kept, stranded singles still sold (the v0.8.0 anti-clog rule). `smelt` needs no
+   per-world vocabulary. **`forge` is deliberately NOT wired** — it requires a
+   per-world `product` NAME that no `forged` event in all history reveals, and a
+   guessed product is an `unknown_product` action error (unlike a blind brew,
+   where the pot infers the product and never errors). Forging lands once a
+   product name is learned.
+
+3. **Read-only MariaDB snapshot fix (operator-reported "analysis gated on
+   read-only reads").** `db.connect(readonly=True)` opened MariaDB
+   `autocommit=False` under InnoDB's default REPEATABLE READ, so a reader held
+   across samples froze an MVCC snapshot at its first SELECT and never saw the
+   running bot's new rows (and left an open txn pinning a metadata lock + undo
+   history). This was the code-level cause the earlier "monitoring artifact" note
+   only worked around by habit. Fix: readonly connections now open
+   `autocommit=True` under READ COMMITTED — each SELECT is a fresh
+   statement-consistent read.
+
+**Why.** The phantom-character family was the single largest live-backend error
+class (~60% of MariaDB-window errors). The diagnosis in the analyze phase (and
+the operator's "new players" steer) both pointed at it, but the DB drill-down
+showed it is NOT rival players (all failing uids are our own guild `g_cd0e2a_*`)
+— it is a self-inflicted duplicate-send storm. M3a is the top durability lever
+(armor is unbuyable; forging is the only armor route) and smelt is its safe,
+non-speculative first step. The read-only fix unblocks the operator's analysis
+tooling.
+
+**Expected effect.**
+- Phantom-character *embark/recruit* errors (`no_such_character` + `roster_cap` +
+  village-side `not_in_village`) should fall sharply next window — a run-#28
+  village-frame replay through 0.10.0 produced **0 same-char re-embarks within 8
+  ticks vs 3151 in a 0.9.0 sim**, and recruit sends dropped 87→11.
+- The *field* `move`/`attack` `unknown_character` remainder should be roughly
+  UNCHANGED (it is a server-lag death-echo of moves queued for a char that died
+  mid-field — not addressed here, and not bot-fixable from the frame).
+- Smelt: ingots begin appearing + `smelt`/craft-complete events accrue (the M3a
+  learning foundation); net carry neutral-to-lower (2 ore → 1 ingot).
+- No gold-signal change expected (gold_delta ≈ 0; the lever remains throughput +
+  survival).
+
+**How it would be falsified.** REFUTED if next window's per-1k-frames rate of
+(`no_such_character` + `roster_cap`) does NOT drop vs the #24/#25/#27/#28
+baseline (captured below). If instead the *field* `unknown_character` rate is
+what moves, the attribution is wrong. Smelt REFUTED if no `smelt` events / no
+ingots appear despite ore being looted.
+
+**Step-0 baseline (explorer/0.9.0 per-run × per-reason, for next-window
+attribution):**
+- run #22 (sqlite, 10.6k frames): not_enough_stamina 437, no_such_character 288, not_in_village 187, no_such_item 31, unknown_character 27.
+- run #24: no_such_character 409, unknown_character 206, not_in_village 195, not_enough_stamina 68.
+- run #25: no_such_character 240, unknown_character 174, not_enough_stamina 70, not_in_village 50.
+- run #27: unknown_character 210, no_such_character 162, not_in_village 34.
+- run #28: unknown_character 411, no_such_character 264, not_in_village 81, roster_cap 48, not_enough_stamina 33, out_of_range 23.
+
+**Verify.** `uv run pytest -q` = 160 passed, 2 skipped (env-gated MariaDB tests);
+those 2 pass live with `STEEMER_TEST_MARIADB=1` against the running backend
+(incl. the new read-only-snapshot regression, mutation-checked). `python -m
+steemer.replay` runs clean on 0.10.0. Reaper gate: pytest battery green in the
+pinned container. All new assertions mutation-checked (break → red → restore).
+
+**Submodule check (loop step 10).** `reference_starter_kit` is 2 commits behind
+origin/main (bd11125, d18214c). Reviewed the diff deliberately: it is an AGENTS.md
+doc trim, README prose, example-bot tuning, and a map-viewer sprite-loading
+change — NO new/changed action, wire-frame shape, or handshake/transport fix.
+Two protocol-adjacent facts: (a) the error-code rename `stat_too_low` →
+`stat_requirement` — steemer already matches it (explorer.py on_action_error);
+(b) shop `stock` entries now carry a `req` stat-requirement dict — steemer still
+hard-codes the `str>=4 → shortsword else club` heuristic and does not read
+`shop.stock.req`; this is OPTIONAL hardening (the hard-code still issues a *legal*
+buy; an over-strong weapon is already caught by the `stat_requirement` equip
+error), logged as a future nicety, not ported. **Pin left unchanged; nothing to
+port.**
