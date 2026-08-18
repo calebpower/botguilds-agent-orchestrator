@@ -18,66 +18,15 @@ no history export, so this file *is* the guild's accumulated knowledge.
 from __future__ import annotations
 
 import json
-import sqlite3
 import time
 import zlib
 from typing import Any, Iterable, Iterator
 
-DEFAULT_DB = "guild_log.db"
+from . import db as _db
+from .db import DEFAULT_DB  # re-exported: ui/server.py imports it from here
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS frames (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-    tick INTEGER, world TEXT, received_at REAL, run_id INTEGER,
-    json BLOB                                   -- zlib-compressed frame JSON
-);
-CREATE TABLE IF NOT EXISTS events (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-    tick INTEGER, world TEXT, kind TEXT, payload_json TEXT, run_id INTEGER
-);
-CREATE TABLE IF NOT EXISTS actions_sent (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-    tick INTEGER, char_uid TEXT, action TEXT, payload_json TEXT, run_id INTEGER
-);
-CREATE TABLE IF NOT EXISTS action_errors (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-    tick INTEGER, char_uid TEXT, action TEXT, reason TEXT, run_id INTEGER
-);
-CREATE TABLE IF NOT EXISTS tiles_seen (
-    world TEXT, x INTEGER, y INTEGER, kind TEXT, sprite INTEGER,
-    last_tick INTEGER, base TEXT,
-    PRIMARY KEY (world, x, y)
-);
-CREATE TABLE IF NOT EXISTS decisions (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-    tick INTEGER, world TEXT, char_uid TEXT,
-    action TEXT,                 -- the action name chosen (or NULL for "rest")
-    chosen_json TEXT,            -- the full action dict we sent
-    alternatives_json TEXT,      -- ranked candidates + scores we considered
-    reasoning TEXT,              -- human-readable "why" — the verbose thinking
-    strategy_version TEXT, run_id INTEGER
-);
-CREATE TABLE IF NOT EXISTS runs (
-    run_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    git_sha TEXT, strategy_version TEXT,
-    started_at REAL, stopped_at REAL, note TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_frames_tick ON frames(tick);
-CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind);
-CREATE INDEX IF NOT EXISTS idx_events_tick ON events(tick);
-CREATE INDEX IF NOT EXISTS idx_decisions_tick ON decisions(tick);
-CREATE INDEX IF NOT EXISTS idx_actionerr_reason ON action_errors(reason);
--- run_id / grouping indexes: the metrics snapshot does per-run COUNT(*) and a
--- first/last-village-frame gold lookup; without these it full-scans the largest
--- tables on every poll (the /api/snapshot slowness). run_id is low-cardinality
--- so the write-path cost is negligible.
-CREATE INDEX IF NOT EXISTS idx_frames_run ON frames(run_id);
-CREATE INDEX IF NOT EXISTS idx_frames_run_world_seq ON frames(run_id, world, seq);
-CREATE INDEX IF NOT EXISTS idx_actions_run ON actions_sent(run_id);
-CREATE INDEX IF NOT EXISTS idx_actionerr_run ON action_errors(run_id);
-CREATE INDEX IF NOT EXISTS idx_actions_action ON actions_sent(action);
-CREATE INDEX IF NOT EXISTS idx_decisions_action ON decisions(action);
-"""
+# The authoritative schema (both dialects) lives in steemer.db; Storage applies
+# it via _db.apply_schema. The SQLite text is also exposed there as SCHEMA_SQLITE.
 
 
 def _base_cell(base: Any) -> Any:
@@ -88,15 +37,16 @@ def _base_cell(base: Any) -> Any:
 class Storage:
     """The bot's SQLite mirror. One instance per process owns the connection."""
 
-    def __init__(self, path: str = DEFAULT_DB, *, commit_every: int = 20):
-        # check_same_thread=False so the client loop and a heartbeat/flush timer
-        # may share it; only one thread actually writes.
-        self.conn = sqlite3.connect(path, check_same_thread=False, timeout=30)
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA busy_timeout=30000")
-        self.conn.execute("PRAGMA synchronous=NORMAL")
-        self.conn.executescript(SCHEMA)
-        self.conn.commit()
+    def __init__(self, db: Any = None, *, commit_every: int = 20):
+        # ``db`` is a config dict, a SQLite path string (e.g. ":memory:"), or
+        # None to resolve from config.toml. The writer connection keeps default
+        # (tuple) rows; read paths use their own read-only Row connections.
+        self.conn = _db.connect(db)
+        if self.conn.dialect == "sqlite":
+            # WAL + NORMAL let the live writer coexist with read-only readers.
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=NORMAL")
+        _db.apply_schema(self.conn)
         self.run_id: int | None = None
         self._commit_every = commit_every
         self._since_commit = 0
@@ -149,10 +99,7 @@ class Storage:
         tiles = (frame.get("visible") or {}).get("tiles") or []
         if tiles:
             self.conn.executemany(
-                "INSERT INTO tiles_seen(world, x, y, kind, sprite, last_tick, base) "
-                "VALUES(?,?,?,?,?,?,?) ON CONFLICT(world, x, y) DO UPDATE SET "
-                "kind=excluded.kind, sprite=excluded.sprite, "
-                "last_tick=excluded.last_tick, base=excluded.base",
+                _db.tiles_seen_upsert(self.conn.dialect),
                 [(world, t[0], t[1], t[2],
                   t[3] if len(t) > 3 else 0, tick,
                   _base_cell(t[4]) if len(t) > 4 else 0) for t in tiles],
@@ -205,12 +152,11 @@ class Storage:
     def prune_frames(self, keep_last: int) -> int:
         """Drop all but the most recent ``keep_last`` frames (raw JSON is the
         bulk of the file — ~14 KB/tick). events/decisions/tiles are kept, since
-        they are the mined signal and are cheap. Returns rows removed."""
-        cur = self.conn.execute(
-            "DELETE FROM frames WHERE seq NOT IN "
-            "(SELECT seq FROM frames ORDER BY seq DESC LIMIT ?)", (keep_last,))
-        self.conn.commit()
-        return cur.rowcount
+        they are the mined signal and are cheap. Returns rows removed.
+
+        Delegated to :func:`steemer.db.prune_frames` for a portable form (the old
+        ``DELETE ... WHERE seq NOT IN (SELECT ... LIMIT ?)`` is SQLite-only)."""
+        return _db.prune_frames(self.conn, keep_last)
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -230,14 +176,15 @@ class Storage:
 
 
 def read_frames(
-    db_path: str = DEFAULT_DB, world: str | None = None, limit: int | None = None
+    db: Any = None, world: str | None = None, limit: int | None = None
 ) -> Iterator[dict[str, Any]]:
     """Yield decompressed frames oldest-first, optionally filtered by world.
 
-    Opens its own read-only connection, so it is safe to call from the UI or an
-    analysis process while the bot is writing (WAL).
+    Opens its own read-only connection (SQLite ``mode=ro`` / a fresh MariaDB
+    connection), so it is safe to call from the UI or an analysis process while
+    the bot is writing. ``db`` is a config dict, a SQLite path, or None->config.
     """
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = _db.connect(db, readonly=True)
     try:
         sql = "SELECT json FROM frames"
         params: tuple[Any, ...] = ()

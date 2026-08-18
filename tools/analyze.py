@@ -15,19 +15,24 @@ import json
 import sys
 
 from steemer.metrics import snapshot
+from steemer import db as _db
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--db", default="guild_log.db", help="path to guild_log.db")
+    ap.add_argument("--db", default=None,
+                    help="SQLite path override; else use --config/config.toml")
+    ap.add_argument("--config", default=None, help="path to config.toml")
     ap.add_argument("--compact", action="store_true",
                     help="single-line JSON instead of indented")
     args = ap.parse_args(argv)
 
+    db_cfg = {"type": "sqlite", "path": args.db} if args.db \
+        else _db.load_db_config(args.config)
     try:
-        snap = snapshot(args.db)
+        snap = snapshot(db_cfg)
     except Exception as e:  # a missing/locked DB should say so, not traceback
-        print(json.dumps({"error": str(e), "db": args.db}), file=sys.stderr)
+        print(json.dumps({"error": str(e), "db": _db.cfg_key(db_cfg)}), file=sys.stderr)
         return 1
 
     print(json.dumps(snap, separators=(",", ":") if args.compact else None,

@@ -7,6 +7,14 @@ guild_token.json
 .env
 .env.*
 
+# DB config carries the mariadb password (authenticates as the guild's datastore).
+config.toml
+config.json
+
+# advice.md is the transient handoff analyze-iteration.sh writes for
+# apply-iteration.sh to consume — regenerated each run, never committed.
+orchestrator/advice.md
+
 # Local databases (raw frame mirror, metrics, decisions) — large and machine-local.
 *.db
 *.db-wal

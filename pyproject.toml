@@ -11,6 +11,10 @@ requires-python = ">=3.12"
 authors = [{ name = "Caleb L. Power", email = "cpower@axonibyte.com" }]
 dependencies = [
     "pyzmq>=26",
+    # MariaDB backend driver (steemer.db). The import is lazy/guarded, so a
+    # SQLite-only checkout still runs if this is somehow absent; it is a core dep
+    # because config.toml selects the MariaDB backend by default.
+    "mysql-connector-python>=8",
 ]
 
 [dependency-groups]

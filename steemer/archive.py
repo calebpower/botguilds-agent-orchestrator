@@ -31,33 +31,19 @@ import base64
 import gzip
 import hashlib
 import json
-import sqlite3
 from typing import Any, Iterator
+
+from . import db as _db
 
 SCHEMA = 1
 
-MANIFEST_DDL = """
-CREATE TABLE IF NOT EXISTS archives (
-    run_id INTEGER PRIMARY KEY,
-    path TEXT,               -- local staging path of the archive file
-    remote_uri TEXT,         -- where it was shipped (NULL until shipped)
-    sha256 TEXT,             -- checksum of the archive file
-    rows INTEGER,            -- frame rows in the archive
-    bytes INTEGER,           -- archive file size
-    run_started REAL, run_stopped REAL,
-    archived_at REAL,        -- when export ran
-    verified INTEGER DEFAULT 0,   -- 1 only after the remote is re-observed
-    pruned INTEGER DEFAULT 0      -- 1 after local frames were deleted
-);
-"""
+
+def ensure_manifest(conn: _db.Connection) -> None:
+    """Create the archives manifest table if absent (SQLite or MariaDB)."""
+    _db.apply_manifest(conn)
 
 
-def ensure_manifest(conn: sqlite3.Connection) -> None:
-    conn.execute(MANIFEST_DDL)
-    conn.commit()
-
-
-def archivable_runs(conn: sqlite3.Connection, before_ts: float) -> list[dict[str, Any]]:
+def archivable_runs(conn: _db.Connection, before_ts: float) -> list[dict[str, Any]]:
     """Closed runs whose frames are all older than ``before_ts`` and are not yet
     archived. Never returns the open run (stopped_at NULL) or a run with no
     frames, so recent/live history is always left intact locally."""
@@ -80,7 +66,7 @@ def archivable_runs(conn: sqlite3.Connection, before_ts: float) -> list[dict[str
                  rows=r[3], lo=r[4], hi=r[5]) for r in rows]
 
 
-def export_run(conn: sqlite3.Connection, run_id: int, out_path: str) -> dict[str, Any]:
+def export_run(conn: _db.Connection, run_id: int, out_path: str) -> dict[str, Any]:
     """Write every frame of ``run_id`` to a gzip-JSONL archive at ``out_path``.
     Returns ``{rows, bytes, sha256}``. Streams row-by-row so a huge run does not
     have to fit in memory."""
@@ -142,38 +128,33 @@ def sha256_file(path: str) -> str:
     return h.hexdigest()
 
 
-def record_archive(conn: sqlite3.Connection, run_id: int, path: str, sha256: str,
+def record_archive(conn: _db.Connection, run_id: int, path: str, sha256: str,
                    rows: int, nbytes: int, run_started: float | None,
                    run_stopped: float | None, archived_at: float,
                    remote_uri: str | None = None) -> None:
     """Record an exported (not yet verified) archive in the manifest."""
     ensure_manifest(conn)
     conn.execute(
-        "INSERT INTO archives(run_id, path, remote_uri, sha256, rows, bytes, "
-        "run_started, run_stopped, archived_at, verified, pruned) "
-        "VALUES(?,?,?,?,?,?,?,?,?,0,0) "
-        "ON CONFLICT(run_id) DO UPDATE SET path=excluded.path, "
-        "remote_uri=excluded.remote_uri, sha256=excluded.sha256, "
-        "rows=excluded.rows, bytes=excluded.bytes, archived_at=excluded.archived_at",
+        _db.archive_upsert(conn.dialect),
         (run_id, path, remote_uri, sha256, rows, nbytes,
          run_started, run_stopped, archived_at))
     conn.commit()
 
 
-def mark_shipped(conn: sqlite3.Connection, run_id: int, remote_uri: str) -> None:
+def mark_shipped(conn: _db.Connection, run_id: int, remote_uri: str) -> None:
     conn.execute("UPDATE archives SET remote_uri=? WHERE run_id=?",
                  (remote_uri, run_id))
     conn.commit()
 
 
-def mark_verified(conn: sqlite3.Connection, run_id: int) -> None:
+def mark_verified(conn: _db.Connection, run_id: int) -> None:
     """Set verified=1. Caller must have confirmed BOTH oracles (shipped + remote
     re-observed with matching size/sha) before calling this."""
     conn.execute("UPDATE archives SET verified=1 WHERE run_id=?", (run_id,))
     conn.commit()
 
 
-def prune_run_frames(conn: sqlite3.Connection, run_id: int) -> int:
+def prune_run_frames(conn: _db.Connection, run_id: int) -> int:
     """Delete a run's frames — ONLY if its archive is verified. Refuses (raises)
     otherwise: the whole point is that we never drop un-shipped data. Returns
     rows deleted. events/decisions/actions for the run are intentionally kept."""
@@ -189,22 +170,18 @@ def prune_run_frames(conn: sqlite3.Connection, run_id: int) -> int:
     return cur.rowcount
 
 
-def checkpoint(conn: sqlite3.Connection) -> None:
-    """Fold the WAL back into the main DB and truncate it. Pages freed by a prune
-    become free-list pages the live writer reuses, so the file stops *growing*
-    even though it does not shrink — that is what bounds disk on a walk-away box.
+def checkpoint(conn: _db.Connection) -> None:
+    """Fold the WAL back into the main DB and truncate it (SQLite). Pages freed by
+    a prune become free-list pages the live writer reuses, so the file stops
+    *growing* even though it does not shrink — what bounds disk on a walk-away box.
 
-    Deliberately does NOT VACUUM: VACUUM needs an exclusive lock and would fail
-    (or block) while the live bot has the DB open. Physically shrinking the file
-    is a separate maintenance-window op (``reclaim_space``), not part of the
-    automatic retention pass."""
-    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    conn.commit()
+    Deliberately does NOT VACUUM (that needs an exclusive lock). No-op on MariaDB,
+    where InnoDB manages its own storage — see :func:`steemer.db.checkpoint`."""
+    _db.checkpoint(conn)
 
 
-def reclaim_space(conn: sqlite3.Connection) -> None:
-    """VACUUM the DB to physically shrink the file after large prunes. Requires
-    an exclusive lock, so run it only in a maintenance window with the live bot
-    stopped — otherwise it raises 'database is locked'."""
-    conn.execute("VACUUM")
-    conn.commit()
+def reclaim_space(conn: _db.Connection) -> None:
+    """VACUUM the DB to physically shrink the file after large prunes (SQLite;
+    requires an exclusive lock, so run it only in a maintenance window). No-op on
+    MariaDB — see :func:`steemer.db.reclaim_space`."""
+    _db.reclaim_space(conn)

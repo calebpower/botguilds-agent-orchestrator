@@ -28,17 +28,20 @@ Run: ``uv run python ui/server.py [--host H] [--port P] [--db PATH]``
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import json
 import os
-import sqlite3
+import threading
 import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 # Import from the installed steemer package (works under `uv run`): the storage
-# module owns the authoritative schema, metrics owns the KPI snapshot, and
-# findings owns the authored lab-notebook loader.
+# module owns the authoritative schema, metrics owns the KPI snapshot, findings
+# owns the authored lab-notebook loader, and db owns the SQLite/MariaDB seam.
+from steemer import db as _db
 from steemer import findings, metrics
 from steemer.storage import DEFAULT_DB
 
@@ -62,30 +65,25 @@ LOG_FILES = {
 # Read-only DB access
 # --------------------------------------------------------------------------- #
 
-def _ro(db_path: str) -> sqlite3.Connection:
-    """Open ``db_path`` read-only (URI ``mode=ro``) with row access by name.
+def _ro(db_cfg) -> _db.Connection:
+    """Open the configured backend read-only (SQLite ``mode=ro`` / a fresh
+    MariaDB connection) with row access by name.
 
-    Read-only means we coexist with the live writer under WAL and can never
-    mutate the guild's accumulated memory.
+    For SQLite, read-only is enforced at the driver level (``mode=ro``) so we
+    coexist with the live writer under WAL and can never mutate the guild's
+    memory. For MariaDB there is no per-connection read-only mode, so this
+    coexists by only ever issuing SELECTs (a documented, code-enforced guarantee).
     """
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return _db.connect(db_cfg, readonly=True)
 
 
-def _db_ready(db_path: str) -> bool:
-    """True when the DB file exists and is openable read-only.
+def _db_ready(db_cfg) -> bool:
+    """True when the configured backend is reachable/openable.
 
     Everything downstream treats a False here as "no data yet" rather than an
     error, so the dashboard is useful before the bot has ever run.
     """
-    if not os.path.exists(db_path):
-        return False
-    try:
-        _ro(db_path).close()
-        return True
-    except sqlite3.Error:
-        return False
+    return _db.db_ready(db_cfg)
 
 
 # The KPI snapshot is a non-trivial aggregate over a large log; cache it briefly
@@ -96,13 +94,19 @@ _SNAP_TTL = 3.0
 _snap_cache: dict[str, tuple[float, dict]] = {}
 
 
-def _snapshot_cached(db_path: str) -> dict:
+def _cache_key(db_cfg) -> str:
+    """Hashable, secret-free cache key for a backend config (or a raw path str)."""
+    return db_cfg if isinstance(db_cfg, str) else _db.cfg_key(db_cfg)
+
+
+def _snapshot_cached(db_cfg) -> dict:
     now = time.monotonic()
-    cached = _snap_cache.get(db_path)
+    key = _cache_key(db_cfg)
+    cached = _snap_cache.get(key)
     if cached is not None and now - cached[0] < _SNAP_TTL:
         return cached[1]
-    snap = metrics.snapshot(db_path)
-    _snap_cache[db_path] = (now, snap)
+    snap = metrics.snapshot(db_cfg)
+    _snap_cache[key] = (now, snap)
     return snap
 
 
@@ -114,7 +118,7 @@ def api_snapshot(db_path: str) -> dict:
         snap = _snapshot_cached(db_path)
         snap["ok"] = True
         return snap
-    except sqlite3.Error as exc:  # empty/partial DB: degrade, don't crash
+    except _db.Error as exc:  # empty/partial DB: degrade, don't crash
         return {"ok": False, "reason": str(exc)}
 
 
@@ -130,7 +134,7 @@ def api_worlds(db_path: str) -> list[str]:
                 if w:
                     worlds.add(w)
         return sorted(worlds)
-    except sqlite3.Error:
+    except _db.Error:
         return []
     finally:
         conn.close()
@@ -147,7 +151,7 @@ def api_chars(db_path: str) -> list[str]:
             "ORDER BY char_uid"
         ).fetchall()
         return [r[0] for r in rows]
-    except sqlite3.Error:
+    except _db.Error:
         return []
     finally:
         conn.close()
@@ -193,7 +197,7 @@ def api_decisions(db_path: str, char: str | None, world: str | None,
                 "strategy_version": r["strategy_version"], "run_id": r["run_id"],
             })
         return out
-    except sqlite3.Error:
+    except _db.Error:
         return []
     finally:
         conn.close()
@@ -258,7 +262,7 @@ def api_map(db_path: str, world: str | None) -> dict:
 
         out["bounds"] = [max_x + 1, max_y + 1] if max_x >= 0 and max_y >= 0 else None
         return out
-    except (sqlite3.Error, zlib.error, json.JSONDecodeError, KeyError):
+    except (*_db.Error, zlib.error, json.JSONDecodeError, KeyError):
         return empty
     finally:
         conn.close()
@@ -324,13 +328,154 @@ def api_observed(db_path: str) -> dict:
         # (was a full second snapshot() compute on every Findings-tab poll).
         try:
             out["exploration"] = _snapshot_cached(db_path).get("exploration", {})
-        except sqlite3.Error:
+        except _db.Error:
             out["exploration"] = {}
         return out
-    except sqlite3.Error:
+    except _db.Error:
         return empty
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# WebSocket push (hand-rolled RFC6455, stdlib only)
+#
+# The page used to poll every /api/* endpoint every 3s, per client. Instead, one
+# server-side watcher thread polls the cheap indexed MAX(seq) once and pushes a
+# tiny "changed" notification to all connected clients only when the data has
+# actually advanced; the browser then refreshes just its active tab. This is not
+# fully event-driven (the bot writes to the DB, it does not push to us), but it
+# collapses the N-clients x every-endpoint poll fan-out into a single 1 Hz server
+# poll that emits only on change. We implement the framing ourselves to keep the
+# dashboard's stdlib-only, zero-dependency constraint.
+# --------------------------------------------------------------------------- #
+
+_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"   # RFC6455 magic
+_ws_clients: set["WSClient"] = set()
+_ws_lock = threading.Lock()
+
+
+def _ws_accept_key(key: str) -> str:
+    """The Sec-WebSocket-Accept value for a client's Sec-WebSocket-Key."""
+    return base64.b64encode(
+        hashlib.sha1((key + _WS_GUID).encode("ascii")).digest()).decode("ascii")
+
+
+def _ws_encode(payload: bytes, opcode: int = 0x1) -> bytes:
+    """Frame a server->client message (FIN=1, unmasked — servers never mask).
+    Notifications are tiny, so only the <126 and 16-bit length forms are needed."""
+    b1 = 0x80 | opcode
+    n = len(payload)
+    if n < 126:
+        header = bytes([b1, n])
+    elif n < 65536:
+        header = bytes([b1, 126]) + n.to_bytes(2, "big")
+    else:
+        header = bytes([b1, 127]) + n.to_bytes(8, "big")
+    return header + payload
+
+
+def _ws_read_frame(rfile):
+    """Read one client->server frame. Returns (opcode, data) or None at EOF.
+    Client frames are always masked (RFC6455); we unmask before returning."""
+    hdr = rfile.read(2)
+    if len(hdr) < 2:
+        return None
+    b1, b2 = hdr[0], hdr[1]
+    opcode = b1 & 0x0F
+    masked = b2 & 0x80
+    length = b2 & 0x7F
+    if length == 126:
+        ext = rfile.read(2)
+        if len(ext) < 2:
+            return None
+        length = int.from_bytes(ext, "big")
+    elif length == 127:
+        ext = rfile.read(8)
+        if len(ext) < 8:
+            return None
+        length = int.from_bytes(ext, "big")
+    mask = rfile.read(4) if masked else b""
+    data = rfile.read(length) if length else b""
+    if len(data) < length:
+        return None
+    if masked:
+        data = bytes(data[i] ^ mask[i % 4] for i in range(len(data)))
+    return opcode, data
+
+
+class WSClient:
+    """A connected dashboard socket. Writes are serialized by a per-client lock so
+    the watcher-thread broadcast and a handler-thread pong never interleave."""
+
+    def __init__(self, sock):
+        self._sock = sock
+        self._wlock = threading.Lock()
+        self.alive = True
+
+    def send(self, text: str) -> bool:
+        """Send a text frame; returns False (and marks dead) if the peer is gone."""
+        frame = _ws_encode(text.encode("utf-8"))
+        with self._wlock:
+            if not self.alive:
+                return False
+            try:
+                self._sock.sendall(frame)
+                return True
+            except OSError:
+                self.alive = False
+                return False
+
+    def pong(self, payload: bytes) -> None:
+        with self._wlock:
+            if not self.alive:
+                return
+            try:
+                self._sock.sendall(_ws_encode(payload, opcode=0xA))
+            except OSError:
+                self.alive = False
+
+
+def _ws_broadcast(text: str) -> None:
+    """Push ``text`` to every live client; drop any that error out."""
+    with _ws_lock:
+        clients = list(_ws_clients)
+    for c in clients:
+        if not c.send(text):
+            with _ws_lock:
+                _ws_clients.discard(c)
+
+
+def _watch_and_push(db_config, stop: threading.Event, interval: float = 1.0) -> None:
+    """One 1 Hz poll of the cheap indexed maxima; broadcast only on advance.
+
+    Reopens a read-only connection each tick so MariaDB's transaction snapshot
+    can't hide freshly-committed rows (and SQLite ``mode=ro`` sees the latest WAL
+    commit either way). A DB hiccup is skipped, not fatal — the dashboard degrades
+    to its polling fallback, never crashes."""
+    last = None
+    while not stop.is_set():
+        try:
+            conn = _db.connect(db_config, readonly=True)
+            try:
+                fr = conn.execute("SELECT MAX(seq) FROM frames").fetchone()
+                de = conn.execute("SELECT MAX(seq) FROM decisions").fetchone()
+                rn = conn.execute("SELECT MAX(run_id) FROM runs").fetchone()
+            finally:
+                conn.close()
+            sig = (fr[0] if fr else None, de[0] if de else None, rn[0] if rn else None)
+        except _db.Error:
+            stop.wait(interval)
+            continue
+        if sig != last:
+            last = sig
+            with _ws_lock:
+                any_clients = bool(_ws_clients)
+            if any_clients:
+                _ws_broadcast(json.dumps(
+                    {"type": "changed", "frames": sig[0],
+                     "decisions": sig[1], "run": sig[2]}))
+        stop.wait(interval)
 
 
 # --------------------------------------------------------------------------- #
@@ -338,8 +483,8 @@ def api_observed(db_path: str) -> dict:
 # --------------------------------------------------------------------------- #
 
 class Handler(BaseHTTPRequestHandler):
-    # ``db_path`` is injected onto the class in main().
-    db_path: str = DEFAULT_DB
+    # ``db_config`` (a SQLite/MariaDB config dict) is injected in main().
+    db_config = {"type": "sqlite", "path": DEFAULT_DB}
 
     def log_message(self, *args):  # keep the console quiet; we're read-only
         pass
@@ -360,6 +505,49 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         self.do_GET()
 
+    def _serve_ws(self) -> None:
+        """Upgrade this connection to a WebSocket and serve it until it closes.
+
+        Sends the RFC6455 101 handshake, registers the client for broadcasts, then
+        loops reading control frames (answering ping, exiting on close/EOF). The
+        watcher thread does the pushing; this loop just keeps the socket healthy."""
+        key = self.headers.get("Sec-WebSocket-Key")
+        if not key:
+            self._send(400, b"missing Sec-WebSocket-Key", "text/plain; charset=utf-8")
+            return
+        # Emit the 101 as raw HTTP/1.1 — the WebSocket protocol requires 1.1, but
+        # BaseHTTPRequestHandler.send_response would stamp the handler's default
+        # HTTP/1.0 status line, which strict clients/proxies reject.
+        self.wfile.write(
+            b"HTTP/1.1 101 Switching Protocols\r\n"
+            b"Upgrade: websocket\r\n"
+            b"Connection: Upgrade\r\n"
+            b"Sec-WebSocket-Accept: " + _ws_accept_key(key).encode("ascii") +
+            b"\r\n\r\n")
+        self.wfile.flush()
+        self.close_connection = True     # we own the socket now; no keep-alive reuse
+
+        client = WSClient(self.connection)
+        with _ws_lock:
+            _ws_clients.add(client)
+        try:
+            while True:
+                frame = _ws_read_frame(self.rfile)
+                if frame is None:
+                    break                       # EOF / malformed -> peer gone
+                opcode, data = frame
+                if opcode == 0x8:               # close
+                    break
+                if opcode == 0x9:               # ping -> pong
+                    client.pong(data)
+                # text/binary/pong from the client are ignored (push-only channel)
+        except OSError:
+            pass
+        finally:
+            client.alive = False
+            with _ws_lock:
+                _ws_clients.discard(client)
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
@@ -370,27 +558,30 @@ class Handler(BaseHTTPRequestHandler):
             return v[0] if v else default
 
         try:
+            if path == "/ws" and self.headers.get("Upgrade", "").lower() == "websocket":
+                self._serve_ws()
+                return
             if path in ("/", "/index.html"):
                 self._send(200, PAGE.encode("utf-8"), "text/html; charset=utf-8")
             elif path == "/api/snapshot":
-                self._json(api_snapshot(self.db_path))
+                self._json(api_snapshot(self.db_config))
             elif path == "/api/worlds":
-                self._json(api_worlds(self.db_path))
+                self._json(api_worlds(self.db_config))
             elif path == "/api/chars":
-                self._json(api_chars(self.db_path))
+                self._json(api_chars(self.db_config))
             elif path == "/api/decisions":
                 self._json(api_decisions(
-                    self.db_path, one("char"), one("world"),
+                    self.db_config, one("char"), one("world"),
                     int(one("limit", "100") or 100)))
             elif path == "/api/map":
-                self._json(api_map(self.db_path, one("world")))
+                self._json(api_map(self.db_config, one("world")))
             elif path == "/api/log":
                 kind, text = api_log(one("name", "decisions"))
                 self._json({"kind": kind, "text": text})
             elif path == "/api/findings":
                 self._json(api_findings())
             elif path == "/api/observed":
-                self._json(api_observed(self.db_path))
+                self._json(api_observed(self.db_config))
             else:
                 self._send(404, b"not found", "text/plain; charset=utf-8")
         except BrokenPipeError:
@@ -1263,11 +1454,36 @@ function refresh(){
 }
 ["#f-char","#f-world","#f-limit"].forEach(id=>$(id).onchange = loadDecisions);
 refresh();
-setInterval(()=>{
-  if(!$("#autorefresh").checked) return;
-  // only the "live" tabs auto-refresh; logs/timeline update on interval too but cheaply
-  refresh();
-}, 3000);
+
+/* ---- live updates: WebSocket push, with a polling fallback ----
+   The server pushes a "changed" message when the DB advances; we refresh the
+   active tab in response (gated by the auto-refresh checkbox). If the socket
+   can't be established or drops, we fall back to a slow poll and keep trying to
+   reconnect with backoff — so the page always updates, WS or not. */
+let ws=null, wsBackoff=1000, pollTimer=null;
+function startPollFallback(){
+  if(pollTimer) return;
+  pollTimer=setInterval(()=>{ if($("#autorefresh").checked) refresh(); }, 5000);
+}
+function stopPollFallback(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+function connectWS(){
+  let sock;
+  try{
+    const proto = location.protocol==="https:" ? "wss:" : "ws:";
+    sock = new WebSocket(proto+"//"+location.host+"/ws");
+  }catch(e){ startPollFallback(); setTimeout(connectWS, wsBackoff); return; }
+  ws = sock;
+  sock.onopen=()=>{ wsBackoff=1000; stopPollFallback(); };
+  sock.onmessage=()=>{ if($("#autorefresh").checked) refresh(); };
+  sock.onclose=()=>{
+    if(ws===sock) ws=null;
+    startPollFallback();
+    setTimeout(connectWS, wsBackoff);
+    wsBackoff=Math.min(wsBackoff*2, 15000);
+  };
+  sock.onerror=()=>{ try{ sock.close(); }catch(e){} };
+}
+connectWS();
 </script>
 </body>
 </html>
@@ -1283,20 +1499,31 @@ def main() -> None:
     ap.add_argument("--host", default="0.0.0.0",
                     help="bind address (default 0.0.0.0 — LAN-accessible)")
     ap.add_argument("--port", type=int, default=8800, help="port (default 8800)")
-    ap.add_argument("--db", default=DEFAULT_DB,
-                    help=f"path to the guild log DB (default {DEFAULT_DB})")
+    ap.add_argument("--db", default=None,
+                    help="SQLite path override; else use --config/config.toml")
+    ap.add_argument("--config", default=None, help="path to config.toml")
     args = ap.parse_args()
 
-    Handler.db_path = args.db
+    db_cfg = {"type": "sqlite", "path": args.db} if args.db \
+        else _db.load_db_config(args.config)
+    Handler.db_config = db_cfg
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
-    ready = "ready" if _db_ready(args.db) else "no data yet (will show empty state)"
+    ready = "ready" if _db_ready(db_cfg) else "no data yet (will show empty state)"
     print(f"steemer dashboard on http://{args.host}:{args.port}  "
-          f"db={args.db} [{ready}]")
+          f"db={_db.cfg_key(db_cfg)} [{ready}]  (WebSocket push at /ws)")
+
+    # One watcher thread pushes "changed" to all WS clients when the DB advances,
+    # so the page updates on write instead of every client polling on a timer.
+    stop = threading.Event()
+    watcher = threading.Thread(
+        target=_watch_and_push, args=(db_cfg, stop), name="ws-watcher", daemon=True)
+    watcher.start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\nshutting down")
     finally:
+        stop.set()
         httpd.server_close()
 
 

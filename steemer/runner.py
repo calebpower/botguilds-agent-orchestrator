@@ -16,6 +16,7 @@ import argparse
 import os
 import subprocess
 
+from . import db as _db
 from .bot import GuildBot
 from .client import Client
 from .storage import Storage
@@ -32,7 +33,9 @@ def git_sha() -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Play BotGuilds as Stanley_Steemer.")
-    ap.add_argument("--db", default="guild_log.db")
+    ap.add_argument("--db", default=None,
+                    help="SQLite path override; else use --config/config.toml")
+    ap.add_argument("--config", default=None, help="path to config.toml")
     ap.add_argument("--strategy", default="explorer")
     ap.add_argument("--server", default=None, help="override guild_token.json's server")
     ap.add_argument("--token", default=os.environ.get("GUILD_TOKEN_FILE", "guild_token.json"))
@@ -41,7 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--note", default="", help="note recorded on this run window")
     args = ap.parse_args(argv)
 
-    storage = None if args.no_log else Storage(args.db)
+    db_cfg = {"type": "sqlite", "path": args.db} if args.db \
+        else _db.load_db_config(args.config)
+    storage = None if args.no_log else Storage(db_cfg)
     bot = GuildBot(strategy=args.strategy, storage=storage)
     if storage is not None:
         storage.begin_run(git_sha(), bot.strategy.version, note=args.note)

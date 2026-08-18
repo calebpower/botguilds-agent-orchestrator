@@ -23,12 +23,12 @@ from __future__ import annotations
 
 import argparse
 import os
-import sqlite3
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from steemer import archive, shippers  # noqa: E402
+from steemer import db as _db  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DB = os.path.join(REPO, "guild_log.db")
@@ -52,7 +52,7 @@ def _mounted(path: str, mount_root: str = "/mnt/nas") -> bool:
         return False
 
 
-def _archive_name(conn: sqlite3.Connection, run_id: int) -> str:
+def _archive_name(conn: _db.Connection, run_id: int) -> str:
     row = conn.execute(
         "SELECT git_sha, strategy_version FROM runs WHERE run_id=?", (run_id,)).fetchone()
     sha = (row[0] or "nosha")[:10] if row else "nosha"
@@ -62,7 +62,9 @@ def _archive_name(conn: sqlite3.Connection, run_id: int) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--db", default=DEFAULT_DB)
+    ap.add_argument("--db", default=None,
+                    help="SQLite path override; else use --config/config.toml")
+    ap.add_argument("--config", default=None, help="path to config.toml")
     ap.add_argument("--dest", default=DEFAULT_DEST, help="NAS archive directory")
     ap.add_argument("--stage", default=DEFAULT_STAGE, help="local staging dir")
     ap.add_argument("--hot-hours", type=float, default=48.0,
@@ -76,8 +78,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     os.makedirs(args.stage, exist_ok=True)
-    conn = sqlite3.connect(args.db, timeout=60)
-    conn.execute("PRAGMA busy_timeout=60000")
+    # --db (a SQLite path) overrides config; otherwise resolve the backend from
+    # --config/config.toml (default DEFAULT_DB when no config exists).
+    db_cfg = {"type": "sqlite", "path": args.db} if args.db \
+        else _db.load_db_config(args.config)
+    conn = _db.connect(db_cfg)
 
     before_ts = time.time() - args.hot_hours * 3600.0
     runs = archive.archivable_runs(conn, before_ts)

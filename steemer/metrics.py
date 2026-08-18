@@ -13,18 +13,18 @@ occurred* rather than by hard-coding names. The analysis loop interprets them.
 from __future__ import annotations
 
 import json
-import sqlite3
 import zlib
 from typing import Any
 
-
-def _ro(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    return conn
+from . import db as _db
 
 
-def _counts(conn: sqlite3.Connection, table: str, group: str, limit: int = 20) -> dict[str, int]:
+def _ro(db: Any) -> _db.Connection:
+    """Read-only connection to either backend (Row-style name access)."""
+    return _db.connect(db, readonly=True)
+
+
+def _counts(conn: _db.Connection, table: str, group: str, limit: int = 20) -> dict[str, int]:
     rows = conn.execute(
         f"SELECT {group} AS k, COUNT(*) AS n FROM {table} "
         f"GROUP BY {group} ORDER BY n DESC LIMIT {int(limit)}"
@@ -32,12 +32,12 @@ def _counts(conn: sqlite3.Connection, table: str, group: str, limit: int = 20) -
     return {("" if r["k"] is None else str(r["k"])): r["n"] for r in rows}
 
 
-def _scalar(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> Any:
+def _scalar(conn: _db.Connection, sql: str, params: tuple = ()) -> Any:
     row = conn.execute(sql, params).fetchone()
     return row[0] if row else None
 
 
-def _latest_frame(conn: sqlite3.Connection, world: str | None = None) -> dict[str, Any] | None:
+def _latest_frame(conn: _db.Connection, world: str | None = None) -> dict[str, Any] | None:
     sql = "SELECT json FROM frames"
     params: tuple = ()
     if world:
@@ -48,11 +48,14 @@ def _latest_frame(conn: sqlite3.Connection, world: str | None = None) -> dict[st
     return json.loads(zlib.decompress(row[0])) if row else None
 
 
-def snapshot(db_path: str) -> dict[str, Any]:
-    """A single JSON-serializable KPI snapshot for the analysis loop."""
-    conn = _ro(db_path)
+def snapshot(db: Any = None) -> dict[str, Any]:
+    """A single JSON-serializable KPI snapshot for the analysis loop.
+
+    ``db`` is a config dict, a SQLite path, or None to resolve from config."""
+    cfg = _db.normalize(db)
+    conn = _ro(cfg)
     try:
-        out: dict[str, Any] = {"db": db_path}
+        out: dict[str, Any] = {"db": _db.cfg_key(cfg)}
 
         # -- volume + span ---------------------------------------------------
         tick_min = _scalar(conn, "SELECT MIN(tick) FROM frames")
@@ -114,7 +117,7 @@ def snapshot(db_path: str) -> dict[str, Any]:
         conn.close()
 
 
-def _run_summaries(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def _run_summaries(conn: _db.Connection) -> list[dict[str, Any]]:
     runs = conn.execute(
         "SELECT run_id, git_sha, strategy_version, started_at, stopped_at, note "
         "FROM runs ORDER BY run_id"
@@ -142,7 +145,7 @@ def _run_summaries(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return summaries
 
 
-def _run_gold_delta(conn: sqlite3.Connection, run_id: int) -> int | None:
+def _run_gold_delta(conn: _db.Connection, run_id: int) -> int | None:
     """First vs last observed guild gold within a run (village frames only).
 
     Decompress only the first and last village frame — the min/max seq rows,
