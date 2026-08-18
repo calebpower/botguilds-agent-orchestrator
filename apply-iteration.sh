@@ -45,9 +45,20 @@ Then, for this single iteration:
   bump the strategy version, and add tests — mutation-check every new assertion.
 - Verify: uv run pytest -q, then uv run python -m steemer.replay, then the reaper
   gate per loop.md step 6. Do not redeploy on a red gate.
-- Commit (configured git user, no Claude trailer) and ./redeploy.sh --note "...".
-- Update the notes and UI documentation: append to decisions.log and
-  findings.jsonl, and update any UI doc/README affected by a dashboard change.
+- Commit AND PUSH (loop.md step 7 — configured git user, no --author, no Claude
+  trailer; the standing directive is "commit + push freely"), then
+  ./redeploy.sh --note "...".
+- Record (loop.md step 9): append the decision to decisions.log; and REVIEW +
+  CURATE findings.jsonl — this is NOT append-only. Before adding entries, load
+  the notebook and curate: resolve conjectures whose tests have now run
+  (open -> confirmed/refuted), mark shipped considerations, fold duplicates
+  together (findings.load() -> edit -> findings.rewrite(rows)). Then add any new
+  discovery/conjecture/consideration for this change. Also update any UI
+  doc/README affected by a dashboard change.
+- Submodule check (loop.md step 10): run uv run tools/check_submodule.py; if
+  upstream has moved, review and DELIBERATELY port the relevant protocol/client
+  fixes into steemer/ (never a blind submodule merge), and log it. If nothing
+  moved, say so and move on.
 - Print a concise SUMMARY of what changed and the expected metric effect.
 
 Do exactly one pass. Do NOT call ScheduleWakeup and do NOT schedule any

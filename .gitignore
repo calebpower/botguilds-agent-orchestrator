@@ -42,3 +42,8 @@ steemer-live.log
 
 # local archive staging (frames shipped off-box, then pruned)
 /archive/
+
+# analyze-iteration.sh's local window cursor (which window it last advised on)
+orchestrator/.analyze-window
+# the analyze->apply handoff file (regenerated each analyze pass)
+orchestrator/advice.md

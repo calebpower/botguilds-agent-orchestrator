@@ -452,3 +452,24 @@ guard, each delta builder over temp SQLite, end-to-end subscribe→write→recei
 from both sides). Mutation-checked: nulling the decisions delta fails the e2e
 oracle. Live-probed against the running bot: Decisions/Map stream data ~1/s,
 Overview pushed nothing in 2.5s (only on recompute). Commit 6315b97.
+
+## 2026-08-18 03:01 — analyze/apply scripts: close 3 gaps vs a full loop tick (dedup + history + push/curate)
+Operator review of `make analyze`/`make apply`: together they cover the brain of
+a loop tick (analyze→pick→implement→verify→commit→redeploy→record) minus the
+autonomy scaffolding (liveness/pacing/usage-cap), but with three holes. Fixed all
+three. (1) DEDUP — analyze was stateless and blind to history: it would re-decide
+the same strategy-version window on a re-run and could re-propose an
+already-tried-and-reverted change. analyze-iteration.sh now REFUSES (exit 2, or
+--force) when the window signature "<version>#<boundary_run_id>" is unchanged and
+< MIN_NEW_DECISIONS (200) have landed since the last analysis, WARNs on a young
+window (< MIN_WINDOW_FRAMES=500 frames), and records the window it advised on in
+the gitignored orchestrator/.analyze-window cursor. The version bump `apply` does
+is the ledger: a bump → new boundary → next analyze proceeds (verified: refuse /
+force / same-window+new-data note / version-bump advance all exercised against a
+fixture DB with a stubbed claude). (2) MEMORY — the analyze prompt now has the
+pass READ decisions.log + findings.jsonl and forbids re-proposing settled ground
+without naming the NEW signal that justifies a retry. (3) The apply prompt now
+does loop.md step 7 PUSH (not just commit), step 9 CURATION of findings.jsonl
+(resolve open conjectures, mark shipped, fold dups — not append-only), and step 10
+check_submodule. Verify: 145 pytest green (test_scripts.py `sh -n` under dash
+covers both scripts); guard paths exercised end-to-end. No bot/strategy change.
