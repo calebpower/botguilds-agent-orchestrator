@@ -66,6 +66,23 @@ fixes: (1) SELL stranded brewables — a herb that can't form a no-curdle batch 
 banked for gold, not hoarded; (2) learn undecoded herbs with same-KIND batches
 (can't curdle) instead of mixing different unknowns (which caused 0.7.0's only
 curdles). Keeps the brew win, unclogs carry, and cleans up the learning path.
+
+v0.9.0 — the 0.8.0 window's action-error rate held at ~0.5, of which
+not_enough_stamina is 45%. A DB drill-down killed the standing theory that the
+village loop was the culprit: village economy actions (sell/buy/brew/equip/
+spend_xp) produce ZERO not_enough_stamina across all history — they cost no
+stamina — so gating them would be a no-op. The real leak is the FIELD: 98% of
+not_enough_stamina is `move`, and it fails at a *shown* stamina of 13-29 (median
+23) on 94% plain floor (web/rime = 0%), even though the measured floor move cost
+is 20 and the gate already checks `stamina >= 20`. The bot only issues a move it
+believes it can afford, yet the server rejects it — the tell of a ~1-tick STALE
+frame: the acted-on stamina reading is higher than the server's live value (a
+prior move's cost not yet reflected). Fix: give the field move gate HEADROOM
+(``MOVE_STAMINA_SAFETY``) above the raw cost, so a stale-high reading still
+affords the move on the server; otherwise the char rests and regens (double
+rate) rather than spamming a doomed step. Applied to `move`/`ride` only —
+attack/use/etc. barely ever error on stamina, and margining them would needlessly
+throttle combat and healing.
 """
 
 from __future__ import annotations
@@ -93,8 +110,14 @@ BREW_MAX = 4
 BREW_MIN_GOLD = 10         # keep a little gold buffer before buying bottles
 
 
+MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina before
+#   stepping — headroom so a ~1-tick-stale frame reading still affords the move on
+#   the server (moves failed not_enough_stamina at shown-sta up to ~29 for a cost-20
+#   move; the gap is staleness, not terrain). Rest/regen instead of a doomed step.
+
+
 class Explorer:
-    version = "explorer/0.8.0"
+    version = "explorer/0.9.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -257,10 +280,17 @@ class Explorer:
         def offer(action: dict[str, Any], score: float, why: str) -> None:
             name = action["action"]
             cost = self._cost(name, cfg)
-            if stamina >= cost:
+            # Moves need headroom above the raw cost (v0.9.0): the frame we decide
+            # on can be ~1 tick stale, so a step that looks affordable is rejected
+            # not_enough_stamina when the server's live stamina is lower. A margin
+            # keeps the char resting (double-rate regen) until the step is a safe
+            # bet. Non-movement actions barely ever error on stamina — leave them
+            # at the raw cost so combat/healing aren't throttled.
+            need = int(cost * MOVE_STAMINA_SAFETY) if name in ("move", "ride") else cost
+            if stamina >= need:
                 trace.consider(action, score, why)
             else:
-                trace.observe(f"wanted {name} ({why}) but stamina {stamina} < ~{cost}: resting")
+                trace.observe(f"wanted {name} ({why}) but stamina {stamina} < ~{need}: resting")
 
         # --- Hurt: disengage. Offer ONLY heal + flee, then stop. A hurt char
         # that keeps attacking/looting spends the stamina it needs to escape and

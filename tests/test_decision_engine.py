@@ -108,6 +108,34 @@ def test_acts_once_stamina_is_affordable():
     assert {"char_uid": "c1", "action": "attack", "target": [1, 0]} in bot.on_frame(frame)
 
 
+def test_move_requires_staleness_headroom_above_raw_cost():
+    # v0.9.0: field `move` is 98% of not_enough_stamina — the bot issued steps it
+    # "afforded" (sta >= raw cost 20) that the server rejected because the acted-on
+    # frame was ~1 tick stale (true stamina lower). The move gate now needs headroom
+    # (1.5x raw cost = 30) so a stale-high reading still affords the step; below that
+    # the char rests and regens instead of spamming a doomed move. A pure-exploration
+    # frame (no enemy/loot/container, only scout moves) isolates the move gate.
+    bot = _bot()
+    # sta 25: >= raw cost (20) but < headroom (30) -> rests rather than a doomed step.
+    assert bot.on_frame(_field_frame(_field_char(stamina=25, pos=[0, 0]), FLOOR3)) == []
+    # sta 30: clears the headroom -> it moves. (Break the margin and the sta-25 case
+    # above wrongly emits a move, so that assertion fails — the mutation check.)
+    acts = bot.on_frame(_field_frame(_field_char(stamina=30, pos=[0, 0]), FLOOR3))
+    assert any(a.get("action") == "move" for a in acts)
+
+
+def test_attack_is_not_subject_to_the_move_headroom():
+    # the headroom is move-only: an attack still fires at the raw cost (20), so a
+    # sta-25 char with an adjacent enemy attacks rather than resting. (Guards against
+    # the margin being applied to every action and throttling combat.)
+    bot = _bot()
+    char = _field_char(stamina=25)
+    acts = bot.on_frame(_field_frame(char, FLOOR3,
+                        entities=[{"pos": [1, 0], "faction": "monster",
+                                   "kind": "rat", "hp_frac": 0.5}]))
+    assert {"char_uid": "c1", "action": "attack", "target": [1, 0]} in acts
+
+
 def test_adjacent_monster_is_attacked_never_walked_onto():
     bot = _bot()
     frame = _field_frame(_field_char(), FLOOR3,
