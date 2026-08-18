@@ -806,3 +806,23 @@ GuildBot driven over run #32's error stream wrote 11 bot_anomaly events + stdout
 metrics snapshot live-verified to populate roster/inventory/anomalies_recent.
 Falsified if: the anomaly fires on a healthy stream (noise) or never fires on a
 real storm; the panel presents the dip as an authoritative count.
+
+## 2026-08-18 12:20 — vendored the server web client; found /api/spectate/guilds is the authoritative roster (reopens the roster-accounting fix)
+
+Downloaded https://bot.willmorrison.net/web/app.js to reference_web/app.js and
+added tools/check_webclient.py to periodically re-diff it (like the reference
+submodule). Scanned it for endpoints. Key find: **GET /api/spectate/guilds**
+(public, no auth) returns per guild `{guild_id, name, characters, roster:[{char_
+uid, name, level, world, look, equipment}]}` — `characters` is the TRUE total
+roster and each entry carries its current `world`. This is the authoritative
+count the ZeroMQ village frame only partially/laggingly shows (the "7 vs 28"
+desync). Live check: our guild = 16 chars; a rival guild "WillMorr" (g_63837f)
+has 25 — multiplayer confirmed (the operator's "first new guild").
+
+**Implication:** the strategy roster-accounting fix I earlier concluded was
+impossible *from frames* IS achievable by polling this HTTP endpoint (cache
+~30-60s, non-blocking, fall back to the frame snapshot on error). Logged as an
+open consideration; not built this turn (it is a strategy change touching the
+live bot — needs the HTTP base in config + a version bump + gate). Other
+endpoints (/events/spectate SSE, /api/tiles metadata, /api/me = our own frames)
+noted in reference_web/README.md.
