@@ -588,3 +588,46 @@ commit. Two commits: 371874d (strategy) + be184e6 (db fix), both pushed.
 Submodule: reference_starter_kit is 2 commits behind upstream (doc condensation +
 a market shop `req` field the explorer doesn't consume) — reviewed, nothing to
 port, pin left as-is.
+
+## 2026-08-18 09:35 — MariaDB is now the live source of truth (cutover); retention export made streaming-safe; a false "stall" that was my monitoring bug
+
+WHAT. Cut the live bot fully over to the MariaDB backend (config.toml type=mariadb,
+run bare — no more `--db guild_log.db` shim). MariaDB now holds the go-forward
+truth; the 6.3 GB sqlite guild_log.db is retained as a cold backup and stays in
+the code as a selectable backend. Run #27 (mariadb, explorer/0.9.0) is live,
+screen-hosted (durable), growing; sqlite is frozen.
+
+ENABLING FIX (committed 66e2732). export_run read a whole run's frames through the
+seam's default cursor, which is BUFFERED on MariaDB — it would materialise a
+multi-GB run in memory. Since retention prunes only after a verified archive, a
+broken archiver = the disk fills (~7 GiB/day). Added Connection.execute_stream
+(unbuffered on MariaDB, native stream on SQLite) and used it in export_run.
+Verified: a real 9,480-frame run exports at 3 MB peak RSS (flat = streaming). Unit
+guard + live roundtrip export test, both green.
+
+CORRECTION — the "MariaDB stalls under live play" claim was WRONG; it was a
+measurement artifact, not a bug. I watched run #24/#25 with a REUSED db.connect()
+connection (autocommit=False) across sleeps; InnoDB's default REPEATABLE READ
+pinned that connection to its first snapshot, so COUNT(*) never advanced even
+though the bot was committing normally. I mistook the frozen snapshot for a hung
+bot, killed two healthy MariaDB runs, and briefly reverted to sqlite. Fresh-
+connection queries proved the truth: run #24 reached 3,024 frames (tick 411962),
+run #25 reached 1,865 — both playing fine. Per-frame MariaDB write cost is ~25 ms
+(frame 4.4 ms + ~150-400 tiles at ~15 ms + a few plain-INSERT executemany),
+comfortably under the ~62 ms frame budget. So: NO async queue / Valkey / writer-
+thread is needed — synchronous writes keep up. LESSON: when checking live write
+progress on MariaDB, use a FRESH connection (or autocommit / READ COMMITTED) per
+sample, never a reused REPEATABLE-READ connection.
+
+VERIFY. Full suite 151 passed / 1 skipped; reaper gate GREEN (151 in the pinned
+container, clean imports of db.py/archive.py); STEEMER_TEST_MARIADB=1 roundtrip
+(incl. the new export streaming) green. Post-cutover, run #27 monitored with fresh
+connections: frames 143->273->404->516... climbing steadily, ticks advancing, no
+stall; sqlite guild_log.db frozen. Bot tree roots at the screen daemon (PID 1672).
+
+OPS NOTES. config.toml=mariadb is now the live truth — a bare `make run-live`
+does the right thing; no shim. Retention cron (04:17) archives+prunes from
+MariaDB, now safe via the streaming export. reclaim after prune is a MariaDB
+no-op (InnoDB reuses freed pages; OPTIMIZE TABLE only if the file must shrink).
+Dangling-open MariaDB run rows from the killed #24/#25 episode are closed by
+begin_run's defensive close on the next start.
