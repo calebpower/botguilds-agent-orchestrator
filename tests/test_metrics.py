@@ -139,3 +139,32 @@ def test_run_summary_reports_gold_delta(tmp_path):
     assert run["strategy_version"] == "explorer/0.1.0"
     assert run["gold_delta"] == 75               # 175 - 100 within the run
     assert run["action_error_rate"] == 0.5
+
+
+def test_snapshot_field_productivity(tmp_path):
+    # the KPIs the loop was blind to: move_failed rate, pickups/xp/attacks, the
+    # village economy, and sell-waste (sell actions that never became a sale).
+    s = Storage(str(tmp_path / "p.db"), commit_every=1)
+    s.begin_run("sha", "explorer/0.12.0")
+
+    def mf(tick, events):
+        return {"type": "frame", "tick": tick, "world": "vale",
+                "chars": [{"char_uid": "c2", "pos": [3, 3]}],
+                "visible": {"tiles": [[3, 3, "grass", 1]], "entities": [], "items": [], "gold": []},
+                "events": events}
+
+    s.record_frame(mf(1, [{"kind": "move"}, {"kind": "move"}, {"kind": "move"}, {"kind": "move_failed"}]))
+    s.record_frame(mf(2, [{"kind": "pickup"}, {"kind": "sale"}, {"kind": "attack"}, {"kind": "xp"}]))
+    s.record_actions(1, [{"char_uid": "c2", "action": "sell", "item_id": "i"},
+                         {"char_uid": "c2", "action": "sell", "item_id": "j"},
+                         {"char_uid": "c2", "action": "buy", "kind": "club"}])
+    s.flush()
+
+    fp = snapshot(str(tmp_path / "p.db"))["field_productivity"]
+    assert fp["move_failed_rate"] == 0.25          # 1 / (3 moves + 1 failed)
+    assert fp["pickups"] == 1 and fp["attacks"] == 1 and fp["xp_events"] == 1
+    assert fp["economy_actions"] == 3              # 2 sell + 1 buy
+    assert fp["sell_waste"] == 1                    # 2 sell actions - 1 sale event
+    # and it's mirrored per-run in the runs timeline
+    assert snapshot(str(tmp_path / "p.db"))["runs"][-1]["productivity"]["move_failed_rate"] == 0.25
+    s.close()

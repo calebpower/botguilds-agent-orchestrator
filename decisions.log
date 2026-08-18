@@ -991,3 +991,60 @@ and has a negative test (a char that DID move isn't mis-blocked). Replay clean o
 daemons survive the harness). Next iteration: make field productivity
 (move_failed%, pickups/1k, xp/1k, per-world depth, economy-action counts)
 first-class KPIs so the loop is never blind to this again.
+
+## 2026-08-18 17:44 — MEASURED explorer/0.12.0 (run #37, ~1h): nav freeze FIXED; a deeper bootstrap problem revealed
+
+**Actual effect (run #37, 17.5k frames vs the #32-#36 baseline):**
+- **move_failed 30% → 7.2%** — collapsed ~4×. The nav-freeze fix worked. (Not yet
+  the ~1% golden-era, but decisive; residual likely genuine dead-ends + crowding.)
+- **Village economy restarted: 0 → 128 actions** after 8 dead runs (all `sell`).
+  `attack` jumped to 246, `embark` 1418, `recruit` 65 — chars are UNFROZEN:
+  moving, fighting, embarking, selling again. The falsification (move_failed stays
+  high / economy stays 0) did NOT trigger. **0.12.0 confirmed effective.**
+- No over-blocking regression: frame rate normal, deaths low (7/17.5k).
+
+**BUT the poverty trap is only PARTIALLY broken — a distinct problem underneath:**
+`pickup` 1, `xp` 1, `sale` events 1 (despite 128 sell *actions*), guild gold still
+**14**. So chars now move and swing (attack 246) but bare-handed they don't KILL
+(≈0 xp) or reach loot (≈0 pickup), so no income → can't afford weapons (a club is
+45g, we have 14) → stay bare-handed → the spiral persists at the COMBAT/economy
+layer even though the NAV layer is fixed. Two follow-ups this surfaced: (a) a
+combat/loot **bootstrap** — don't embark bare-handed recruits into a fight they
+can't win; hold a home reserve and equip first (advice rec #3); (b) the 128 sell
+actions vs 1 sale event is suspicious waste — investigate.
+
+**Next (iteration 2, proceeding):** make field productivity FIRST-CLASS KPIs in
+metrics.snapshot (move_failed%, pickup/1k, xp/1k, attack/1k, sell-vs-sale, gold,
+per-world depth, economy-action counts) + an events(run_id,kind) index, so the
+loop tracks the recovery and can diagnose the combat bootstrap with eyes open
+(this is the anti-blindness fix). The bootstrap fix itself follows once the KPIs
+are in and one more window has accumulated.
+
+## 2026-08-18 17:51 — iteration 2: field productivity is now first-class in metrics (the anti-blindness fix) + a sell-waste lead
+
+**What.** metrics.snapshot (hence tools/analyze.py and the dashboard) now carries
+FIELD PRODUCTIVITY, per run and at top-level (`field_productivity`): move_failed
+rate, pickups/xp/attacks (raw + per-1k-frames), deaths, the village-economy action
+count, and `sell_waste` (sell actions that never produced a sale event). Computed
+from two grouped queries via a new `idx_events_run_kind` (both schemas + live) —
+events had NO run_id index, so per-run event KPIs were full scans. No gameplay
+change; no strategy version bump (read-side only). Snapshot 12→15s (2 grouped
+queries), fine for the background-published cache.
+
+**Why.** The whole reason the poverty trap festered 8 runs: the loop watched
+`action_error_rate` and was blind to move_failed / loot / economy. These are now
+in the signal the analyze phase reads every pass, so it can never again optimize
+the wrong metric — and it makes the 0.12.0 recovery measurable window-over-window.
+
+**New lead it surfaced.** `sell_waste` = 127 on run #37 (128 sell ACTIONS, 1 sale
+EVENT). Chars repeatedly issue `sell` for something that never sells — pure waste,
+and a clue to the stalled economy. Queued to investigate alongside the
+combat/loot bootstrap (bare-handed chars attack but don't kill → no xp/loot → gold
+stuck at 14 → can't buy weapons). That combined "bootstrap out of poverty" fix is
+the likely iteration-3 change, now that the KPIs make it visible.
+
+**Verify.** pytest 189 passed / 2 skipped; the productivity KPIs are
+mutation-checked (break sell_waste → test fails). Live snapshot renders
+field_productivity (run #37: move_failed_rate 0.075 vs 0.23/0.199 on 0.11.1,
+economy_per_1k 6.96 vs 0). Deploy: read-side — `make dash-restart` (no bot
+restart). Reaper gate: running (config has reaper_gate:true).

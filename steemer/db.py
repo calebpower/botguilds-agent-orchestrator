@@ -447,6 +447,9 @@ CREATE INDEX IF NOT EXISTS idx_frames_tick ON frames(tick);
 -- full-table scan. Supersedes the old single-column events(kind) index.
 CREATE INDEX IF NOT EXISTS idx_events_kind_tick ON events(kind, tick);
 CREATE INDEX IF NOT EXISTS idx_events_tick ON events(tick);
+-- per-run productivity KPIs group events by (run_id, kind); without this that is
+-- a full scan (events had no run_id index at all).
+CREATE INDEX IF NOT EXISTS idx_events_run_kind ON events(run_id, kind);
 CREATE INDEX IF NOT EXISTS idx_decisions_tick ON decisions(tick);
 CREATE INDEX IF NOT EXISTS idx_actionerr_reason ON action_errors(reason);
 CREATE INDEX IF NOT EXISTS idx_frames_run ON frames(run_id);
@@ -478,7 +481,9 @@ CREATE TABLE IF NOT EXISTS events (
     -- (kind, tick) composite: serves GROUP BY kind AND makes the dashboard's
     -- MIN(tick)-per-kind "first seen" an index lookup, not a 1.5M-row scan.
     KEY idx_events_kind_tick (kind, tick),
-    KEY idx_events_tick (tick)
+    KEY idx_events_tick (tick),
+    -- per-run productivity KPIs group by (run_id, kind); events had no run_id index.
+    KEY idx_events_run_kind (run_id, kind)
 );
 CREATE TABLE IF NOT EXISTS actions_sent (
     seq INT AUTO_INCREMENT PRIMARY KEY,

@@ -196,6 +196,13 @@ def snapshot(db: Any = None) -> dict[str, Any]:
 
         # -- per-run windows (for before/after attribution) ------------------
         out["runs"] = _run_summaries(conn)
+        if out["runs"]:
+            latest = out["runs"][-1]
+            out["field_productivity"] = {
+                "run_id": latest["run_id"],
+                "strategy_version": latest["strategy_version"],
+                **latest.get("productivity", {}),
+            }
         return out
     finally:
         conn.close()
@@ -206,6 +213,7 @@ def _run_summaries(conn: _db.Connection) -> list[dict[str, Any]]:
         "SELECT run_id, git_sha, strategy_version, started_at, stopped_at, note "
         "FROM runs ORDER BY run_id"
     ).fetchall()
+    prod = _productivity_by_run(conn)
     summaries = []
     for r in runs:
         rid = r["run_id"]
@@ -225,8 +233,64 @@ def _run_summaries(conn: _db.Connection) -> list[dict[str, Any]]:
             "actions_sent": sent,
             "action_error_rate": round(errs / sent, 3) if sent else None,
             "gold_delta": gold,
+            # FIELD PRODUCTIVITY — the KPIs the loop was blind to for 8 runs (a
+            # nav freeze regressed move_failed 1%->30% and starved the economy
+            # while action_error_rate looked flat). Per-1k-frames rates make
+            # windows of different length comparable.
+            "productivity": _with_rates(prod.get(rid, {}), frames),
         })
     return summaries
+
+
+# events/actions we treat as productivity signal.
+_PROD_KINDS = ("move", "move_failed", "pickup", "xp", "attack", "death", "sale")
+_ECON_ACTIONS = ("buy", "sell", "equip", "brew", "smelt", "spend_xp")
+
+
+def _productivity_by_run(conn: _db.Connection) -> dict[int, dict[str, int]]:
+    """``{run_id: {counts}}`` of field-productivity signal, from two grouped
+    queries (index-only on idx_events_run_kind / idx_actions_run) instead of a
+    per-run-per-kind fan-out."""
+    ev: dict[int, dict[str, int]] = {}
+    for run_id, kind, n in conn.execute(
+            "SELECT run_id, kind, COUNT(*) FROM events GROUP BY run_id, kind"):
+        if run_id is not None:
+            ev.setdefault(run_id, {})[kind] = n
+    ac: dict[int, dict[str, int]] = {}
+    for run_id, action, n in conn.execute(
+            "SELECT run_id, action, COUNT(*) FROM actions_sent GROUP BY run_id, action"):
+        if run_id is not None:
+            ac.setdefault(run_id, {})[action] = n
+    out: dict[int, dict[str, int]] = {}
+    for rid in set(ev) | set(ac):
+        e, a = ev.get(rid, {}), ac.get(rid, {})
+        out[rid] = {
+            "moves": e.get("move", 0), "move_failed": e.get("move_failed", 0),
+            "pickups": e.get("pickup", 0), "xp_events": e.get("xp", 0),
+            "attacks": e.get("attack", 0), "deaths": e.get("death", 0),
+            "sale_events": e.get("sale", 0), "sell_actions": a.get("sell", 0),
+            "economy_actions": sum(a.get(k, 0) for k in _ECON_ACTIONS),
+        }
+    return out
+
+
+def _with_rates(p: dict[str, int], frames: int) -> dict[str, Any]:
+    """Add derived rates to a raw productivity dict: move_failed share, and the
+    key signals per 1k frames (so a 2k-frame window compares to a 40k one)."""
+    if not p:
+        return {}
+    mv, mf = p.get("moves", 0), p.get("move_failed", 0)
+    per1k = (lambda n: round(n / frames * 1000, 2)) if frames else (lambda n: None)
+    return {
+        **p,
+        "move_failed_rate": round(mf / (mv + mf), 3) if mv + mf else None,
+        "pickups_per_1k": per1k(p.get("pickups", 0)),
+        "xp_per_1k": per1k(p.get("xp_events", 0)),
+        "attacks_per_1k": per1k(p.get("attacks", 0)),
+        "economy_per_1k": per1k(p.get("economy_actions", 0)),
+        # sell actions that never became a sale event = wasted sell attempts.
+        "sell_waste": p.get("sell_actions", 0) - p.get("sale_events", 0),
+    }
 
 
 def _run_gold_delta(conn: _db.Connection, run_id: int) -> int | None:
