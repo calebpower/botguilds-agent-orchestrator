@@ -1409,3 +1409,34 @@ before an idle spend_xp tick) — fix by spending XP during the sell-visit (befo
 re-embark, or exempt spend_xp from the village cooldown). Also still open: the
 poison-death churn itself (potion supply << demand) may need a more direct
 survival lever (more brewed potions, or shallower ventures so retreats survive).
+
+## 2026-08-19 ~18:30 — iteration 14: spend_xp confirmed INERT; poison spiral worsening; shipped shallow-venture (0.23.0)
+
+Confirmed 0.22.0's spend_xp fix is INERT — spend_xp 0 over run #78's full 65k
+frames. Reason: the xp-rich chars are perpetually fielded and the roster has
+collapsed to ~8 (all fielded), so the VILLAGE IS EMPTY and the village XP step
+never runs. Broader: the post-0.20.0-spiral poison-death spiral is WORSENING, not
+recovering — our deaths/1k 0.57 (run#75) -> 1.33 (#77) -> 1.57 (#78); gold stuck
+~7; all income drained re-arming 268 dying recruits.
+
+Death mechanism (pinned): chars get poisoned deep (death y-depth median 28) and
+die mid-retreat before reaching the village — which is SAFE (village chars 0%
+poison), they just can't reach it. Only ~1/10 carry a heal; potions (20g) and even
+2g brew bottles (gated at BREW_MIN_GOLD 10) are unaffordable at gold 7; chars hold
+0 herbs. A self-reinforcing spiral: young roster -> poison deaths -> churn -> no
+accumulation -> no survival supplies -> more deaths.
+
+Picked a gold-free, field-size-safe, gold-drain-safe survival lever (avoiding the
+0.20.0 field-empty and 0.17.0 gold-drain traps): **explorer/0.23.0** (git 04da321) —
+an un-healed char (no potion) past POISON_SAFE_DEPTH (12) stops venturing deeper and
+heads home, a short survivable retreat; a char with a heal may still range deep.
+3 mutation-checked tests; suite 212 passed; reaper green. Deployed to run #79. Also
+added the operator's wishlist item (log-scale the overview bar charts).
+
+NEXT PASS: measure run #79+ — deaths/1k down from 1.57? roster growing past ~8?
+gold climbing off 7? If deaths fall, the churn unwinds and gold should accumulate
+(the milestone economy is intact). If NOT, go supply-side: lower BREW_MIN_GOLD so
+the poor guild can brew potions (but chars hold 0 herbs — may need to STOP selling
+brew herbs when potion-starved, or keep a survival reserve). SERIOUS: if the spiral
+keeps worsening, surface to the operator — the guild is slowly dying and may need a
+more fundamental intervention.
