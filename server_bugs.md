@@ -38,6 +38,16 @@ active session.
 `token` field is visible in the first client frame. (Not exploiting — just noting
 the field is cleartext.)
 
+**Scope test (done, on our own guild).** Sent a `hello` with the correct
+`guild_id` but a WRONG 32-char token while our legitimate session was connected. The
+server replied `{"type":"hello_err","reason":"bad_token"}` and did **NOT** kick or
+disturb the active session (frames kept flowing, no `kicked` line). Good: the
+session-supersede requires a VALID token — so this is NOT a knows-the-public-guild_id
+DoS (spectate exposes guild_id, but that alone can't kick anyone). It correctly
+bounds SEC-1 to *token-capture* hijack. The fix is still to stop putting the token on
+the wire in cleartext (and ideally rate-limit `bad_token` hellos to blunt brute
+force, since the guild_id is public and the token is the only secret).
+
 ---
 
 ## ~~SEC-2 — `/api/spectate/guilds` full-roster disclosure~~ — NOT A BUG (intended)
