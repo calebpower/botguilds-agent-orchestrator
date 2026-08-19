@@ -82,9 +82,18 @@ sidecar: ## Web sidecar (foreground): rainbow guild color + intel polling -> DB
 # Each service — bot (game runner), web (sidecar), dash (dashboard) — has
 # up / down / restart. `restart` = down then up (picks up new on-disk code).
 # The bare up / down / restart act on ALL THREE.
+#
+# NOTE on `make X-up` from a REAPING parent: BSD make (bmake) signals its job's
+# process group when it is itself killed. In an ordinary interactive shell
+# `make bot-up` exits cleanly and the svc.sh daemon detaches and survives. But when
+# make is launched inside a context that hard-kills the command's process tree on
+# completion (e.g. an automation/agent harness), that kill races the daemon's
+# detach and can take it down — nohup does not help (the signal is not SIGHUP). In
+# that situation call `./svc.sh up bot` DIRECTLY instead of `make bot-up`: without
+# the extra make layer the daemon reparents to init and stays up (verified).
 
 .PHONY: bot-up bot-down bot-restart
-bot-up: ## Start the game bot, detached
+bot-up: ## Start the game bot, detached (from a reaping harness use ./svc.sh up bot)
 	./svc.sh up bot
 bot-down: ## Stop the game bot
 	./svc.sh down bot
