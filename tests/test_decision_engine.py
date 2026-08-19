@@ -585,39 +585,14 @@ def test_embark_retries_after_the_cooldown_elapses():
     assert later and later[0]["action"] == "embark" and later[0]["char_uids"] == ["c1"]
 
 
-def _bare_village_char(uid):
-    return _idle_village_char(uid, equipment={"hand": None, "offhand": None,
+def test_embarks_any_available_char_to_fill_the_field():
+    # v0.21.0 reverted the v0.20.0 armed-only filter (it emptied the field): a bare
+    # char still fills a field slot and picks up loot, which beats an empty slot.
+    # A bare char home with room in the field is embarked.
+    bot = _bot()
+    bare = _idle_village_char("c1", equipment={"hand": None, "offhand": None,
                               "outfit": None, "trinket": None, "boots": None})
-
-
-def test_embark_prefers_an_armed_char_over_a_bare_one():
-    # v0.20.0: with a bare and an armed char both home and room in the field, field
-    # the ARMED one — a bare char can't fight and dies without earning. gold 5 (<15
-    # club) so the bare char can't be armed this tick and stays a bare candidate.
-    bot = _bot()
-    frame = _deploy_frame(["c1", "c2"], {"vale": [f"v{i}" for i in range(9)]},
-                          [_bare_village_char("c1"), _idle_village_char("c2")], gold=5)
-    acts = bot.on_frame(frame)
-    assert acts and acts[0]["action"] == "embark" and acts[0]["char_uids"] == ["c2"]
-
-
-def test_does_not_embark_a_bare_char_when_earners_are_fielded():
-    # v0.20.0: a bare char is NOT shipped out while the field already has chars —
-    # it waits home to be armed first (rather than thrashing/dying bare).
-    bot = _bot()
-    frame = _deploy_frame(["c1"], {"vale": [f"v{i}" for i in range(9)]},
-                          [_bare_village_char("c1")], gold=5)
-    assert all(a.get("action") != "embark" for a in bot.on_frame(frame))
-
-
-def test_bootstrap_embarks_a_bare_char_when_nothing_is_fielded():
-    # v0.20.0 bootstrap: a cold-started guild with nobody fielded and no armed char
-    # still fields a bare char so it can begin looting (the 0.13.0 escape). roster_cap
-    # 1 so the lone home char doesn't trip recruiting first.
-    bot = _bot()
-    bot.config = {"party_cap": 5, "world_cap": 10, "roster_cap": 1,
-                  "maps": [{"id": "vale"}, {"id": "mines"}, {"id": "spire"}]}
-    frame = _deploy_frame(["c1"], {}, [_bare_village_char("c1")], gold=5)
+    frame = _deploy_frame(["c1"], {"vale": [f"v{i}" for i in range(9)]}, [bare], gold=5)
     acts = bot.on_frame(frame)
     assert acts and acts[0]["action"] == "embark" and acts[0]["char_uids"] == ["c1"]
 

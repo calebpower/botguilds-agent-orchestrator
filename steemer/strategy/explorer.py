@@ -293,6 +293,18 @@ so the field is a capable force that fights, survives, and earns. Bootstrap
 exception: if nothing is fielded AND no armed char is home, field a bare char so a
 cold-started guild can still begin looting (preserves the 0.13.0 escape). Expected:
 fielded-armed fraction rises toward 100%, deaths fall, income/kills rise.
+
+v0.21.0 — 0.20.0 was a REGRESSION and is reverted. Run #76 (0.20.0) vs #75 (0.19.0):
+the armed-only embark filter EMPTIED the field — fielded_mean 9.9->1.8 — because the
+guild does not hold enough ARMED chars to fill world_cap (only ~4), so removing the
+bare "padding" collapsed the field to ~2. Income cratered with it: sale/1k
+9.18->2.84, gold_mean 93.7->6.5, gold_max 530->13 — straight back to poverty, a
+death spiral (empty field -> no income -> no gold -> can't arm -> field stays
+empty). Lesson: a bare char in the field still picks up loot and holds a slot, which
+beats an empty slot; arming is the village loop's job, not grounds to bench them.
+Reverted to fielding ANY available char (0.19.0 behaviour). The real equipment lever
+must improve chars WITHOUT shrinking the field — upgrade weapons on already-fielded
+chars, wire spend_xp, or forge armor — not gate who gets fielded.
 """
 
 from __future__ import annotations
@@ -359,7 +371,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.20.0"
+    version = "explorer/0.21.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -559,26 +571,19 @@ class Explorer:
         # duplicate-send storm that bounced no_such_character), and count those
         # in-flight embarks toward the world cap so we don't over-deploy either.
         here_avail = [u for u in here if u not in inflight]
-        # Field only ARMED chars (v0.20.0): a bare char can't fight, gets hurt, and
-        # dies without earning; keep it home to be armed first (now that gold
-        # accumulates, arming is affordable). Bootstrap exception: if nothing is
-        # fielded AND no armed char is home, field a bare char so a cold-started
-        # guild can begin looting (the 0.13.0 escape).
-        armed_uids = {c["char_uid"] for c in chars
-                      if (c.get("equipment") or {}).get("hand")}
-        armed_avail = [u for u in here_avail if u in armed_uids]
-        if armed_avail:
-            embark_pool = armed_avail
-        elif fielded == 0 and not armed_uids:
-            embark_pool = here_avail            # cold-start: no earners anywhere
-        else:
-            embark_pool = []                    # bare chars wait to be armed
-        if embark_pool and fielded + len(inflight) < world_cap:
+        # v0.21.0: field ANY available char (reverted the v0.20.0 armed-only filter).
+        # Fielding only armed chars EMPTIED the field — we don't hold enough armed
+        # chars to fill world_cap, so removing the bare "padding" collapsed fielded
+        # from ~10 to ~2 and income cratered (a death spiral: empty field -> no
+        # income -> no gold -> can't arm -> field stays empty). A bare char in the
+        # field still picks up loot and pads a slot, which beats an empty one; arming
+        # them is the village loop's job, not a reason to bench them.
+        if here_avail and fielded + len(inflight) < world_cap:
             maps = [m["id"] for m in cfg.get("maps", [])] or list(DEFAULT_MAPS)
             party_cap = cfg.get("party_cap", 5)
             target = min(maps, key=lambda m: by_world.get(m, 0))
             if by_world.get(target, 0) < party_cap:
-                uid = embark_pool[0]
+                uid = here_avail[0]
                 self._embark_at[uid] = tick
                 return [self._village_act(
                     bot, None, {"action": "embark", "map": target,
