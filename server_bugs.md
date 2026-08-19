@@ -44,9 +44,17 @@ server replied `{"type":"hello_err","reason":"bad_token"}` and did **NOT** kick 
 disturb the active session (frames kept flowing, no `kicked` line). Good: the
 session-supersede requires a VALID token — so this is NOT a knows-the-public-guild_id
 DoS (spectate exposes guild_id, but that alone can't kick anyone). It correctly
-bounds SEC-1 to *token-capture* hijack. The fix is still to stop putting the token on
-the wire in cleartext (and ideally rate-limit `bad_token` hellos to blunt brute
-force, since the guild_id is public and the token is the only secret).
+bounds SEC-1 to *token-capture* hijack.
+
+**Token strength (analysed, our own token, not printed).** 32 chars of mixed-case
+alphanumeric, ~4.6 bits/char Shannon entropy (near the sample ceiling), no structure
+(base64→24 bytes of ~random binary), and NOT derived from the public guild_id. So
+it's a genuine high-entropy secret (~190 bits if uniform over [A-Za-z0-9]) — good.
+That means brute-force is a non-issue and this is purely a *transport* problem: the
+one and only realistic path to the token is reading it off the unencrypted wire. Fix
+= encrypt the transport (ZMQ CURVE / TLS proxy / wss). (Caveat: single-sample check —
+comparing several freshly-minted tokens would confirm the generator has no
+counter/timestamp/weak-RNG structure, but this one shows none.)
 
 ---
 
