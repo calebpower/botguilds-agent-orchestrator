@@ -204,6 +204,24 @@ priority above the full-retreat, so the char sheds weight, regains mobility, and
 walks its remaining loot home instead of dying on it. Expected: overburden events
 and our char-deaths fall, `returned`/`sale` counts rise toward the pickup count,
 gold finally accumulates.
+
+v0.16.0 — 0.15.0 measured as a PARTIAL win with a nasty regression: run #55
+(0.15.0, 137k frames) cut permanent-stuck overburden (raw overburdened 30->11/1k,
+status_damage 41->17/1k) and pickups leapt (10->60/1k) — BUT `sale`/`returned`
+per-frame FELL and gold stayed ~14, and drop matched pickup almost 1:1 (8190 vs
+7029). Event-stream drill found a PICKUP<->DROP THRASH: the shed `drop` lands the
+item on the char's own tile; shedding takes `used` back below `cap-1` so the char
+reads as "not full" again and re-grabs the very item it just dropped — overburden,
+drop, re-grab, forever (one char logged the loop hundreds of times on a single
+tile, and even at the village edge [47,0]). The `not full` gate can't stop it
+because a single drop flips the char out of "full". Fix: a HOMING LATCH — once a
+char is full it enters a `_homing` state in which ALL looting (pickup and
+loot-seeking) is suppressed, so a dropped item is never re-grabbed; it heals/flees
+if hurt, sheds if overburdened (to stay mobile), and otherwise only retreats
+toward the village. The latch clears once the char is light again (`used <=
+cap*HOME_CLEAR_FRAC`, i.e. after the village sells its haul), with hysteresis
+(enter at cap-1, exit at half-cap) so it can't flicker. Expected: drop collapses
+toward the rare genuine shed, pickups convert to `returned`/`sale`, gold rises.
 """
 
 from __future__ import annotations
@@ -252,10 +270,15 @@ VILLAGE_ACTION_COOLDOWN = 6   # v0.14.0: after a char issues a per-char village
 #   action (buy/sell/equip/brew/smelt/spend_xp), don't issue it another for this
 #   many ticks — the frame is a few ticks stale, so re-issuing the same buy/sell
 #   spams no_such_item / over-buys before the change is reflected.
+HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full and
+#   stays there — looting suppressed — until it is light again (used <= cap*this),
+#   which happens after the village sells its haul. Hysteresis (enter at cap-1, exit
+#   at half-cap) stops the latch flickering, and suppressing pickup while homing is
+#   what kills the 0.15.0 pickup<->drop thrash (a shed item re-grabbed off own tile).
 
 
 class Explorer:
-    version = "explorer/0.15.0"
+    version = "explorer/0.16.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -274,6 +297,11 @@ class Explorer:
         # re-send the same buy/sell/equip every tick (run #38: 250 buy + 148 sell
         # actions for ~1 sale — the same duplicate-send storm as embark).
         self._village_acted: dict[str, int] = {}
+        # "Heading home to sell" latch (v0.16.0): uids that filled up and are now
+        # walking home. While latched, looting is suppressed so a shed item is
+        # never re-grabbed off the char's own tile (the 0.15.0 pickup<->drop
+        # thrash). Cleared once the char is light again (see HOME_CLEAR_FRAC).
+        self._homing: set[str] = set()
 
     def on_action_error(self, bot: "Any", message: dict[str, Any]) -> None:
         """Learn equip slots from the server's rejections. We send at most one
@@ -483,6 +511,15 @@ class Explorer:
         dot = any(s.get("kind") in DOT_KINDS for s in statuses)
         hurt = hp < max_hp * RETREAT_HP or dot
         full = carry["used"] >= carry["cap"] - 1
+        # Heading-home latch (v0.16.0): a full char commits to walking home and
+        # stays committed — looting suppressed — until it is light again, so it
+        # never re-grabs a shed item off its own tile. Hysteresis: enter at full
+        # (cap-1), leave only once the village has sold it down to <= half cap.
+        if full:
+            self._homing.add(uid)
+        elif carry["used"] <= carry["cap"] * HOME_CLEAR_FRAC:
+            self._homing.discard(uid)
+        homing = uid in self._homing
         # Don't walk onto other characters OR monsters.
         blocked = ctx.bodies | set(ctx.enemies)
 
@@ -541,14 +578,14 @@ class Explorer:
                 offer({"char_uid": uid, "action": "drop", "item_id": shed}, 8.0,
                       "overburdened — dropping loot to regain mobility")
 
-        if full:
+        if homing:
             self._retreat(uid, pos, ctx, blocked, offer, 7.5,
                           "pack full — heading home to sell")
 
-        # Pursue loot only with room to spare: a `full` char (used >= cap-1) that
-        # grabs or chases more loot crosses into overburden and strands (v0.15.0) —
-        # it should be heading home to sell, not collecting more.
-        if not full:
+        # Pursue loot only when NOT heading home (v0.16.0): a homing char that
+        # grabs or chases loot re-fills — and would re-grab the item it just shed
+        # off its own tile (the 0.15.0 thrash). It should walk its haul home.
+        if not homing:
             if pos in ctx.loot or pos in ctx.gold:
                 offer({"char_uid": uid, "action": "pickup"}, 6.0, "loot underfoot — grab it")
             else:
@@ -557,33 +594,38 @@ class Explorer:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
                           4.0, "moving toward visible loot")
 
-        box = next((p for p in nav.neighbors(pos) if p in ctx.containers), None)
-        if box:
-            offer({"char_uid": uid, "action": "open", "target": list(box)},
-                  5.0, "opening an adjacent container")
+        # Gather/explore only when NOT heading home (v0.16.0): a homing char that
+        # opens a container spills loot it won't grab, and scouting/frontier-pushing
+        # walks it away from the village — it should just retreat (defence via the
+        # adjacent-attack offer above still applies).
+        if not homing:
+            box = next((p for p in nav.neighbors(pos) if p in ctx.containers), None)
+            if box:
+                offer({"char_uid": uid, "action": "open", "target": list(box)},
+                      5.0, "opening an adjacent container")
 
-        if ctx.enemies and not adj:
-            near = self._step(pos, lambda p: any(n in ctx.enemies for n in nav.neighbors(p)),
-                              ctx, blocked)
-            if near:
-                offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, near)},
-                      3.5, "closing to attack range on a monster")
+            if ctx.enemies and not adj:
+                near = self._step(pos, lambda p: any(n in ctx.enemies for n in nav.neighbors(p)),
+                                  ctx, blocked)
+                if near:
+                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, near)},
+                          3.5, "closing to attack range on a monster")
 
-        north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known), ctx, blocked)
-        if north:
-            offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
-                  2.5, "pushing north into unexplored ground")
-        any_frontier = self._step(pos, lambda p: nav.frontier(p, ctx.known), ctx, blocked)
-        if any_frontier:
-            offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, any_frontier)},
-                  2.0, "heading to the nearest frontier")
+            north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known), ctx, blocked)
+            if north:
+                offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
+                      2.5, "pushing north into unexplored ground")
+            any_frontier = self._step(pos, lambda p: nav.frontier(p, ctx.known), ctx, blocked)
+            if any_frontier:
+                offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, any_frontier)},
+                      2.0, "heading to the nearest frontier")
 
-        for d, (dx, dy) in nav.DIRS.items():
-            nxt = (pos[0] + dx, pos[1] + dy)
-            if nav.is_walkable(nxt, ctx.known, blocked):
-                offer({"char_uid": uid, "action": "move", "dir": d}, 1.0,
-                      "no goal reachable — stepping to scout")
-                break
+            for d, (dx, dy) in nav.DIRS.items():
+                nxt = (pos[0] + dx, pos[1] + dy)
+                if nav.is_walkable(nxt, ctx.known, blocked):
+                    offer({"char_uid": uid, "action": "move", "dir": d}, 1.0,
+                          "no goal reachable — stepping to scout")
+                    break
 
     # -- helpers --------------------------------------------------------------
 

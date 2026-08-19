@@ -91,6 +91,36 @@ def test_overburdened_char_drops_loot_to_shed_weight():
     assert {"char_uid": "c1", "action": "drop", "item_id": "L1"} in actions
 
 
+def test_homing_latch_suppresses_repickup_after_shed():
+    # v0.16.0 thrash fix: a char that filled up latches into "heading home"; even
+    # after it sheds weight back below `full`, it must NOT re-grab loot underfoot
+    # (that item is the one it just dropped) — it keeps walking home.
+    bot = _bot()
+    # frame 1: overburdened -> latches homing (and sheds)
+    bot.on_frame(_field_frame(
+        _field_char(carry={"used": 21, "cap": 20},
+                    inventory=[{"kind": "lumber", "item_id": "L1"}]), FLOOR3))
+    # frame 2: now below `full` (19) but still above half-cap (10) -> latch holds
+    acts = bot.on_frame(_field_frame(
+        _field_char(carry={"used": 15, "cap": 20}), FLOOR3,
+        items=[{"pos": [0, 0], "kind": "egg"}]))
+    assert {"char_uid": "c1", "action": "pickup"} not in acts
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts  # still homing
+
+
+def test_homing_latch_clears_when_light_and_loots_again():
+    # The latch releases once the village has sold the haul down to <= half cap,
+    # so the char resumes looting on its next trip out.
+    bot = _bot()
+    bot.on_frame(_field_frame(
+        _field_char(carry={"used": 21, "cap": 20},
+                    inventory=[{"kind": "lumber", "item_id": "L1"}]), FLOOR3))  # latch
+    acts = bot.on_frame(_field_frame(
+        _field_char(carry={"used": 5, "cap": 20}), FLOOR3,   # light -> latch clears
+        items=[{"pos": [0, 0], "kind": "egg"}]))
+    assert {"char_uid": "c1", "action": "pickup"} in acts
+
+
 def test_village_sells_before_embarking():
     bot = _bot()
     frame = {"world": "village", "tick": 3,
