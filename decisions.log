@@ -1473,3 +1473,41 @@ NEXT PASS: measure gold_mean/max — does it climb and BREAK 529 (testing for a 
 did deaths fall (not chasing undead)? are field-gold + chest-opens up? Does the hoard
 actually accumulate or still leak to recruit re-arming? Follow-ups if it works: list
 tomes/charms on the player market; sell ore raw instead of smelting.
+
+## 2026-08-19 ~20:30 — iteration 16: band-mood awareness + drastic undead-flee (0.25.0); API security review
+
+Operator: (a) actively analyse band cycles to anticipate undead rushes + adjust
+behaviour to the band mood; (b) make the gold-rush extraordinarily drastic; (c)
+review the HTTP + ZeroMQ APIs for bugs/vulns to report to the server dev (Will).
+
+Gold-rush check-in: 0.24.0's first ~10min (run #80) showed NO gold improvement —
+but run #80 landed in a 100%-UNDEAD band (worst case); chars still got poisoned in
+unavoidable adjacent skirmishes.
+
+BAND MECHANIC (analysed): maps repopulate per-band; each world has 4 bands (0-3)
+refreshing every ~14.4-15.6k ticks (regular), ANNOUNCED by the frame's
+next_refresh {band,in_ticks} + band_refresh_warning {in_ticks:240}. Refreshes rotate
+mobs between wildlife and poison undead. So mood is live-observable, periodic, and
+pre-warned — analysable/anticipatable. (Can't yet predict the incoming mob TYPE from
+the event alone; log band composition over cycles to learn it.)
+
+Shipped **explorer/0.25.0** (git 59a8f8c): mood-driven drastic undead-flee — when a
+THREAT mob (undead) is within FLEE_RADIUS(4) a healthy char FLEES to the village,
+no loot/fight (snatch an underfoot coin on the way; fight only if cornered); homing
+chars exempt; wildlife bands run the 0.24.0 gold-rush. Evade rushes, harvest calm
+bands. 3 tests (flee mutation-checked); suite 218 passed; reaper green; run #81.
+
+API SECURITY REVIEW -> server_bugs.md (3 issues, no live exploitation): SEC-1 HIGH
+guild token sent CLEARTEXT over plain tcp:// ZMQ (no CURVE/TLS) + session-supersede
+=> passive capture = full guild hijack; SEC-2 MED /api/spectate/guilds leaks every
+guild's full roster+gear+levels unauthenticated; SEC-3 MED (dev-confirm) guild color
+-> element.style.background => stored CSS-injection if /api/guild/color unvalidated.
+
+Wishlist: added comprehensive per-character stats panel (live HP bars, individual
+inventories, equipment, stats) + earlier the log-scale overview bars.
+
+NEXT PASS: measure run #81+ over a FULL band cycle (~15k ticks) — does gold
+accumulate during wildlife windows and survive undead windows? deaths/1k down from
+2.3? does gold break 529 (cap test)? Keep logging band composition to learn the
+band->mood pattern for prediction. Consider using next_refresh/warning to pre-empt
+(evacuate a band about to refresh to undead).
