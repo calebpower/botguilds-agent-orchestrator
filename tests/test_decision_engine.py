@@ -67,6 +67,46 @@ def test_picks_up_loot_underfoot():
     assert {"char_uid": "c1", "action": "pickup"} in actions
 
 
+def _vert_corridor(top):
+    # a 1-wide floor corridor x=0, y=0..top; the topmost tile borders the unknown
+    # so it (and every tile) is a north frontier to push toward.
+    return [[0, y, "floor"] for y in range(0, top + 1)]
+
+
+def test_unhealed_char_past_safe_depth_heads_home_not_deeper():
+    # v0.23.0: an un-healed char (no potion) deep in the field stops pushing north
+    # and heads HOME instead — poison kills chars on long retreats from deep ground.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    tiles = _vert_corridor(POISON_SAFE_DEPTH + 4)
+    char = _field_char(pos=[0, POISON_SAFE_DEPTH + 2], stamina=40, inventory=[])
+    acts = bot.on_frame(_field_frame(char, tiles))
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts        # heading home
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts)
+
+
+def test_healed_char_may_range_deep():
+    # a char carrying a potion can still push north from deep ground (it can drink
+    # the poison off en route home).
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    tiles = _vert_corridor(POISON_SAFE_DEPTH + 4)
+    char = _field_char(pos=[0, POISON_SAFE_DEPTH + 2], stamina=40,
+                       inventory=[{"kind": "potion_red", "item_id": "p1"}])
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in bot.on_frame(
+        _field_frame(char, tiles))
+
+
+def test_unhealed_char_still_explores_when_shallow():
+    # shallow enough that a poison-retreat is survivable -> still explores north.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    tiles = _vert_corridor(POISON_SAFE_DEPTH + 4)
+    char = _field_char(pos=[0, max(1, POISON_SAFE_DEPTH - 4)], stamina=40, inventory=[])
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in bot.on_frame(
+        _field_frame(char, tiles))
+
+
 def test_full_char_does_not_pick_up_more_loot():
     # A pack-full char (used >= cap-1) standing on loot, with just enough stamina
     # to afford a pickup (cost ~10) but NOT the stamina-gated walk-home move

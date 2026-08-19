@@ -321,6 +321,21 @@ affordable with the char's banked XP, so spend_xp finally fires and chars conver
 their idle XP into durability (END stamina first while cheap, then VIT/STR). Gold-
 independent, no field-size effect. Expected: spend_xp goes 0->active, stats climb,
 deaths fall, the roster matures, and gold accumulation resumes.
+
+v0.23.0 — 0.22.0's spend_xp fix proved INERT (spend_xp still 0 over run #78's 65k
+frames): the xp-rich chars are perpetually fielded and the roster is so small
+(~8, all fielded) the village is essentially EMPTY, so the village XP step never
+runs. Meanwhile the poison-death spiral WORSENED (deaths/1k 0.57 run#75 -> 1.33
+#77 -> 1.57 #78; gold stuck ~7, all income drained re-arming 268 dying recruits).
+Root of the deaths: chars get poisoned deep in the field (death y-depths median 28)
+and die mid-retreat before reaching the poison-clearing village — with only ~1/10
+carrying a heal, and potions/bottles unaffordable at gold 7. The gold-free,
+field-size-safe, gold-drain-safe counter: keep an UN-HEALED char (no potion_red)
+SHALLOW — it only pushes into frontier/unexplored ground while above
+POISON_SAFE_DEPTH, so its poison-retreat home is short enough to survive. A char
+carrying a potion may still range deep (it can drink en route). Expected: fewer
+mid-retreat poison deaths, the roster survives to mature, and the churn/gold-drain
+unwind.
 """
 
 from __future__ import annotations
@@ -333,6 +348,11 @@ from .base import FieldContext
 from ..reasoning import DecisionTrace
 
 RETREAT_HP = 0.6           # flee below 60% HP — early enough to still afford the run
+POISON_SAFE_DEPTH = 12     # v0.23.0: a char with no field heal (potion_red) only
+#   pushes into frontier/unexplored ground while shallower than this (rows north of
+#   the y=0 village edge). Poison is a DOT that kills chars mid-retreat from deep
+#   ground; capping how far an un-healed char ventures keeps its walk home short
+#   enough to survive. A char carrying a potion may range deep (it can drink en route).
 DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless of HP
 KEEP = frozenset({"potion_red", "bottle_empty"})   # field/craft supplies we never sell
 # Medicinal drinks we keep rather than sell (potions, vials, elixirs, tonics). Raw
@@ -387,7 +407,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.22.0"
+    version = "explorer/0.23.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -727,20 +747,33 @@ class Explorer:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, near)},
                           3.5, "closing to attack range on a monster")
 
-            north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known), ctx, blocked)
-            if north:
-                offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
-                      2.5, "pushing north into unexplored ground")
-            any_frontier = self._step(pos, lambda p: nav.frontier(p, ctx.known), ctx, blocked)
-            if any_frontier:
-                offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, any_frontier)},
-                      2.0, "heading to the nearest frontier")
+            # An un-healed char (no potion_red) stays SHALLOW: poison is a DOT that
+            # kills chars mid-retreat from deep ground, so past POISON_SAFE_DEPTH it
+            # stops venturing deeper and heads HOME instead — a short retreat it can
+            # survive (v0.23.0). Adjacent loot/attack (offered above, higher score)
+            # still win, so it stays opportunistic; it just won't push further out.
+            # A char carrying a heal may range deep (it can drink en route home).
+            has_heal = any(i.get("kind") == "potion_red"
+                           for i in char.get("inventory", []) or [])
+            if not has_heal and pos[1] >= POISON_SAFE_DEPTH:
+                self._retreat(uid, pos, ctx, blocked, offer, 2.5,
+                              "no heal past the safe depth — heading home before poison strands us")
+            else:
+                north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known), ctx, blocked)
+                if north:
+                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
+                          2.5, "pushing north into unexplored ground")
+                any_frontier = self._step(pos, lambda p: nav.frontier(p, ctx.known), ctx, blocked)
+                if any_frontier:
+                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, any_frontier)},
+                          2.0, "heading to the nearest frontier")
 
-            for d, (dx, dy) in nav.DIRS.items():
-                nxt = (pos[0] + dx, pos[1] + dy)
-                if nav.is_walkable(nxt, ctx.known, blocked):
-                    offer({"char_uid": uid, "action": "move", "dir": d}, 1.0,
-                          "no goal reachable — stepping to scout")
+                for d, (dx, dy) in nav.DIRS.items():
+                    nxt = (pos[0] + dx, pos[1] + dy)
+                    if nav.is_walkable(nxt, ctx.known, blocked):
+                        offer({"char_uid": uid, "action": "move", "dir": d}, 1.0,
+                              "no goal reachable — stepping to scout")
+                        break
                     break
 
     # -- helpers --------------------------------------------------------------

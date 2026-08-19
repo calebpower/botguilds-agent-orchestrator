@@ -10,6 +10,13 @@ top of **Open**.
 
 ## Open
 
+- [ ] **Log-scale the overview-page bar charts (QoL)** — on the dashboard overview
+  page, the bars at the bottom span values of wildly different magnitude (e.g. moves
+  in the tens-of-thousands vs deaths in the tens), so the small bars are unreadable
+  next to the huge ones. Apply a logarithm to the bar lengths (log10 or log1p,
+  keeping the true value in the label/tooltip) so cross-metric comparisons are
+  actually useful. Guard log(0) (use log1p or a floor). (operator request)
+
 - [ ] **The Campaign Layer — characters as individuals who actually *play*
   differently** ⭐⭐ (operator idea). Not just a narrative overlay — a layer that
   **shapes play**. Each character is a persistent individual with a role and
