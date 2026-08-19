@@ -354,6 +354,45 @@ def test_village_still_arms_a_bare_char_in_gold_rush():
     assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
 
 
+def _world_field_frame(world, tiles, entities=()):
+    return {"world": world, "tick": 10, "chars": [_field_char(pos=[0, 3])],
+            "visible": {"tiles": list(tiles), "entities": list(entities),
+                        "items": [], "gold": []}}
+
+
+def test_embark_routes_to_the_safest_world():
+    # v0.26.0: after seeing vale full of undead and mines as wildlife, a char embarks
+    # into the SAFE world (mines), not the undead one.
+    bot = _bot()
+    bot.config = {"party_cap": 5, "world_cap": 10, "roster_cap": 1,
+                  "maps": [{"id": "vale"}, {"id": "mines"}]}
+    corridor = [[0, y, "floor"] for y in range(0, 6)] + [[3, 3, "floor"]]
+    bot.on_frame(_world_field_frame("vale", corridor,
+                 [{"pos": [3, 3], "faction": "monster", "kind": "zombie", "hp_frac": 0.9}]))
+    bot.on_frame(_world_field_frame("mines", corridor,
+                 [{"pos": [3, 3], "faction": "monster", "kind": "skunk", "hp_frac": 0.9}]))
+    village = {"world": "village", "tick": 20,
+               "guild": {"gold": 5, "chars_here": ["c1"],
+                         "chars_by_world": {"vale": ["a"], "mines": ["b"]}},
+               "chars": [_idle_village_char("c1")]}
+    acts = bot.on_frame(village)
+    assert acts and acts[0]["action"] == "embark" and acts[0]["map"] == "mines"
+
+
+def test_flee_still_grabs_a_coin_in_the_safe_direction():
+    # v0.26.0: while evading an undead to the EAST, the char still fetches a coin to
+    # the WEST (farther from the threat) rather than only fleeing south.
+    bot = _bot()
+    tiles = ([[0, y, "floor"] for y in range(0, 4)]
+             + [[-1, 3, "floor"], [-2, 3, "floor"], [3, 3, "floor"]])
+    frame = _world_field_frame("vale", tiles,
+                               [{"pos": [3, 3], "faction": "monster",
+                                 "kind": "zombie", "hp_frac": 0.9}])
+    frame["visible"]["gold"] = [{"pos": [-2, 3]}]
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "move", "dir": "W"} in acts   # toward the safe coin
+
+
 def _threat_frame(mob_kind, gold=()):
     # char at (0,3) in a north-south corridor; a mob 3 tiles east at (3,3).
     tiles = [[0, y, "floor"] for y in range(0, 6)] + [[1, 3, "floor"], [2, 3, "floor"], [3, 3, "floor"]]

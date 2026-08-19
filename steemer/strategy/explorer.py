@@ -365,6 +365,19 @@ snatching only a coin already underfoot (instant, banked) on the way, and fighti
 only if cornered with no escape. When the local band is safe (wildlife), the 0.24.0
 gold-rush runs normally. Net: evade the undead rushes, harvest gold during the calm
 bands. The band cycle is analysed each loop pass to characterise/anticipate rushes.
+
+v0.26.0 — 0.25.0 halved deaths (2.74->1.02/1k) but gold still would not stockpile
+(mean ~10): the world was undead-heavy most of run #81 (7+/12 windows >=60% undead),
+so chars spent most of their time FLEEING and the wildlife harvest windows were too
+short/rare — a "survive but barely earn" state. Two fixes to actually accumulate:
+(1) SAFE-WORLD ROUTING — track each world's live undead fraction (self._world_threat,
+expiring after THREAT_TTL so an emptied world is re-scouted) and, at embark, field
+chars into the SAFEST world (lowest undead), concentrating the guild in the wildlife
+world and out of the undead ones (a fled char re-routes to safety). (2) LOOSENED
+FLEE — a fleeing char may still fetch a gold coin that lies farther from every threat
+than it does (a coin in the safe direction), recovering income during an undead band
+without re-engaging the swarm. Expected: gold finally builds as the guild clusters
+where it's safe and still banks the easy coins.
 """
 
 from __future__ import annotations
@@ -390,6 +403,10 @@ DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless 
 THREAT_KINDS = frozenset({"cultist", "zombie", "ghoul", "vampire_bat", "cinder_wisp",
                           "skeleton", "wraith", "lich", "ghast", "specter", "revenant"})
 FLEE_RADIUS = 4            # Manhattan tiles: flee when a THREAT is this close or nearer
+THREAT_TTL = 1200          # v0.26.0: a world's observed undead level is trusted for this
+#   many ticks; after that it's treated as unknown (re-scoutable) so a world that has
+#   emptied out (everyone fled) gets re-checked once its band may have cycled back to
+#   wildlife — otherwise safe-world routing would avoid it forever.
 KEEP = frozenset({"potion_red", "bottle_empty"})   # field/craft supplies we never sell
 # Medicinal drinks we keep rather than sell (potions, vials, elixirs, tonics). Raw
 # FOOD is also `uses:['drink']` but is NOT kept — the guild never eats it, so
@@ -443,7 +460,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.25.0"
+    version = "explorer/0.26.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -467,6 +484,10 @@ class Explorer:
         # never re-grabbed off the char's own tile (the 0.15.0 pickup<->drop
         # thrash). Cleared once the char is light again (see HOME_CLEAR_FRAC).
         self._homing: set[str] = set()
+        # Per-world undead threat (v0.26.0): world -> (undead_fraction, tick_observed).
+        # Updated live from what fielded chars see; drives safe-world routing at embark
+        # and expires after THREAT_TTL so an emptied world gets re-scouted.
+        self._world_threat: dict[str, tuple[float, int]] = {}
 
     def on_action_error(self, bot: "Any", message: dict[str, Any]) -> None:
         """Learn equip slots from the server's rejections. We send at most one
@@ -642,14 +663,24 @@ class Explorer:
         if here_avail and fielded + len(inflight) < world_cap:
             maps = [m["id"] for m in cfg.get("maps", [])] or list(DEFAULT_MAPS)
             party_cap = cfg.get("party_cap", 5)
-            target = min(maps, key=lambda m: by_world.get(m, 0))
-            if by_world.get(target, 0) < party_cap:
+            # v0.26.0: SAFE-WORLD routing — field into the world with the lowest
+            # recently-observed undead level (stale/unseen = unknown = 0, re-scoutable),
+            # so the guild concentrates in the wildlife world and out of the undead
+            # ones (a char that fled an undead world re-routes to the safe one). Break
+            # ties by fewest of us there (still spread within equally-safe worlds).
+            def threat(m: str) -> float:
+                t = self._world_threat.get(m)
+                return t[0] if (t and tick - t[1] < THREAT_TTL) else 0.0
+            open_maps = [m for m in maps if by_world.get(m, 0) < party_cap]
+            if open_maps:
+                target = min(open_maps, key=lambda m: (threat(m), by_world.get(m, 0)))
                 uid = here_avail[0]
                 self._embark_at[uid] = tick
                 return [self._village_act(
                     bot, None, {"action": "embark", "map": target,
                                 "char_uids": [uid]},
-                    f"embarking {uid} to {target} (fewest of us there — spread to explore)")]
+                    f"embarking {uid} to {target} (safest: threat "
+                    f"{round(threat(target), 2)}, {by_world.get(target, 0)} of us there)")]
         return []
 
     # -- field: per-character scored decision ---------------------------------
@@ -726,13 +757,31 @@ class Explorer:
         # already walking home, so it is exempt. In a wildlife band no THREAT is near
         # and the gold-rush below runs normally — the behaviour adapts to the band. ---
         threats = [p for p, en in ctx.enemies.items() if en.get("kind") in THREAT_KINDS]
+        # Record this world's undead level for safe-world routing at embark (v0.26.0).
+        world = frame.get("world")
+        if world:
+            frac = (len(threats) / len(ctx.enemies)) if ctx.enemies else 0.0
+            self._world_threat[world] = (frac, bot.tick)
         if threats and not homing:
             near = any(abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= FLEE_RADIUS for p in threats)
             if near:
-                trace.observe(f"undead within {FLEE_RADIUS} — evade: flee, no loot/fight")
+                trace.observe(f"undead within {FLEE_RADIUS} — evade: flee (grab safe gold only)")
                 if pos in ctx.gold:            # one grab of instant banked gold
                     offer({"char_uid": uid, "action": "pickup"}, 8.0,
                           "snatching the coin underfoot, then fleeing")
+                # v0.26.0: still grab a coin that lies AWAY from the undead — one that
+                # is farther from every threat than we are, so fetching it moves us
+                # toward safety AND banks gold. Recovers income during an undead band
+                # without re-engaging the swarm. (Above the plain flee, below the
+                # underfoot grab.)
+                my_d = min(abs(p[0] - pos[0]) + abs(p[1] - pos[1]) for p in threats)
+                safe_gold = {c for c in ctx.gold
+                             if min(abs(c[0] - p[0]) + abs(c[1] - p[1]) for p in threats) > my_d}
+                if safe_gold and pos not in ctx.gold:
+                    step = self._step(pos, lambda p: p in safe_gold, ctx, blocked)
+                    if step:
+                        offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
+                              7.5, "grabbing a coin in the safe direction while evading")
                 # Flee to the village (handles the y==0 edge by stepping off it).
                 self._retreat(uid, pos, ctx, blocked, offer, 7.0,
                               "undead near — fleeing to the village")
