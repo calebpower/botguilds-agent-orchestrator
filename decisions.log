@@ -1161,3 +1161,47 @@ This is a SERVER PROTOCOL CHANGE, not a server bug — logged as a discovery.
 Lesson: the periodic reference re-diff (check_submodule / check_webclient) should
 also watch for wire-format changes; and a watchdog on "run window not advancing /
 0 frames" (wishlist) would have caught the crash-loop instantly.
+
+## 2026-08-18 21:40 — iteration 5: killed the overburden income leak (explorer/0.15.0); the "pickup no-op" was a mirage
+
+MEASURED run #52 (0.14.0) first — and the whole premise of the queued iteration-5
+plan collapsed. Two corrections fell out of the data:
+
+  * **The "pickup no-op" was a MEASUREMENT ARTIFACT.** Run #52 logged 672 pickups
+    (10.8/1k); every long historical run looted fine too. The "~8 pickups"
+    reading that had me about to re-engineer the pickup action was crash-loop
+    contamination from the empty zlib-incident runs #39-#51. Bare `pickup` works.
+    I did NOT run the explicit-item_id experiment — measuring on a clean run first
+    (loop discipline) saved a pointless change. Refuted the open pickup question.
+  * **`death` events include MOBS we kill** (char_uid null). Run #52's 371 deaths
+    = 95 ours + 288 mob kills. Our real loss rate is ~4x lower than the raw count.
+
+0.14.0 itself landed well: the buy/sell re-send storm is gone (sell_waste 7, was
+a 250-buy/148-sell storm in run #38), avoidable error rate 4.3% (the dashboard's
+27.3% was pre-fix).
+
+THE REAL LEAK, found by drilling run-#52 events: **overburden → strand → die.**
+`carry` is *weight* not slots (16 items = 20/21). A near-full char that grabs one
+heavy meat/ore crosses used>cap; the server's overburden penalty cripples its
+movement so the stamina-gated walk home is unaffordable, and nothing sheds the
+weight — 1681 `overburdened` events across 19 chars, one stuck 939 ticks, burning
+a scarce world slot until poison kills it. Only 74 of 687 pickups ever `returned`
+to be sold. That is why gold is pinned at ~14 despite healthy looting.
+
+Shipped **explorer/0.15.0** (git 62152eb): (1) pursue/grab loot only when not full
+so chars stop crossing into overburden; (2) when used>=cap, `drop` the least-useful
+carried item (clutter→ore, never KEEP/gear) above the full-retreat, so a stranded
+char sheds weight and walks its remaining loot home. All 3 new assertions
+mutation-checked; suite 200 passed/2 skipped; reaper container gate green; 400-frame
+replay clean on 0.15.0.
+
+DEPLOY WRINKLE (logged as an ops finding): self-deploy via `make bot-restart`
+collided with the operator's screen-hosted host — the guild allows one live
+session, so the two kicked each other ('kicked: another session hello'd'); run #53
+played 1865 frames then was kicked, 10 kick lines before run #54 settled. 0.15.0
+is now live and stable on **run #54**, and `drop` actions are firing in production.
+But the detached-daemon + screen-host combo is fragile; we need one authoritative
+host. NEXT PASS: measure run #54+ — did overburden events + our deaths fall,
+returned/sale rise toward pickup count, and gold finally start accumulating? If
+yes, the poverty arc is essentially closed; if overburden persists, tighten the
+not-full margin or investigate the carry-cap/penalty mechanic (open question).

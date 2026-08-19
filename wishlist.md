@@ -70,7 +70,13 @@ top of **Open**.
   a death. Free personality (and doubles as campaign-layer eulogies).
 - [ ] **Always-on watchdog + push alerts** — ping the operator when something
   actually breaks: bot crash-looping, run window not advancing, bankruptcy, or a
-  mass-death spike. Ops safety for a bot that runs unattended.
+  mass-death spike. Ops safety for a bot that runs unattended. **NOW HIGH VALUE:**
+  a "latest frame older than N seconds" alarm would have instantly caught BOTH the
+  zlib crash-loop (runs #39-#51, empty) and the 2026-08-18 deploy kick-war (guild
+  single-session collision between the svc.sh bot and the screen host). A companion
+  "single authoritative host" guard (refuse to `bot-up` if a session is already
+  live, or detect the 'kicked' log line and back off) would prevent the kick-war
+  outright — see the `svc.sh collides with screen host` finding.
 - [ ] **Version-timeline "story mode"** — the dashboard narrates the bot's
   evolution: each strategy version's hypothesis + its *measured* effect (from
   decisions.log) as a visual timeline. A guided tour of why the bot is the way it
