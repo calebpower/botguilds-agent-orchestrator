@@ -1303,3 +1303,31 @@ it. NEXT PASS: trace one full/homing char field->village frame-by-frame to see w
 it doesn't offload (homing latch clearing? re-embark before sell? embark re-sent
 while fielded?). Fix that and gold should finally move. Deployed 0.18.0 to run #74
 via ./svc.sh (down, confirm zero remnants, up — clean, no kick-war).
+
+## 2026-08-19 ~12:30 — iteration 10: ROOT-CAUSED stuck gold (unsold food) and fixed it (0.19.0)
+
+Traced the embark<->return churn to its root — the same bug that kept gold from
+EVER accumulating, in every version. Followed run #74's top embarker (c9888, 1183
+embarks / ~0 sales) frame-by-frame: it carried 22-23/24 — FULL — the whole time,
+all food (egg/meat/tomato/berries/turnip, uses:['drink']) plus bottles. `_should_sell`
+refused to sell any `drink` item ("keep food"), but the guild never EATS food, so:
+  pack fills with unsellable food -> char pinned `full` (homing) -> in the village
+  it has NO sellable action -> village() per-char loop finds nothing to do -> the
+  embark section re-embarks it off the y=0 boundary back to the field -> it walks
+  to the edge, is yanked back, forever. Never offloads, never earns.
+That is why gold sat at ~9/max18 across 0.12-0.18 — MASKED by death-churn until
+0.17.0's survival kept chars alive long enough to expose it.
+
+Food IS sellable (meat/egg/berries are among the top-sold items in history; the
+shop buys anything), and chars sit at full HP hoarding it — pure loot. Shipped
+**explorer/0.19.0** (git c724f53): `_should_sell` keeps only KEEP supplies + real
+medicinal drinks (DRINK_KEEP_PREFIXES = potion/vial/elixir/tonic) and SELLS food.
+A returning food-laden char now has a sell action, so it offloads instead of being
+re-embarked — breaking the thrash. 2 new tests + 1 updated (mutation-checked);
+suite 206 passed; replay clean; reaper green. Deployed to run #75 via ./svc.sh;
+EARLY signal ~23 sales/1k vs 0.18.0's 2.3/1k (~10x). NEXT PASS: measure run #75+
+vs #74 — did sales rise toward the return rate, embark:return fall toward 1, and
+GOLD finally climb off ~9? If yes, the poverty arc is CLOSED end-to-end. If gold
+rises, next explore what to DO with it (durability XP, better gear, potions,
+forging). Also: if food HEALS when eaten, drinking it in the field is a future
+free-heal lever.
