@@ -1381,3 +1381,31 @@ chars WITHOUT shrinking the field: upgrade weapons on already-armed chars
 is empty, so armed chars never trade up); OR wire spend_xp (0x — banked XP unused);
 OR M3a forge for armor. ALSO OPEN: why only ~4 armed chars when gold surplus should
 arm all ~10 field slots? (weapon loss on death? arming too slow?) — worth a look.
+
+## 2026-08-19 ~17:00 — iteration 13: diagnosed partial recovery (poison churn), shipped spend_xp fix (0.22.0, verify)
+
+Measured run #77 (0.21.0): the field refilled but gold did NOT recover to the 0.19.0
+milestone — mean 8.6/max 48 vs run #75's 93.7/530, despite identical economics.
+Cause: OUR deaths DOUBLED 38->80 (status_damage/1k 26.9->50.3; chars die at low-y,
+mid-retreat = poison kills them on the way home), spawning 303 recruits that keep
+the roster young (lvl 2-6) and weak, capping income. The 0.20.0 spiral wiped the
+veterans; the young roster churns on poison (only 1/10 fielded carry a potion;
+potion supply << poison demand). Persistent, not a transient dip.
+
+The gold-INDEPENDENT counter is durability. Found spend_xp has fired 0 times in ALL
+history: _pick_xp_stat returned the top priority (VIT) regardless of cost, and VIT's
+cost grows with value (v5 -> 40 XP), so a char banking ~17 XP was stuck wanting an
+unaffordable VIT and never spent on a cheap END it could afford (END@1 costs 8, and
+END=1 is the deficit). Shipped **explorer/0.22.0** (git c416ff5): _pick_xp_stat now
+returns the highest-priority stat that is below cap AND affordable. Mutation-tested,
+suite 209 passed, reaper green. Deployed to run #78.
+
+CAVEAT (recorded honestly): spend_xp still 0 at 4k frames of run #78 — likely
+because the xp-rich chars (xp 113/242) are perpetually-fielded veterans that rarely
+visit the village, while village chars are fresh recruits with xp~0. So the fix may
+be largely INERT. NEXT PASS: verify spend_xp goes >0 over a full run; if still 0,
+the real blocker is chars not returning to the village to invest XP (or re-embarking
+before an idle spend_xp tick) — fix by spending XP during the sell-visit (before
+re-embark, or exempt spend_xp from the village cooldown). Also still open: the
+poison-death churn itself (potion supply << demand) may need a more direct
+survival lever (more brewed potions, or shallower ventures so retreats survive).
