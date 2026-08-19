@@ -311,29 +311,15 @@ def test_village_buys_potion_at_20_gold():
     assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "potion_red"}]
 
 
-def test_village_keeps_potion_reserve_when_arming_bench_with_earners():
-    # v0.17.0: with earners already out (a fielded char), arming a bare
-    # bench-warmer must leave a potion's worth in reserve — so at 25 gold (club 15
-    # + reserve 20 = 35 needed) it does NOT buy the club.
+def test_village_arms_bare_char_whenever_affordable():
+    # v0.18.0 reverted the v0.17.0 WEAPON_BUY_RESERVE (it regressed engagement): a
+    # bare char is armed whenever it can afford a weapon, even with earners already
+    # fielded — no potion reserve gating it. Club 15, gold 15 -> buys the club.
     bot = _bot()
     char = {"char_uid": "c1", "inventory": [], "equipment": {}, "stats": {"str": 2},
             "hp": 30, "max_hp": 30}
     frame = {"world": "village", "tick": 3,
-             "guild": {"gold": 25, "chars_here": ["c1"], "chars_by_world": {"vale": ["e1"]}},
-             "chars": [char], "shop": _SHOP_CLUB}
-    acts = bot.on_frame(frame)
-    assert all(not (a.get("action") == "buy" and a.get("kind") == "club") for a in acts)
-
-
-def test_village_arms_bare_char_with_no_reserve_during_bootstrap():
-    # No earners yet (nobody fielded, nobody armed) — the broke-and-bare
-    # bootstrap: arm with NO reserve so a 15-gold guild can still buy its first
-    # club (the 0.13.0 escape must survive the v0.17.0 reserve).
-    bot = _bot()
-    char = {"char_uid": "c1", "inventory": [], "equipment": {}, "stats": {"str": 2},
-            "hp": 30, "max_hp": 30}
-    frame = {"world": "village", "tick": 3,
-             "guild": {"gold": 15, "chars_here": ["c1"], "chars_by_world": {}},
+             "guild": {"gold": 15, "chars_here": ["c1"], "chars_by_world": {"vale": ["e1"]}},
              "chars": [char], "shop": _SHOP_CLUB}
     assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
 
