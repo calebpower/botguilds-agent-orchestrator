@@ -378,6 +378,18 @@ FLEE — a fleeing char may still fetch a gold coin that lies farther from every
 than it does (a coin in the safe direction), recovering income during an undead band
 without re-engaging the swarm. Expected: gold finally builds as the guild clusters
 where it's safe and still banks the easy coins.
+
+v0.27.0 — 0.26.0 was a big win (deaths 1.02->0.2/1k; chars correctly cluster in the
+wildlife worlds and shun the undead one; chest/coin income recovered) BUT gold STILL
+would not stockpile (mean ~11, one spike to 51): the drain was RECRUITING. Recruit
+is free, but it fired toward the server's high roster/world cap (roster grew to 23
+while we only field ~10), and every new bare recruit got a 15g club — so income
+(~362g/run) cycled straight back out as clubs (gold went 0->14->buy->0 forever).
+Fix: recruit only up to what we can FIELD — party_cap * maps + a small bench
+(RECRUIT_BENCH) — instead of the full cap. The undeployable bench stops growing, the
+club-arming drain tapers once the current roster is armed, and income can finally
+accumulate. (Keeps the operator's 'a club per char' — it just stops recruiting chars
+we can't field.) Expected: gold climbs off ~11 and, at last, tests the 529 ceiling.
 """
 
 from __future__ import annotations
@@ -448,6 +460,10 @@ EMBARK_COOLDOWN = 8   # v0.10.0: after commanding a char to embark, don't re-sen
 #   still retries a genuinely-failed embark after ~2 s.
 RECRUIT_COOLDOWN = 8  # v0.10.0: same staleness for recruit — a just-recruited char
 #   isn't in the roster for a few frames, so re-firing recruit storms roster_cap.
+RECRUIT_BENCH = 2     # v0.27.0: recruit only up to (party_cap * maps) + this small
+#   rotation bench — the practical number we can field — instead of the server's much
+#   higher roster/world cap. Over-recruiting grew an undeployable bench and armed each
+#   new bare char with a 15g club, draining all income; capping it lets gold stockpile.
 VILLAGE_ACTION_COOLDOWN = 6   # v0.14.0: after a char issues a per-char village
 #   action (buy/sell/equip/brew/smelt/spend_xp), don't issue it another for this
 #   many ticks — the frame is a few ticks stale, so re-issuing the same buy/sell
@@ -460,7 +476,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.26.0"
+    version = "explorer/0.27.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -640,14 +656,23 @@ class Explorer:
         self._embark_at = {u: t for u, t in self._embark_at.items() if u in here_set}
         inflight = {u for u, t in self._embark_at.items() if tick - t < EMBARK_COOLDOWN}
 
-        # RECRUIT — but at most once per RECRUIT_COOLDOWN ticks: a just-recruited
-        # char is not in the roster for a few frames, so re-firing every tick
-        # storms roster_cap once we reach the cap.
-        if roster < min(world_cap, roster_cap) and (
+        # RECRUIT — but only up to what we can actually FIELD, not the server's high
+        # roster/world cap (v0.27.0). We field at most party_cap per world, and
+        # safe-world routing keeps us out of undead worlds, so the practical field is
+        # ~party_cap * maps; recruiting toward the full cap just grows a bench we never
+        # deploy AND arms each new bare char with a 15g club — which was draining every
+        # scrap of income (gold cycled 0->14->buy-a-club->0 and never stockpiled).
+        # Cap the roster at the fieldable size + a small rotation bench so the
+        # club-arming drain stops and gold can accumulate. (Still at most once per
+        # RECRUIT_COOLDOWN — a just-recruited char isn't in the count for a few frames.)
+        maps = [m["id"] for m in cfg.get("maps", [])] or list(DEFAULT_MAPS)
+        party_cap = cfg.get("party_cap", 5)
+        recruit_target = min(world_cap, roster_cap, party_cap * len(maps) + RECRUIT_BENCH)
+        if roster < recruit_target and (
                 self._recruit_at is None or tick - self._recruit_at >= RECRUIT_COOLDOWN):
             self._recruit_at = tick
             return [self._village_act(bot, None, {"action": "recruit"},
-                                      f"recruiting (roster {roster} < cap)")]
+                                      f"recruiting (roster {roster} < {recruit_target})")]
 
         # EMBARK — skip chars whose embark is already in flight (the stale-frame
         # duplicate-send storm that bounced no_such_character), and count those

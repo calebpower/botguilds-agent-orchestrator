@@ -360,6 +360,24 @@ def _world_field_frame(world, tiles, entities=()):
                         "items": [], "gold": []}}
 
 
+def test_recruiting_stops_at_the_fieldable_cap_not_the_server_cap():
+    # v0.27.0: with a high server cap (30) but only party_cap*maps+bench fieldable,
+    # recruiting stops at the fieldable target (5*3+2=17), not the server's 30 — so we
+    # don't grow (and arm) an undeployable bench that drains all the gold.
+    bot = _bot()
+    bot.config = {"party_cap": 5, "world_cap": 30, "roster_cap": 30,
+                  "maps": [{"id": "vale"}, {"id": "mines"}, {"id": "spire"}]}
+    here17 = [f"h{i}" for i in range(17)]
+    at_cap = {"world": "village", "tick": 3,
+              "guild": {"gold": 5, "chars_here": here17, "chars_by_world": {}},
+              "chars": [_idle_village_char("h0")]}
+    assert all(a.get("action") != "recruit" for a in bot.on_frame(at_cap))   # roster 17 == target
+    below = {"world": "village", "tick": 3,
+             "guild": {"gold": 5, "chars_here": here17[:16], "chars_by_world": {}},
+             "chars": [_idle_village_char("h0")]}
+    assert any(a.get("action") == "recruit" for a in bot.on_frame(below))    # roster 16 < 17
+
+
 def test_embark_routes_to_the_safest_world():
     # v0.26.0: after seeing vale full of undead and mines as wildlife, a char embarks
     # into the SAFE world (mines), not the undead one.
