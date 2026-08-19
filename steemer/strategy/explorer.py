@@ -352,6 +352,19 @@ free brewing with bottles already held; everything else is banked. Survival now
 leans on v0.23.0's shallow-venture + not fighting. GOAL: stockpile — and, since the
 most gold ever held is 529 (run #75), find out whether a gold CAP exists by actually
 pushing past it.
+
+v0.25.0 — EXTRAORDINARILY DRASTIC gold-rush + band-mood awareness (operator
+directive). 0.24.0 stalled because the world was in a 100%-UNDEAD band and "don't
+chase" wasn't enough — chars still got poisoned in the unavoidable adjacent
+skirmishes. The maps refresh on a periodic ~14.4-15.6k-tick BAND cycle (4 bands per
+world, announced by `next_refresh {band,in_ticks}` and `band_refresh_warning
+{in_ticks:240}`), rotating the mob set between benign wildlife and poison undead.
+So the fix is mood-adaptive: when THREAT mobs (undead — cultist/zombie/ghoul/…) are
+within FLEE_RADIUS, the char FLEES to the village and does NOT loot or fight —
+snatching only a coin already underfoot (instant, banked) on the way, and fighting
+only if cornered with no escape. When the local band is safe (wildlife), the 0.24.0
+gold-rush runs normally. Net: evade the undead rushes, harvest gold during the calm
+bands. The band cycle is analysed each loop pass to characterise/anticipate rushes.
 """
 
 from __future__ import annotations
@@ -370,6 +383,13 @@ POISON_SAFE_DEPTH = 12     # v0.23.0: a char with no field heal (potion_red) onl
 #   ground; capping how far an un-healed char ventures keeps its walk home short
 #   enough to survive. A char carrying a potion may range deep (it can drink en route).
 DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless of HP
+# v0.25.0: THREAT mobs — the poison/burn-dealing undead that the periodic band-refresh
+# rushes bring (they drive the death spiral). When one is within FLEE_RADIUS a healthy
+# char EVADES (flees, no loot/fight) instead of skirmishing. Extend as new threats
+# are observed; benign wildlife (skunk/boar/cow/rat/frog/…) is deliberately excluded.
+THREAT_KINDS = frozenset({"cultist", "zombie", "ghoul", "vampire_bat", "cinder_wisp",
+                          "skeleton", "wraith", "lich", "ghast", "specter", "revenant"})
+FLEE_RADIUS = 4            # Manhattan tiles: flee when a THREAT is this close or nearer
 KEEP = frozenset({"potion_red", "bottle_empty"})   # field/craft supplies we never sell
 # Medicinal drinks we keep rather than sell (potions, vials, elixirs, tonics). Raw
 # FOOD is also `uses:['drink']` but is NOT kept — the guild never eats it, so
@@ -423,7 +443,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.24.0"
+    version = "explorer/0.25.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -698,6 +718,32 @@ class Explorer:
                       9.0, "drinking a red potion to recover HP")
             self._retreat(uid, pos, ctx, blocked, offer, 8.5, "hurt — walking home to heal")
             return
+
+        # --- DRASTIC undead-flee (v0.25.0): mood-driven. If a THREAT mob (poison
+        # undead) is within FLEE_RADIUS, do NOT loot or fight — run to the village.
+        # Snatch only a coin already underfoot (instant, banked, worth one tick) on
+        # the way out, and fight ONLY if cornered with no escape. A homing char is
+        # already walking home, so it is exempt. In a wildlife band no THREAT is near
+        # and the gold-rush below runs normally — the behaviour adapts to the band. ---
+        threats = [p for p, en in ctx.enemies.items() if en.get("kind") in THREAT_KINDS]
+        if threats and not homing:
+            near = any(abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= FLEE_RADIUS for p in threats)
+            if near:
+                trace.observe(f"undead within {FLEE_RADIUS} — evade: flee, no loot/fight")
+                if pos in ctx.gold:            # one grab of instant banked gold
+                    offer({"char_uid": uid, "action": "pickup"}, 8.0,
+                          "snatching the coin underfoot, then fleeing")
+                # Flee to the village (handles the y==0 edge by stepping off it).
+                self._retreat(uid, pos, ctx, blocked, offer, 7.0,
+                              "undead near — fleeing to the village")
+                # Cornered fallback (scored below the flee): if the retreat is blocked
+                # there is no escape step, so fight the weakest adjacent enemy out.
+                adj_e = [p for p in nav.neighbors(pos) if p in ctx.enemies]
+                if adj_e:
+                    w = min(adj_e, key=lambda p: ctx.enemies[p].get("hp_frac", 1.0))
+                    offer({"char_uid": uid, "action": "attack", "target": list(w)},
+                          6.9, "cornered by undead — fighting out (fallback)")
+                return
 
         # --- Healthy: fight / gather / explore. ---
         adj = [p for p in nav.neighbors(pos) if p in ctx.enemies]

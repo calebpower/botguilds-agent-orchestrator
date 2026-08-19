@@ -354,6 +354,38 @@ def test_village_still_arms_a_bare_char_in_gold_rush():
     assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
 
 
+def _threat_frame(mob_kind, gold=()):
+    # char at (0,3) in a north-south corridor; a mob 3 tiles east at (3,3).
+    tiles = [[0, y, "floor"] for y in range(0, 6)] + [[1, 3, "floor"], [2, 3, "floor"], [3, 3, "floor"]]
+    return _field_frame(_field_char(pos=[0, 3], stamina=40), tiles, gold=gold,
+                        entities=[{"pos": [3, 3], "faction": "monster",
+                                   "kind": mob_kind, "hp_frac": 0.9}])
+
+
+def test_flees_from_a_nearby_undead_threat():
+    # v0.25.0: a THREAT mob (zombie) within FLEE_RADIUS -> flee to the village, do
+    # not loot or explore.
+    bot = _bot()
+    acts = bot.on_frame(_threat_frame("zombie"))
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts        # fleeing home
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} not in acts    # not exploring
+
+
+def test_does_not_flee_benign_wildlife():
+    # a benign mob (skunk) at the same distance is NOT a threat -> the char keeps
+    # gold-rushing (explores north here), it does not flee.
+    bot = _bot()
+    acts = bot.on_frame(_threat_frame("skunk"))
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts        # normal exploration
+
+
+def test_snatches_underfoot_coin_before_fleeing_undead():
+    # instant banked gold underfoot is worth one grab even while fleeing.
+    bot = _bot()
+    acts = bot.on_frame(_threat_frame("ghoul", gold=[{"pos": [0, 3]}]))
+    assert {"char_uid": "c1", "action": "pickup"} in acts
+
+
 def test_gold_rush_beelines_to_a_gold_coin_over_loot():
     # v0.24.0: a gold coin outranks ordinary loot — chars go for banked gold first.
     bot = _bot()
