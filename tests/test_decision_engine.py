@@ -311,6 +311,22 @@ def test_village_buys_potion_at_20_gold():
     assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "potion_red"}]
 
 
+def test_village_sells_food_instead_of_hoarding_it():
+    # v0.19.0: a char carrying food (drink loot) must SELL it in the village, not
+    # hoard it. Before the fix, food was unsellable so a full-of-food char had no
+    # village action and got re-embarked off the boundary forever (the stuck-gold
+    # thrash). Armed + no potion + food + gold: it should sell the food.
+    bot = _bot()
+    char = {"char_uid": "c1",
+            "inventory": [{"kind": "meat", "item_id": "m1", "uses": ["drink"]}],
+            "equipment": {"hand": {"kind": "club"}}, "stats": {"str": 2},
+            "hp": 30, "max_hp": 30, "carry": {"used": 1, "cap": 24}}
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 100, "chars_here": ["c1"], "chars_by_world": {}},
+             "chars": [char]}
+    assert {"char_uid": "c1", "action": "sell", "item_id": "m1"} in bot.on_frame(frame)
+
+
 def test_village_arms_bare_char_whenever_affordable():
     # v0.18.0 reverted the v0.17.0 WEAPON_BUY_RESERVE (it regressed engagement): a
     # bare char is armed whenever it can afford a weapon, even with earners already
@@ -473,10 +489,12 @@ def test_village_buys_a_bottle_when_it_has_ingredients_but_none():
         [{"char_uid": "c1", "action": "buy", "kind": "bottle_empty"}]
 
 
-def test_village_keeps_ingredients_and_food_sells_pure_loot():
+def test_village_keeps_ingredients_sells_food_and_loot():
     bot = _bot()
-    # brewables-that-form-a-batch + food listed FIRST so the test fails if
-    # _should_sell stops keeping them (it would sell them before reaching the ore).
+    # batchable brew ingredients listed FIRST so the test fails if _should_sell
+    # stops keeping them (it would sell them before reaching the food). v0.19.0:
+    # food is now SOLD as loot (was kept), so meat — the first sellable, after the
+    # kept brewables — is what sells, proving the brewables were skipped.
     char = _brew_char([{"kind": "bitterroot", "item_id": "b1", "uses": ["brew", "taste"]},
                        {"kind": "bitterroot", "item_id": "b2", "uses": ["brew", "taste"]},
                        {"kind": "meat", "item_id": "m1", "uses": ["drink"]},
@@ -484,10 +502,10 @@ def test_village_keeps_ingredients_and_food_sells_pure_loot():
     frame = {"world": "village", "tick": 3,
              "guild": {"gold": 5, "chars_here": ["c1"], "chars_by_world": {}},
              "chars": [char]}
-    # gold 5 (<10) so no brew yet; ore is pure loot -> sold; the batchable brew
-    # ingredients and the food are kept, not sold.
+    # gold 5 (<10) so no brew yet; the batchable brew ingredients are kept; food
+    # (meat) and pure-loot ore are sold — meat first (it precedes the ore).
     assert bot.on_frame(frame) == \
-        [{"char_uid": "c1", "action": "sell", "item_id": "o1"}]
+        [{"char_uid": "c1", "action": "sell", "item_id": "m1"}]
 
 
 def test_village_sells_stranded_singleton_brewable():

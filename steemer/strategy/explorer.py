@@ -261,6 +261,25 @@ open question rather than guessed at. What IS clear is the reserve made things
 worse, so it is reverted: arm a bare char whenever affordable again (as in 0.16.0).
 POTION_MIN_GOLD stays 20 (harmless — buy a potion at its real price). The gold-
 accumulation goal remains open; the next lever is the embark-churn root cause.
+
+v0.19.0 — ROOT-CAUSED the embark<->return churn / stuck-gold; it is the same bug in
+every version. Traced the top embarker (run #74, c9888): it carried 22-23/24 — FULL
+— the entire time, of egg/meat/tomato/berries/turnip (all `uses:['drink']`) plus
+bottles. `_should_sell` refused to sell ANY `drink` item ("keep food"), but the
+guild never EATS food, so packs fill with unsellable food, chars are pinned `full`
+(homing) forever, and — having no sellable action in the village — the per-char
+loop finds nothing to do, so `village()` re-EMBARKS the char straight off the
+boundary back into the field. It walks to the edge, is yanked back, walks to the
+edge… never offloading (c9888: 1183 embarks, ~0 sales). That is why gold never
+accumulates in ANY version — masked before by death-churn, exposed once 0.17.0 kept
+chars alive. Food is demonstrably SELLABLE (meat/egg/berries are among the top-sold
+items historically; the shop buys anything) and chars sit at full HP hoarding it,
+so it is pure loot. Fix: `_should_sell` now sells food — it keeps only KEEP field
+supplies and actual medicinal drinks (potion*/vial*/elixir*/tonic*), and sells
+everything else including raw `drink` food. This unclogs the pack, so a returning
+char SELLS (a per-char action) instead of being re-embarked, breaking the thrash.
+Expected: sales rise toward the pickup/return rate, the embark:return ratio falls
+toward 1, and gold finally climbs off ~9.
 """
 
 from __future__ import annotations
@@ -275,6 +294,11 @@ from ..reasoning import DecisionTrace
 RETREAT_HP = 0.6           # flee below 60% HP — early enough to still afford the run
 DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless of HP
 KEEP = frozenset({"potion_red", "bottle_empty"})   # field/craft supplies we never sell
+# Medicinal drinks we keep rather than sell (potions, vials, elixirs, tonics). Raw
+# FOOD is also `uses:['drink']` but is NOT kept — the guild never eats it, so
+# hoarding it just fills the pack and strands chars homing (v0.19.0: the stuck-gold
+# / embark-thrash root cause). Food is sold as loot (the shop buys it).
+DRINK_KEEP_PREFIXES = ("potion", "vial", "elixir", "tonic")
 CONTAINERS = frozenset({"chest", "safe"})
 DEFAULT_MAPS = ("vale", "mines", "spire")
 REST_SCORE = 0.5           # the floor: rest wins only when nothing affordable beats it
@@ -322,7 +346,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.18.0"
+    version = "explorer/0.19.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -798,15 +822,17 @@ class Explorer:
 
     def _should_sell(self, item: dict[str, Any], eqp: dict[str, Any],
                      brew_keep: set[str], smelt_keep: set[str]) -> bool:
-        """Sell only what we can't use. Keep: field supplies (KEEP), consumables
-        and food (`drink`), brew ingredients that can still form a batch
-        (`brew_keep`), ore that can still form a smelt pair (`smelt_keep`), and
-        gear we might still equip. Everything else — pure loot AND stranded
-        singleton brewables/ore (v0.8.0/v0.10.0) — is banked for gold, so lone
-        herbs and ore don't hoard up and clog carry."""
+        """Sell only what we can't use. Keep: field supplies (KEEP), medicinal
+        drinks (potions/vials/elixirs/tonics), brew ingredients that can still form
+        a batch (`brew_keep`), ore that can still form a smelt pair (`smelt_keep`),
+        and gear we might still equip. Everything else — pure loot, raw FOOD (which
+        is `drink` but never eaten), AND stranded singleton brewables/ore
+        (v0.8.0/v0.10.0) — is banked for gold, so food/herbs/ore don't hoard up and
+        clog carry (v0.19.0: an unsold-food pack pinned chars `full` forever and
+        drove the embark<->return thrash that kept gold from ever accumulating)."""
         kind = item["kind"]
         uses = item.get("uses") or []
-        if kind in KEEP or "drink" in uses:
+        if kind in KEEP or kind.startswith(DRINK_KEEP_PREFIXES):
             return False
         if "brew" in uses:
             return item["item_id"] not in brew_keep   # sell stranded brewables

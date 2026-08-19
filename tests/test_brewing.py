@@ -116,6 +116,19 @@ def test_should_sell_sells_stranded_brewable_keeps_batchable():
     assert exp._should_sell(keep_item, {}, brew_keep={"bone-2"}, smelt_keep=set()) is False  # batchable -> keep
 
 
+def test_should_sell_sells_food_keeps_medicinal_drinks():
+    # v0.19.0: raw food is `uses:['drink']` but never eaten, so it is SOLD as loot
+    # (the unsold-food pack was the stuck-gold / embark-thrash root cause). Only
+    # KEEP supplies and actual medicinal drinks (potion*/vial*/…) are kept.
+    exp = Explorer()
+    ss = lambda it: exp._should_sell(it, {}, brew_keep=set(), smelt_keep=set())
+    assert ss({"kind": "meat", "item_id": "m1", "uses": ["drink"]}) is True    # food -> sell
+    assert ss({"kind": "egg", "item_id": "e1", "uses": ["drink"]}) is True     # food -> sell
+    assert ss({"kind": "potion_red", "item_id": "p1", "uses": ["drink"]}) is False   # KEEP
+    assert ss({"kind": "potion_blue", "item_id": "p2", "uses": ["drink"]}) is False  # medicinal
+    assert ss({"kind": "vial_green", "item_id": "v1", "uses": ["drink"]}) is False   # medicinal
+
+
 def test_shed_item_prefers_clutter_then_ore_never_keep_or_gear():
     # When overburdened we shed the least-useful thing: pure loot clutter (no
     # craft/consume use) before craft ingredients, and never a field supply or
