@@ -1274,3 +1274,32 @@ PASS: measure run #57+ — did potion-carry rise, deaths fall, and GOLD finally
 accumulate off ~14? Also open: the recruit-churn question (216 recruits vs 51
 deaths) — a recruit throttle may be the next lever if we're over-recruiting bare
 chars we can't field.
+
+## 2026-08-19 ~11:00 — iteration 9: measured 0.17.0 (regression), reverted it (0.18.0), found the real gold blocker
+
+MEASURED 0.17.0 on run #73 (67k frames) vs run #56 (0.16.0). The survival reserve
+was a REGRESSION dressed as a win:
+  * deaths 0.68->0.01/1k (51->1), recruit churn 216->21 — but these fell because
+    chars STOPPED ENGAGING, not because they thrived.
+  * gold income 9.9->2.3/1k, sales 220->46, pickups 9.3->3.1/1k, attacks 79->34/1k.
+    Gold still stuck (mean ~9, max 18).
+Since gold never crosses ~18, the reserve (arm a bare char only from gold above a
+one-potion reserve) meant a 15g club — needing 35g — was never affordable, so
+chars sat idle. Reverted in **explorer/0.18.0** (git 275d04a): arm whenever
+affordable again, as in 0.16.0. POTION_MIN_GOLD stays 20 (harmless).
+
+ANSWERED the open recruit question: the churn WAS death-replacement — deaths and
+recruits fell together (51/216 -> 1/21). A surviving roster self-limits recruiting;
+no recruit throttle needed.
+
+FOUND THE REAL GOLD BLOCKER (new open question, the next lever): an EMBARK<->RETURN
+churn. 32 surviving chars each embarked ~360x / returned ~130x (11.5k embark events)
+but only 46 sales — sampled churners were ARMED, full-HP, and FULL OF LOOT in the
+field, not converting to sales. Embarks far exceed returns (silently-accepted
+redundant embark sends?). This — full chars failing to reach the village and sell —
+is likely why gold never accumulates across ALL versions. It was MASKED in earlier
+runs by death-churn (chars died before the cycle showed); 0.17.0's survival exposed
+it. NEXT PASS: trace one full/homing char field->village frame-by-frame to see why
+it doesn't offload (homing latch clearing? re-embark before sell? embark re-sent
+while fielded?). Fix that and gold should finally move. Deployed 0.18.0 to run #74
+via ./svc.sh (down, confirm zero remnants, up — clean, no kick-war).
