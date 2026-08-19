@@ -336,6 +336,22 @@ POISON_SAFE_DEPTH, so its poison-retreat home is short enough to survive. A char
 carrying a potion may still range deep (it can drink en route). Expected: fewer
 mid-retreat poison deaths, the roster survives to mature, and the churn/gold-drain
 unwind.
+
+v0.24.0 — GOLD-RUSH (operator directive: with the world now overrun by poison undead
+that our broke/young roster can't beat, stop trying to fight it — pivot to grabbing
+and STOCKPILING gold). Data behind it: income is ~half FIELD GOLD COINS (banked to
+the treasury instantly = death-proof; only ~3% are tied to a kill, so no fighting
+needed) and ~half sales; CHESTS give direct gold (1-21g) PLUS loot and there are
+~39/run (renewed each band-refresh); the NPC shop has no arbitrage (sell ~= 20% of
+buy) and the player market is empty. So: (1) FIELD — beeline to gold coins (5.0) and
+chests (4.5) over ordinary loot (4.0); cracking an adjacent chest is a top priority
+(7.0); do NOT chase monsters (combat isn't the gold source and it's what kills us) —
+only the adjacent-attack (8.0) still defends. (2) VILLAGE HOARD — freeze potion-buys
+and bottle-buys; keep only the cheap 15g club for a bare char (operator's call) and
+free brewing with bottles already held; everything else is banked. Survival now
+leans on v0.23.0's shallow-venture + not fighting. GOAL: stockpile — and, since the
+most gold ever held is 529 (run #75), find out whether a gold CAP exists by actually
+pushing past it.
 """
 
 from __future__ import annotations
@@ -407,7 +423,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.23.0"
+    version = "explorer/0.24.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -506,27 +522,16 @@ class Explorer:
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "buy", "kind": kind},
                         f"buying a {kind} ({price}g; bare-handed — arming to break the poverty trap)")]
-            # 4) stock a field potion — but only for an ARMED char (v0.13.0): a
-            #    bare-handed char can't fight anyway, so gold goes to a weapon
-            #    first, never a 20-gold potion while chars are unarmed and broke.
-            potions = sum(1 for i in inv if i["kind"] == "potion_red")
-            if eqp.get("hand") is not None and potions < POTION_KEEP and gold >= POTION_MIN_GOLD:
-                return [self._village_act(
-                    bot, uid, {"char_uid": uid, "action": "buy", "kind": "potion_red"},
-                    "buying a red potion for the field (survival)")]
-            # 4b) brew looted ingredients into potions (M3b), essence-aware
-            #     (v0.7.0). Group brewables by their DECODED essence and brew a
-            #     single-essence batch — never a vigor+venom mix, which curdles —
-            #     preferring vigor (-> potion_red healing). Undecoded herbs brew
-            #     only as same-KIND batches (v0.8.0: a same-kind batch shares an
-            #     essence so it can't curdle, and its product reveals that kind's
-            #     essence cleanly). KEEP items are never spent as ingredients.
+            # 4) GOLD-RUSH HOARD (v0.24.0): potion-buying is FROZEN — every coin is
+            #    stockpiled. (Operator directive: prioritise grabbing & hoarding gold;
+            #    keep only the cheap club for defence — see step 3.) Survival now comes
+            #    from avoiding combat and staying shallow (v0.23.0), plus free brewed
+            #    potions below, not from spending the treasury on 20-gold potions.
+            # 4b) brew looted ingredients into potions — but only with a bottle we
+            #     already hold; the bottle-BUY is frozen too (hoard). Free potions
+            #     from foraged herbs still help protect a char's carried loot.
             bottles = sum(1 for i in inv if i["kind"] == "bottle_empty")
             picks, ess, healing = self._choose_brew(brewables)
-            if picks and bottles == 0 and gold >= BREW_MIN_GOLD:
-                return [self._village_act(
-                    bot, uid, {"char_uid": uid, "action": "buy", "kind": "bottle_empty"},
-                    f"buying an empty bottle to brew a {ess or 'unknown'}-essence batch")]
             if picks and bottles >= 1:
                 label = (f"{ess} (-> potion_red heal)" if healing
                          else f"{ess}-essence" if ess else "undecoded (learning batch)")
@@ -723,12 +728,26 @@ class Explorer:
         # off its own tile (the 0.15.0 thrash). It should walk its haul home.
         if not homing:
             if pos in ctx.loot or pos in ctx.gold:
-                offer({"char_uid": uid, "action": "pickup"}, 6.0, "loot underfoot — grab it")
+                offer({"char_uid": uid, "action": "pickup"}, 6.0, "loot/gold underfoot — grab it")
             else:
-                step = self._step(pos, lambda p: p in ctx.loot or p in ctx.gold, ctx, blocked)
-                if step:
-                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
-                          4.0, "moving toward visible loot")
+                # GOLD-RUSH (v0.24.0): grabbing & stockpiling gold is the priority.
+                # Beeline to GOLD coins first — they are instant, banked to the
+                # treasury (death-proof), ~half our income, and only ~3% are tied to
+                # a kill (so they need no fighting). Then to chests (direct 1-21g +
+                # loot). Then ordinary loot.
+                gstep = self._step(pos, lambda p: p in ctx.gold, ctx, blocked)
+                if gstep:
+                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, gstep)},
+                          5.0, "beeline to a gold coin (instant banked gold)")
+                cstep = self._step(pos, lambda p: any(n in ctx.containers for n in nav.neighbors(p)),
+                                   ctx, blocked)
+                if cstep:
+                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, cstep)},
+                          4.5, "beeline to a chest (direct gold + loot)")
+                lstep = self._step(pos, lambda p: p in ctx.loot, ctx, blocked)
+                if lstep:
+                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, lstep)},
+                          4.0, "moving toward loot")
 
         # Gather/explore only when NOT heading home (v0.16.0): a homing char that
         # opens a container spills loot it won't grab, and scouting/frontier-pushing
@@ -738,14 +757,12 @@ class Explorer:
             box = next((p for p in nav.neighbors(pos) if p in ctx.containers), None)
             if box:
                 offer({"char_uid": uid, "action": "open", "target": list(box)},
-                      5.0, "opening an adjacent container")
+                      7.0, "cracking a chest — direct gold + loot (gold-rush v0.24.0)")
 
-            if ctx.enemies and not adj:
-                near = self._step(pos, lambda p: any(n in ctx.enemies for n in nav.neighbors(p)),
-                                  ctx, blocked)
-                if near:
-                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, near)},
-                          3.5, "closing to attack range on a monster")
+            # GOLD-RUSH (v0.24.0): do NOT chase monsters. Combat is not the gold
+            # source and it is what gets our under-equipped chars killed (poison
+            # undead). The adjacent-attack offer above (8.0) still defends and grabs
+            # the occasional drop when something is already next to us.
 
             # An un-healed char (no potion_red) stays SHALLOW: poison is a DOT that
             # kills chars mid-retreat from deep ground, so past POISON_SAFE_DEPTH it

@@ -312,14 +312,17 @@ def test_hurt_suppresses_offense_when_it_cannot_flee(tmp_path):
     assert bot.on_frame(frame) == []          # heal/flee only, both impossible -> rest
 
 
-def test_village_buys_a_potion_when_armed_and_carrying_none():
+def test_village_does_not_buy_potions_in_gold_rush_hoard():
+    # v0.24.0 gold-rush HOARD: potion-buying is frozen (every coin is stockpiled),
+    # even for an armed, potion-less char sitting on 100 gold.
     bot = _bot()
     char = {"char_uid": "c1", "inventory": [], "equipment": {"hand": {"kind": "club"}},
             "stats": {"str": 2}, "hp": 30, "max_hp": 30}
     frame = {"world": "village", "tick": 3,
              "guild": {"gold": 100, "chars_here": ["c1"], "chars_by_world": {}},
              "chars": [char]}
-    assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "potion_red"}]
+    assert all(not (a.get("action") == "buy" and a.get("kind") == "potion_red")
+               for a in bot.on_frame(frame))
 
 
 def test_village_does_not_buy_a_second_potion():
@@ -339,16 +342,47 @@ def test_village_does_not_buy_a_second_potion():
 _SHOP_CLUB = {"stock": [{"kind": "club", "buy_price": 15, "sell_price": 3}]}
 
 
-def test_village_buys_potion_at_20_gold():
-    # v0.17.0 lowered POTION_MIN_GOLD 25->20 (the potion's shop price): an armed
-    # char with exactly 20 gold and no potion should now buy one.
+def test_village_still_arms_a_bare_char_in_gold_rush():
+    # v0.24.0 hoard keeps ONE exception: a cheap 15g club for a bare char (defence /
+    # kill-for-drops), per the operator's call. Bare char + affordable club -> buys it.
     bot = _bot()
-    char = {"char_uid": "c1", "inventory": [], "equipment": {"hand": {"kind": "club"}},
-            "stats": {"str": 2}, "hp": 30, "max_hp": 30}
+    char = {"char_uid": "c1", "inventory": [], "equipment": {}, "stats": {"str": 2},
+            "hp": 30, "max_hp": 30}
     frame = {"world": "village", "tick": 3,
-             "guild": {"gold": 20, "chars_here": ["c1"], "chars_by_world": {"vale": ["e1"]}},
-             "chars": [char]}
-    assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "potion_red"}]
+             "guild": {"gold": 100, "chars_here": ["c1"], "chars_by_world": {"vale": ["e1"]}},
+             "chars": [char], "shop": _SHOP_CLUB}
+    assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
+
+
+def test_gold_rush_beelines_to_a_gold_coin_over_loot():
+    # v0.24.0: a gold coin outranks ordinary loot — chars go for banked gold first.
+    bot = _bot()
+    tiles = [[0, 0, "floor"], [0, 1, "floor"], [0, 2, "floor"], [1, 0, "floor"], [2, 0, "floor"]]
+    frame = _field_frame(_field_char(pos=[0, 0], stamina=40), tiles,
+                         items=[{"pos": [2, 0], "kind": "egg"}], gold=[{"pos": [0, 2]}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts   # toward the coin
+    assert {"char_uid": "c1", "action": "move", "dir": "E"} not in acts  # not the egg
+
+
+def test_gold_rush_cracks_an_adjacent_chest():
+    # v0.24.0: opening an adjacent chest (direct gold + loot) is a top priority.
+    bot = _bot()
+    tiles = [[0, 0, "floor"], [1, 0, "chest"]]
+    acts = bot.on_frame(_field_frame(_field_char(pos=[0, 0], stamina=40), tiles))
+    assert {"char_uid": "c1", "action": "open", "target": [1, 0]} in acts
+
+
+def test_gold_rush_does_not_chase_a_distant_monster():
+    # v0.24.0: no chasing — combat isn't the gold source. With a non-adjacent monster
+    # east and a frontier north, the char explores north, it does NOT close on the mob.
+    bot = _bot()
+    tiles = [[0, 0, "floor"], [0, 1, "floor"], [0, 2, "floor"], [1, 0, "floor"], [2, 0, "floor"]]
+    frame = _field_frame(_field_char(pos=[0, 0], stamina=40), tiles,
+                         entities=[{"pos": [2, 0], "faction": "monster",
+                                    "kind": "zombie", "hp_frac": 0.9}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "move", "dir": "E"} not in acts  # no chase east
 
 
 def test_village_sells_food_instead_of_hoarding_it():
@@ -545,16 +579,17 @@ def test_village_brews_ingredients_with_a_bottle():
         [{"char_uid": "c1", "action": "brew", "item_ids": ["b1", "b2"]}]
 
 
-def test_village_buys_a_bottle_when_it_has_ingredients_but_none():
+def test_village_does_not_buy_a_bottle_in_gold_rush_hoard():
+    # v0.24.0 hoard: bottle-buying is frozen too — a batch with no bottle on hand
+    # does NOT trigger a purchase (brewing only proceeds with a bottle already held).
     bot = _bot()
-    # a viable (same-kind) batch but no bottle -> buy one.
     char = _brew_char([{"kind": "bitterroot", "item_id": "b1", "uses": ["brew", "taste"]},
                        {"kind": "bitterroot", "item_id": "b2", "uses": ["brew", "taste"]}])
     frame = {"world": "village", "tick": 3,
-             "guild": {"gold": 15, "chars_here": ["c1"], "chars_by_world": {}},
+             "guild": {"gold": 100, "chars_here": ["c1"], "chars_by_world": {}},
              "chars": [char]}
-    assert bot.on_frame(frame) == \
-        [{"char_uid": "c1", "action": "buy", "kind": "bottle_empty"}]
+    assert all(not (a.get("action") == "buy" and a.get("kind") == "bottle_empty")
+               for a in bot.on_frame(frame))
 
 
 def test_village_keeps_ingredients_sells_food_and_loot():
