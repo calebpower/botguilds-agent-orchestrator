@@ -1205,3 +1205,40 @@ host. NEXT PASS: measure run #54+ — did overburden events + our deaths fall,
 returned/sale rise toward pickup count, and gold finally start accumulating? If
 yes, the poverty arc is essentially closed; if overburden persists, tighten the
 not-full margin or investigate the carry-cap/penalty mechanic (open question).
+
+## 2026-08-19 ~08:00 — iteration 6: measured 0.15.0, found a pickup<->drop thrash, shipped the homing latch (0.16.0)
+
+MEASURED 0.15.0 on run #55 (137k frames, a full hour — the run_in_background
+run-live.sh host survived the whole window, no kicks). Mixed result:
+
+  * WON: permanent-stuck overburden fell (overburdened 30->11/1k, status_damage
+    41->17/1k, worst-char stuck 939->621 ticks); pickups leapt 9.95->59.9/1k. The
+    drop-to-shed genuinely restored mobility.
+  * REGRESSED: sale 1.14->0.86/1k, returned 1.05->0.92/1k, sale_gold flat over
+    1.76x more frames (~half the per-frame income), gold still ~14 — and `drop`
+    nearly equalled `pickup` (7029 vs 8190).
+
+The 1:1 drop:pickup ratio was the tell. Event-stream drill on the worst char
+(eid 109684) exposed a PICKUP<->DROP THRASH on a single tile: shed `drop` lands
+the item underfoot, shedding drops used below cap-1 so the char reads "not full"
+and re-grabs the item it just dropped — overburden, drop, re-grab, forever (item
+112203 cycled 4+ times in ~20 ticks; it even thrashed at the village edge [47,0]).
+The 0.15.0 `not full` gate can't stop it — one drop flips the char out of "full".
+
+Shipped **explorer/0.16.0** (git 16977ef): a HOMING LATCH. Once a char fills up it
+enters `self._homing` and stays there — pickup, loot-seeking, container-open,
+mob-chase, frontier and scout all suppressed — so a shed item is never re-grabbed;
+it heals/flees if hurt, sheds if overburdened, defends adjacent mobs, else only
+retreats. Clears once light again (used<=cap*0.5, after the village sells), with
+hysteresis (enter cap-1, exit half-cap) so it can't flicker. Tests:
+latch-persists-suppresses-repickup (thrash fix, stateful across 2 frames) +
+latch-clears-when-light, both mutation-checked. Suite 202 passed/2 skipped; replay
+clean; reaper gate green.
+
+DEPLOY: stopped the 0.15.0 bg host (TaskStop), confirmed the old runner fully
+gone (no kick-war), launched a fresh run_in_background run-live.sh — run #56 on
+0.16.0, stable, early pickup:drop 3:2 (not 1:1). NEXT PASS: measure run #56+ —
+did drop collapse toward rare genuine sheds, did returned/sale rise toward the
+pickup count, is gold FINALLY climbing off 14? If yes the poverty arc closes. Then
+attack the next lever (not_enough_stamina ~92% of avoidable errors; or the
+carry-cap/overburden-penalty open question; or build the frame-staleness watchdog).
