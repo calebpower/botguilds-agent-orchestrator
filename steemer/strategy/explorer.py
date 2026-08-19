@@ -168,6 +168,21 @@ Expected: the moment the guild scrapes ~15 gold it arms a char (not at 45, never
 reached), gold starts rising, kills/xp/pickups climb. Falsified if gold stays
 pinned at ~14 (then the binding constraint is field income — chars not reaching
 loot — not spending, and that is the next target).
+
+v0.14.0 — 0.13.0 measured as PARTIALLY working: gold rose 14->34 (income
+appeared), chars armed (buy actions 0->250), pickups 1->8, xp 1->12 — the
+deadlock is cracking. But run #38 exposed a duplicate-send storm on the per-char
+VILLAGE economy (250 buy + 148 sell actions for ~1 sale / a few real buys),
+exactly like the old embark storm: a char decides on a ~few-tick-stale frame and
+re-issues the same buy/sell/equip every tick until the change is reflected,
+spamming no_such_item and over-buying. Fix: a per-char village-action re-send
+guard — after a char issues a village action, skip it for `VILLAGE_ACTION_COOLDOWN`
+ticks so the frame catches up (recorded in `_village_act`, checked at the top of
+the per-char loop). Generalises the embark/recruit guards to the economy loop.
+Expected: buy/sell action counts collapse toward the number of real purchases,
+no_such_item errors fall, gold isn't wasted on duplicate buys — a cleaner, faster
+bootstrap. (The still-low pickup rate — chars reach loot but bare `pickup` often
+no-ops — is a separate income bottleneck, under investigation.)
 """
 
 from __future__ import annotations
@@ -212,10 +227,14 @@ EMBARK_COOLDOWN = 8   # v0.10.0: after commanding a char to embark, don't re-sen
 #   still retries a genuinely-failed embark after ~2 s.
 RECRUIT_COOLDOWN = 8  # v0.10.0: same staleness for recruit — a just-recruited char
 #   isn't in the roster for a few frames, so re-firing recruit storms roster_cap.
+VILLAGE_ACTION_COOLDOWN = 6   # v0.14.0: after a char issues a per-char village
+#   action (buy/sell/equip/brew/smelt/spend_xp), don't issue it another for this
+#   many ticks — the frame is a few ticks stale, so re-issuing the same buy/sell
+#   spams no_such_item / over-buys before the change is reflected.
 
 
 class Explorer:
-    version = "explorer/0.13.0"
+    version = "explorer/0.14.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -229,6 +248,11 @@ class Explorer:
         # duplicate-send storm). Pruned once the char leaves `chars_here`.
         self._embark_at: dict[str, int] = {}
         self._recruit_at: int | None = None
+        # In-flight guard for per-char VILLAGE actions (v0.14.0): the tick each
+        # char last issued a village action, so a stale frame doesn't make it
+        # re-send the same buy/sell/equip every tick (run #38: 250 buy + 148 sell
+        # actions for ~1 sale — the same duplicate-send storm as embark).
+        self._village_acted: dict[str, int] = {}
 
     def on_action_error(self, bot: "Any", message: dict[str, Any]) -> None:
         """Learn equip slots from the server's rejections. We send at most one
@@ -257,6 +281,11 @@ class Explorer:
             uid = char["char_uid"]
             if char.get("craft"):
                 continue                    # busy crafting; don't disturb or embark it
+            # In-flight guard: a char that just acted is skipped for a few ticks so
+            # the stale frame doesn't make it re-issue the same buy/sell/equip
+            # (v0.14.0 — kills the run-#38 buy/sell re-send storm).
+            if bot.tick - self._village_acted.get(uid, -10**9) < VILLAGE_ACTION_COOLDOWN:
+                continue
             inv = char.get("inventory", [])
             eqp = char.get("equipment", {}) or {}
             # Brewables we can actually make a no-curdle batch from — the rest are
@@ -710,6 +739,10 @@ class Explorer:
         return nav.bfs_step(pos, is_goal, ctx.known, blocked)
 
     def _village_act(self, bot, uid, action, why):
+        # Record per-char village actions for the in-flight re-send guard (v0.14.0).
+        # Guild-level actions (recruit/embark, uid=None) have their own guards.
+        if uid is not None:
+            self._village_acted[uid] = bot.tick
         self._trace(bot, uid, "village", [why], action, 5.0, why)
         return action
 

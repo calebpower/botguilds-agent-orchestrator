@@ -296,8 +296,8 @@ def _equip_char(inv, equipment=None, uid="c1"):
             "stats": {"vit": 1, "end": 1, "str": 1}, "gifts": [], "xp": 0}
 
 
-def _vframe(char, gold=100):
-    return {"world": "village", "tick": 3,
+def _vframe(char, gold=100, tick=3):
+    return {"world": "village", "tick": tick,
             "guild": {"gold": gold, "chars_here": [char["char_uid"]], "chars_by_world": {}},
             "chars": [char]}
 
@@ -324,22 +324,24 @@ def test_village_equips_into_empty_slot_when_hand_is_taken():
 def test_wrong_slot_is_learned_then_next_slot_tried():
     bot = _bot()
     char = _equip_char([{"kind": "hide_vest", "item_id": "a1", "uses": ["equip"]}])
-    first = bot.on_frame(_vframe(char))
+    first = bot.on_frame(_vframe(char, tick=3))
     assert first[0]["slot"] == "hand"                    # first empty slot
     bot.strategy.on_action_error(bot, {"action": "equip", "char_uid": "c1",
                                        "reason": "wrong_slot"})
-    second = bot.on_frame(_vframe(char))
+    # next frame is a later tick (past the v0.14.0 per-char village cooldown).
+    second = bot.on_frame(_vframe(char, tick=12))
     assert second[0]["slot"] == "offhand"                # hand now known-wrong
 
 
 def test_stat_requirement_marks_unusable_and_then_sells():
     bot = _bot()
     char = _equip_char([{"kind": "heavy_maul", "item_id": "m1", "uses": ["equip"]}])
-    bot.on_frame(_vframe(char))                          # attempt equip
+    bot.on_frame(_vframe(char, tick=3))                  # attempt equip
     bot.strategy.on_action_error(bot, {"action": "equip", "char_uid": "c1",
                                        "reason": "stat_requirement"})
-    # unusable now -> not re-equipped, and sold rather than hoarded
-    assert bot.on_frame(_vframe(char)) == \
+    # unusable now -> not re-equipped, and sold rather than hoarded (later tick,
+    # past the v0.14.0 per-char village cooldown).
+    assert bot.on_frame(_vframe(char, tick=12)) == \
         [{"char_uid": "c1", "action": "sell", "item_id": "m1"}]
 
 
@@ -696,3 +698,27 @@ def test_weapon_purchase_respects_the_stat_requirement():
     # str 1 can't qualify for the shortsword (req str4) even at gold 45 -> buys club.
     bot = _bot()
     assert bot.on_frame(_barehand_frame(45, str_=1)) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
+
+
+def test_village_action_re_send_guard_skips_a_recent_actor():
+    # v0.14.0: a char that just issued a village action is skipped for the cooldown
+    # so a stale frame doesn't make it re-issue the same buy/sell every tick (the
+    # run-#38 storm: 250 buy + 148 sell actions for ~1 sale). roster is at cap here
+    # so nothing recruits/embarks, isolating the per-char guard.
+    from steemer.strategy.explorer import VILLAGE_ACTION_COOLDOWN
+    bot = _bot()
+
+    def frame(tick):
+        return {"world": "village", "tick": tick,
+                "guild": {"gold": 100, "chars_here": ["c1"],
+                          "chars_by_world": {"vale": [f"v{i}" for i in range(10)]}},
+                "chars": [{"char_uid": "c1", "hp": 30, "max_hp": 30,
+                           "inventory": [{"kind": "bone", "item_id": "i1", "uses": []}],
+                           "equipment": {"hand": {"kind": "club"}, "offhand": None,
+                                         "outfit": None, "trinket": None, "boots": None},
+                           "stats": {"vit": 8, "end": 8, "str": 8}, "gifts": [], "xp": 0}]}
+
+    assert bot.on_frame(frame(3)) == [{"char_uid": "c1", "action": "sell", "item_id": "i1"}]
+    assert bot.on_frame(frame(4)) == []                          # within cooldown -> skipped
+    assert bot.on_frame(frame(3 + VILLAGE_ACTION_COOLDOWN)) == \
+        [{"char_uid": "c1", "action": "sell", "item_id": "i1"}]   # cooldown elapsed -> retries

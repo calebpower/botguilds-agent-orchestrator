@@ -1104,3 +1104,36 @@ to visibly fire — measuring next window will tell.
 **Verify.** pytest 195 passed / 2 skipped; the 45->15 threshold + arm-before-potion
 + stat-req are mutation-checked; replay clean on 0.13.0. Reaper gate: running.
 Self-deploy: make bot-restart.
+
+## 2026-08-18 20:12 — iteration 4: explorer/0.14.0 — kill the buy/sell re-send storm (village-action in-flight guard)
+
+**Measured 0.13.0 (run #38, ~15k ticks): the deadlock is CRACKING.** gold rose
+14 -> 34 (income appeared for the first time), chars ARMED (buy actions 0 -> 250),
+**pickup 1 -> 8, xp 1 -> 12** vs run #37. So 0.13.0's cheap-weapon fix worked
+partially: the guild scraped enough to buy weapons, and armed chars started
+killing/looting a little. Not fully recovered (gold ended 7, spent on arming),
+but moving in the right direction — the falsification (gold pinned at 14) did NOT
+happen.
+
+**But run #38 exposed a duplicate-send storm on the per-char VILLAGE economy:**
+250 buy + 148 sell ACTIONS for ~1 sale event / a few real buys — the same
+stale-frame re-send pattern as the old embark storm. A char decides on a
+~few-tick-stale frame and re-issues the same buy/sell/equip every tick until the
+change is reflected -> spams no_such_item and risks over-buying (multiple clubs).
+
+**Fix (0.14.0):** a per-char village-action re-send guard — after a char issues a
+village action, skip it for `VILLAGE_ACTION_COOLDOWN`=6 ticks so the frame catches
+up (recorded in `_village_act`, checked at the top of the per-char loop).
+Generalises the embark/recruit in-flight guards to the economy loop.
+
+**Expected/falsify:** buy/sell action counts collapse toward the number of REAL
+purchases; no_such_item errors fall; gold isn't wasted on duplicate buys ->
+cleaner, faster bootstrap. FALSIFIED if buy/sell action counts stay ~ the same
+multiple of real purchases. NOTE: the still-low pickup rate (chars reach loot but
+bare `pickup` often no-ops — logged as a discovery + open question) is a SEPARATE
+income bottleneck, next to investigate (a live item_id-pickup experiment vs
+multiplayer loot contention).
+
+**Verify.** pytest 196 passed / 2 skipped; the guard is mutation-checked; two
+equip-learning tests updated to advance the tick (frames advance in reality);
+replay clean on 0.14.0. Reaper gate: running. Self-deploy: make bot-restart.
