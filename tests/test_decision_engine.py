@@ -327,6 +327,34 @@ def test_village_sells_food_instead_of_hoarding_it():
     assert {"char_uid": "c1", "action": "sell", "item_id": "m1"} in bot.on_frame(frame)
 
 
+def test_pick_xp_stat_prefers_an_affordable_stat_over_an_unaffordable_top_priority():
+    # v0.22.0: VIT is top priority but its cost grows with value; at vit=5 it costs
+    # 40, so a char banking 17 XP can't afford it and must fall to a cheaper stat it
+    # CAN afford (END at 1 costs 8) — that is what finally makes spend_xp fire.
+    from steemer.strategy.explorer import Explorer
+    char = {"stats": {"vit": 5, "end": 1, "str": 2}, "gifts": [], "xp": 17}
+    assert Explorer._pick_xp_stat(char) == "end"
+    # nothing affordable -> None (bank it), even though stats are below the cap.
+    broke = {"stats": {"vit": 1, "end": 1, "str": 1}, "gifts": [], "xp": 0}
+    assert Explorer._pick_xp_stat(broke) is None
+
+
+def test_village_spends_banked_xp_on_an_affordable_stat():
+    # v0.22.0 end-to-end: an idle armed char with banked XP now issues spend_xp on
+    # the affordable END rather than stalling on an unaffordable VIT (was: 0 spends).
+    bot = _bot()
+    char = {"char_uid": "c1", "hp": 30, "max_hp": 30,
+            "inventory": [{"kind": "potion_red", "item_id": "p1", "tier": 1}],
+            "equipment": {"hand": {"kind": "club"}, "offhand": None, "outfit": None,
+                          "trinket": None, "boots": None},
+            "stats": {"vit": 5, "end": 1, "str": 2}, "gifts": [], "xp": 17,
+            "carry": {"used": 0, "cap": 24}}
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 50, "chars_here": ["c1"], "chars_by_world": {}},
+             "chars": [char]}
+    assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "spend_xp", "stat": "end"}]
+
+
 def test_village_arms_bare_char_whenever_affordable():
     # v0.18.0 reverted the v0.17.0 WEAPON_BUY_RESERVE (it regressed engagement): a
     # bare char is armed whenever it can afford a weapon, even with earners already

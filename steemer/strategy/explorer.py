@@ -305,6 +305,22 @@ beats an empty slot; arming is the village loop's job, not grounds to bench them
 Reverted to fielding ANY available char (0.19.0 behaviour). The real equipment lever
 must improve chars WITHOUT shrinking the field — upgrade weapons on already-fielded
 chars, wire spend_xp, or forge armor — not gate who gets fielded.
+
+v0.22.0 — after the 0.20.0 spiral, run #77 (0.21.0) recovered only PARTIALLY: field
+full again but gold stuck (mean 8.6, max 48 vs run #75's mean 93.7/max 530) because
+OUR deaths doubled (38->80) — a poison-death churn (status_damage/1k 26.9->50.3;
+chars die at low-y, mid-retreat) that spawned 303 recruits and keeps the roster
+young (lvl 2-6) and weak, capping income. The gold-independent counter is DURABILITY
+— but spend_xp has fired 0 times in ALL history. Root cause found: `_pick_xp_stat`
+returned the top survival-priority stat (VIT) regardless of cost, and VIT's cost
+grows with its value (v=5 -> 40 XP), so a char banking ~17 XP was stuck wanting an
+unaffordable VIT and never spent the XP on a CHEAP stat it could afford (END at v=1
+costs 8 — and END, at 1, is the real deficit: low stamina can't outrun poison). Fix:
+`_pick_xp_stat` now returns the highest-priority stat that is BOTH below the cap AND
+affordable with the char's banked XP, so spend_xp finally fires and chars convert
+their idle XP into durability (END stamina first while cheap, then VIT/STR). Gold-
+independent, no field-size effect. Expected: spend_xp goes 0->active, stats climb,
+deaths fall, the roster matures, and gold accumulation resumes.
 """
 
 from __future__ import annotations
@@ -371,7 +387,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.21.0"
+    version = "explorer/0.22.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -902,11 +918,21 @@ class Explorer:
 
     @staticmethod
     def _pick_xp_stat(char: dict[str, Any]) -> str | None:
-        """The stat to raise next: survival-priority (VIT>END>STR), each grown to
-        the full-rate cap. None once all three are there (bank the rest)."""
+        """The stat to raise next: the highest survival-priority stat (VIT>END>STR)
+        that is BOTH below the cap AND affordable with the character's banked XP.
+
+        v0.22.0: the old version returned the top priority regardless of cost, so a
+        char stuck wanting an unaffordable VIT (whose cost grows with its value)
+        never spent XP on a cheap END/STR it *could* afford — spend_xp logged 0
+        across all history. Checking affordability here unblocks it (and naturally
+        raises the cheap, low — i.e. most deficient — stats first). None once
+        nothing is both needed and affordable (bank the rest)."""
         stats = char.get("stats", {})
+        gifts = set(char.get("gifts", []))
+        xp = char.get("xp", 0)
         for s in XP_PRIORITY:
-            if stats.get(s, 0) < XP_STAT_TARGET:
+            v = stats.get(s, 0)
+            if v < XP_STAT_TARGET and Explorer._xp_cost(v, s in gifts) <= xp:
                 return s
         return None
 
