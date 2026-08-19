@@ -1137,3 +1137,27 @@ multiplayer loot contention).
 **Verify.** pytest 196 passed / 2 skipped; the guard is mutation-checked; two
 equip-learning tests updated to advance the tick (frames advance in reality);
 replay clean on 0.14.0. Reaper gate: running. Self-deploy: make bot-restart.
+
+## 2026-08-18 20:20 — INCIDENT + HOTFIX: server began zlib-compressing the ZeroMQ wire; bot crash-looped
+
+While deploying 0.14.0 the bot went DOWN — every frame crashed with
+`UnicodeDecodeError: byte 0x9c in position 1`. Diagnosis: the server started
+**zlib-compressing wire messages mid-session** (0x78 0x9c is the zlib header);
+run #38 played fine, then the restart hit the new format and `protocol.decode`'s
+bare `json.loads` crashed on every frame. run-live.sh dutifully restarted the
+crashing runner, burning run windows #39-#51 (each 0 frames) before diagnosis.
+
+The server, guild (g_cd0e2a, 16 chars), and HTTP API were all up throughout — a
+FOURTH guild (g_fd49e0, 30) also appeared — so it was purely our client not
+speaking the new wire format.
+
+Hotfix (git 7b4dbfe): `protocol.decode` now transparently `zlib.decompress()`es a
+message that starts with 0x78, falling back to plain JSON. No change to `encode`
+(our small uploads stayed accepted; the handshake worked, only inbound frames
+were compressed). Deployed immediately (bot was down); run #52 now plays cleanly
+(1000+ frames). pytest 197 passed incl. a compressed+plain decode test.
+
+This is a SERVER PROTOCOL CHANGE, not a server bug — logged as a discovery.
+Lesson: the periodic reference re-diff (check_submodule / check_webclient) should
+also watch for wire-format changes; and a watchdog on "run window not advancing /
+0 frames" (wishlist) would have caught the crash-loop instantly.
