@@ -1242,3 +1242,35 @@ did drop collapse toward rare genuine sheds, did returned/sale rise toward the
 pickup count, is gold FINALLY climbing off 14? If yes the poverty arc closes. Then
 attack the next lever (not_enough_stamina ~92% of avoidable errors; or the
 carry-cap/overburden-penalty open question; or build the frame-staleness watchdog).
+
+## 2026-08-19 ~09:30 — iteration 7: 0.16.0 measured DECISIVE; shipped 0.17.0 survival reserve
+
+MEASURED 0.16.0 on run #56 (60k frames) vs #55 (0.15.0) / #52 (0.14.0). The homing
+latch is a decisive win — per-1k-frame:
+  * drop/pickup 0.86 -> 0.065 (thrash dead)
+  * returned 0.91 -> 9.54/1k — ~93% of pickups now reach the village (was ~10%)
+  * sale 0.83 -> 3.35/1k; gold income 2.13 -> 10.96/1k (2.7x the 0.14.0 baseline)
+  * overburdened 10.36 -> 0.38/1k (~eliminated); our deaths 1.40 -> 0.84/1k (-40%)
+  * overall error rate down to 1.3%; not_enough_stamina now 95% of avoidable but
+    only 1.0% of actions — a minor inefficiency, NOT worth trading productivity to
+    chase further. The overburden->strand->die arc (0.12->0.16) is mechanically CLOSED.
+
+BUT gold BALANCE still oscillates 0-18 and won't accumulate. Diagnosis: the guild
+earns ~11/1k and spends it all, and is too poor to cross the 20g potion price — so
+fielded chars go out potion-less (1 of 9 carried one) and die to poison (the top
+damage source), dropping gear+loot: a death->reloss treadmill. Root cause in the
+spend order — the per-char village loop arms any bare char (club 15g) before an
+armed char reaches the potion step (25g), and we already hold ~12 armed > world_cap
+(10), so scarce gold drains into arming bench-warmers we can't even field.
+
+Shipped **explorer/0.17.0** (git a0632ff): (1) POTION_MIN_GOLD 25->20 (buy at the
+potion's real price — a poison death loses more than 20g). (2) WEAPON_BUY_RESERVE:
+once the guild has earners, only arm a bare char from gold above a one-potion
+reserve, so the treasury can climb past the potion threshold and earners get
+healed. No reserve during the broke-and-bare bootstrap (0.13.0 escape preserved).
+3 mutation-checked tests; suite 205 passed/2 skipped; replay clean; reaper green.
+Deployed to run #57 (bg-host dance: TaskStop old, confirm gone, relaunch). NEXT
+PASS: measure run #57+ — did potion-carry rise, deaths fall, and GOLD finally
+accumulate off ~14? Also open: the recruit-churn question (216 recruits vs 51
+deaths) — a recruit throttle may be the next lever if we're over-recruiting bare
+chars we can't field.
