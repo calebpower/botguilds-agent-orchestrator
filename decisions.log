@@ -1440,3 +1440,36 @@ the poor guild can brew potions (but chars hold 0 herbs — may need to STOP sel
 brew herbs when potion-starved, or keep a survival reserve). SERIOUS: if the spiral
 keeps worsening, surface to the operator — the guild is slowly dying and may need a
 more fundamental intervention.
+
+## 2026-08-19 ~19:30 — iteration 15: death-spiral root cause + GOLD-RUSH pivot (0.24.0)
+
+Operator asked me to (1) find where the death spiral started, (2) find easy/consistent
+gold sources incl. glitches, and (3) whether there's a gold cap. Then directed a
+pivot: prioritise grabbing & stockpiling gold via drastic behavioral changes.
+
+ROOT CAUSE of the spiral: the WORLD got more poisonous. The maps repopulate via a
+periodic band_refresh; mobs shifted from benign wildlife (skunk/boar/cow, run #75)
+to poison undead (cultist/zombie/ghoul), whose share of field mobs trended UP
+16%->22%->35% (runs 75->77->79), and deaths/1k track it (0.57->1.21->1.83->2.74).
+Inflection = run #77 (08-19 07:20). CRUCIALLY run #77 uses the same code as run #75,
+so our code did not cause it. Compounding: run #75's "milestone" gold was TRANSIENT
+(spiked to ~530 in the first third, collapsed to ~10 by mid-run); the 0.20.0
+empty-field regression (run #76) squandered that window, and the guild has been broke
+(~10) ever since, unable to fund survival vs the rising undead.
+
+GOLD MECHANICS (for the pivot): income ~half FIELD GOLD COINS (banked instantly =
+death-proof; only 3% tied to a kill) + ~half sales. CHESTS give DIRECT gold (1-21g)
++ loot, ~39/run, each opens once (no camp-farm). High-value sellables (tomes 24-44g,
+charms 30g) are chest loot. No NPC arbitrage (sell~=0.2*buy); player market empty;
+smelting is a loss. GOLD CAP: none confirmed — max ever held 529 (run #75).
+
+Shipped **explorer/0.24.0** GOLD-RUSH (git 03e6900): beeline to coins(5.0)/chests
+(4.5) over loot(4.0); crack adjacent chest top-priority(7.0); NO monster-chase;
+village HOARD (froze potion+bottle buys, kept the 15g club per operator, free brew
+with held bottles). 6 tests (2 mutation-checked); suite 215 passed; reaper green.
+Deployed to run #80.
+
+NEXT PASS: measure gold_mean/max — does it climb and BREAK 529 (testing for a cap)?
+did deaths fall (not chasing undead)? are field-gold + chest-opens up? Does the hoard
+actually accumulate or still leak to recruit re-arming? Follow-ups if it works: list
+tomes/charms on the player market; sell ore raw instead of smelting.
