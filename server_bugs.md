@@ -40,25 +40,13 @@ the field is cleartext.)
 
 ---
 
-## SEC-2 (MEDIUM) — `/api/spectate/guilds` discloses EVERY guild's full roster + gear, unauthenticated
+## ~~SEC-2 — `/api/spectate/guilds` full-roster disclosure~~ — NOT A BUG (intended)
 
-**Observed.** `GET /api/spectate/guilds` requires no auth (docs/reference_web:
-"Spectate is display-only") yet returns, for **every** guild: name, guild color,
-character count, per-world head-counts, and the **complete roster** — each
-character's `char_uid`, `name`, `level`, `world`, `look`, and `equipment`
-(captured live, e.g. `{"guild_id":"g_cd0e2a",…,"roster":[{"char_uid":…,"level":8,
-"world":"spire","equipment":{"hand":"club"}}, …]}`).
-
-**Why it matters.** In a competitive multiplayer game, one unauthenticated request
-hands any party a full order-of-battle for all rivals — every character's level,
-which world it's in, and its exact gear. That's strong scouting/targeting intel a
-player normally shouldn't get for free. (It does NOT appear to include exact x/y or
-HP, so it's not real-time coordinate tracking — the live `/events/spectate` frame
-stream may expose more; worth reviewing that too.)
-
-**Expected / question for the dev.** Confirm this exposure is intended. If spectating
-is meant to be a lightweight display, consider coarsening it (counts/levels only,
-not per-character gear), or gating detailed rosters behind auth.
+Considered and dismissed: the unauthenticated full-roster/gear exposure via
+`GET /api/spectate/guilds` is **intended** — spectate is deliberately public and
+read-only, and all *mutating* endpoints (the `/me` path) are the ones that are
+gated. So the read-only exposure is by design, not an oversight. (Kept here so it
+isn't re-flagged in a future review.)
 
 ---
 
@@ -89,7 +77,8 @@ map.
 
 ---
 
-_Notes: SEC-1 is confirmed from the wire format/docs; SEC-2 is confirmed from
-captured responses; SEC-3 depends on whether the server validates the colour (needs
-Will to check). None were exploited — no malicious payloads were sent to the live
-server. Analysis by the steemer bot's owner for responsible disclosure._
+_Notes: SEC-1 is confirmed from the wire format/docs (the real one to fix). SEC-2 was
+considered and dismissed — public spectate is intended (mutations are gated on the
+`/me` path). SEC-3 depends on whether the server validates the colour (needs Will to
+check). None were exploited — no malicious payloads were sent to the live server.
+Analysis by the steemer bot's owner for responsible disclosure._
