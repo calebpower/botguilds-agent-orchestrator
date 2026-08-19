@@ -10,6 +10,18 @@ top of **Open**.
 
 ## Open
 
+- [ ] **Comprehensive per-character stats panel on the dashboard** — a live roster
+  view where each character is a card/row showing everything about it in real time:
+  a **live HP bar** (hp/max_hp, colour-coded, + any status like poison/burn), level
+  & XP, the six stats (str/dex/int/vit/end/agi) with gifts flagged, stamina/mana
+  bars, equipment slots (hand/offhand/outfit/trinket/boots), **the character's live
+  individual inventory** (carry used/cap + item list), current world & position, and
+  what it's doing (its latest decision/trace). Basically turn the roster into a
+  proper "party sheet" that updates as the frames stream in — the foundation the
+  Campaign-Layer idea wants, and just good visibility into who's alive/hurt/rich.
+  Data is all in the frames (`chars[].hp/max_hp/stats/equipment/inventory/carry/
+  statuses/level/xp`), streamed via the spectate/events feed. (operator request)
+
 - [ ] **Log-scale the overview-page bar charts (QoL)** — on the dashboard overview
   page, the bars at the bottom span values of wildly different magnitude (e.g. moves
   in the tens-of-thousands vs deaths in the tens), so the small bars are unreadable
