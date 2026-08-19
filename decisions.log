@@ -1331,3 +1331,29 @@ GOLD finally climb off ~9? If yes, the poverty arc is CLOSED end-to-end. If gold
 rises, next explore what to DO with it (durability XP, better gear, potions,
 forging). Also: if food HEALS when eaten, drinking it in the field is a future
 free-heal lever.
+
+## 2026-08-19 ~14:00 — iteration 11: MILESTONE (gold accumulates), then field-only-armed (0.20.0)
+
+THE PAYOFF. Measured run #75 (0.19.0) vs #74 (0.18.0): the sell-food fix CLOSED the
+poverty arc. gold_max 19->542, gold_mean 6.3->99.9 (16x), sale/1k 2.1->9.82,
+gold_income/1k 6.8->27.1, embark churn 8101->906 (9x fewer — the thrash is gone),
+pickups/attacks recovered. Gold broke past the ~18 ceiling that held in EVERY prior
+version (trajectory hits 376/383/529). The long arc (0.12 nav -> 0.13 buy-weapon ->
+0.14 anti-storm -> 0.15 overburden -> 0.16 homing -> [0.17 regression/0.18 revert]
+-> 0.19 SELL-FOOD) is CLOSED end-to-end.
+
+The binding constraint has now SHIFTED from poverty to EQUIPMENT: a run-#75 snapshot
+showed 6 of 10 fielded chars BARE-handed, 0 armor, fielded levels only 2-5, and
+spend_xp fired 0 times — the guild is rich but under-equipped. Root: the embark
+section fielded here_avail[0] with no armed check, so bare chars got shipped out
+during gold-dips (gold oscillates below the 15g club price) before the village
+armed them, then stayed bare.
+
+Shipped **explorer/0.20.0** (git 10a83e7): field only ARMED chars; bare chars wait
+home to be armed first (bootstrap exception for a cold start). 3 mutation-checked
+tests; suite 209 passed; replay clean; reaper green. Deployed to run #76 via
+./svc.sh. NEXT PASS: measure fielded-armed fraction (toward 100%?), deaths, income.
+Then the next equipment levers: upgrade clubs->shortsword/bow (armed chars never
+upgrade — buy only fires when bare), wire spend_xp (unused banked XP), and M3a forge
+for armor (blocked on a per-world product name — try harvesting a rival's `forged`
+event via /events/spectate).
