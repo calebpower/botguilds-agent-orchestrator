@@ -183,6 +183,27 @@ Expected: buy/sell action counts collapse toward the number of real purchases,
 no_such_item errors fall, gold isn't wasted on duplicate buys — a cleaner, faster
 bootstrap. (The still-low pickup rate — chars reach loot but bare `pickup` often
 no-ops — is a separate income bottleneck, under investigation.)
+
+v0.15.0 — the "pickup no-op" premise was FALSE: run #52 (0.14.0) measured 672
+pickups (10.8/1k) — looting works and always did; the earlier "~8 pickups"
+reading was crash-loop-contaminated (runs #39-#51 were empty). The real income
+leak, found by drilling the run-#52 events, is OVERBURDEN → strand → die. `carry`
+is *weight* not slots (16 items = 20/21 weight); a near-full char that grabs one
+heavy meat/ore crosses `used > cap` and the server's overburden penalty cripples
+its movement, so the stamina-gated walk-home step becomes unaffordable — and
+nothing sheds the weight, so it sits `overburdened` for hundreds of ticks (one
+char logged 939) burning a scarce world slot until poison finishes it. Only 74 of
+687 pickups ever returned to be sold; that is why gold stays pinned at 14 despite
+healthy looting. Two fixes: (1) gate `pickup` on `not full` — a char at/over
+`cap-1` stops grabbing, so it never crosses into overburden from a near-full state
+(previously pickup was offered unconditionally, and beat rest whenever the
+walk-home move was stamina-suppressed — exactly the danger case). (2) an
+overburden escape: when `used >= cap`, offer `drop` of the least-useful carried
+item (pure loot/clutter first; gear, KEEP supplies and craft pairs preserved) at a
+priority above the full-retreat, so the char sheds weight, regains mobility, and
+walks its remaining loot home instead of dying on it. Expected: overburden events
+and our char-deaths fall, `returned`/`sale` counts rise toward the pickup count,
+gold finally accumulates.
 """
 
 from __future__ import annotations
@@ -234,7 +255,7 @@ VILLAGE_ACTION_COOLDOWN = 6   # v0.14.0: after a char issues a per-char village
 
 
 class Explorer:
-    version = "explorer/0.14.0"
+    version = "explorer/0.15.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -508,17 +529,33 @@ class Explorer:
             offer({"char_uid": uid, "action": "attack", "target": list(weakest)},
                   8.0, f"attack adjacent {e.get('kind','?')} (hp {e.get('hp_frac',1):.0%})")
 
+        # Overburdened (carry weight at/over cap): the server's overburden penalty
+        # makes the walk home unaffordable, so a stranded char sits here for
+        # hundreds of ticks until poison kills it (v0.15.0). Shed the least-useful
+        # loot to get back under cap and regain mobility — above the full-retreat
+        # so it drops before it tries (and fails) to step, and pickup is suppressed
+        # below since `full` is necessarily true here.
+        if carry["used"] >= carry["cap"]:
+            shed = self._shed_item(char)
+            if shed is not None:
+                offer({"char_uid": uid, "action": "drop", "item_id": shed}, 8.0,
+                      "overburdened — dropping loot to regain mobility")
+
         if full:
             self._retreat(uid, pos, ctx, blocked, offer, 7.5,
                           "pack full — heading home to sell")
 
-        if pos in ctx.loot or pos in ctx.gold:
-            offer({"char_uid": uid, "action": "pickup"}, 6.0, "loot underfoot — grab it")
-        else:
-            step = self._step(pos, lambda p: p in ctx.loot or p in ctx.gold, ctx, blocked)
-            if step:
-                offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
-                      4.0, "moving toward visible loot")
+        # Pursue loot only with room to spare: a `full` char (used >= cap-1) that
+        # grabs or chases more loot crosses into overburden and strands (v0.15.0) —
+        # it should be heading home to sell, not collecting more.
+        if not full:
+            if pos in ctx.loot or pos in ctx.gold:
+                offer({"char_uid": uid, "action": "pickup"}, 6.0, "loot underfoot — grab it")
+            else:
+                step = self._step(pos, lambda p: p in ctx.loot or p in ctx.gold, ctx, blocked)
+                if step:
+                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
+                          4.0, "moving toward visible loot")
 
         box = next((p for p in nav.neighbors(pos) if p in ctx.containers), None)
         if box:
@@ -696,6 +733,28 @@ class Explorer:
         # otherwise keep it only while a slot it could still go into remains:
         return all(s in self.slot_wrong[kind] or eqp.get(s) is not None
                    for s in EQUIP_SLOTS)
+
+    @staticmethod
+    def _shed_item(char: dict[str, Any]) -> str | None:
+        """The least-useful carried item to drop when overburdened (v0.15.0).
+
+        Shed pure loot clutter first — items with no craft/consume use — so a
+        stranded char regains mobility while keeping what's worth carrying home:
+        field supplies (``KEEP``), equippable gear, and craft ingredients (brew
+        pairs, smelt ore). If only those remain, fall back to dropping a non-gear
+        item anyway (better to lose one ore than the whole char and all its loot
+        to a poison death). Returns an ``item_id`` or ``None`` if nothing but
+        equipped-class gear and KEEP supplies is carried."""
+        inv = char.get("inventory", []) or []
+
+        def droppable(i: dict[str, Any]) -> bool:
+            return i.get("kind") not in KEEP and "equip" not in (i.get("uses") or [])
+
+        craft_or_consume = {"brew", "smelt", "drink"}
+        clutter = [i for i in inv
+                   if droppable(i) and not (craft_or_consume & set(i.get("uses") or []))]
+        pool = clutter or [i for i in inv if droppable(i)]
+        return pool[0]["item_id"] if pool else None
 
     @staticmethod
     def _pick_xp_stat(char: dict[str, Any]) -> str | None:

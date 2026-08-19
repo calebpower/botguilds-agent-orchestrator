@@ -67,6 +67,30 @@ def test_picks_up_loot_underfoot():
     assert {"char_uid": "c1", "action": "pickup"} in actions
 
 
+def test_full_char_does_not_pick_up_more_loot():
+    # A pack-full char (used >= cap-1) standing on loot, with just enough stamina
+    # to afford a pickup (cost ~10) but NOT the stamina-gated walk-home move
+    # (~30): without the v0.15.0 `not full` gate it would grab the loot and cross
+    # into overburden. With the gate it grabs nothing and rests (no action).
+    bot = _bot()
+    char = _field_char(stamina=15, carry={"used": 19, "cap": 20})
+    actions = bot.on_frame(_field_frame(char, FLOOR3,
+                                        items=[{"pos": [0, 0], "kind": "egg"}]))
+    assert {"char_uid": "c1", "action": "pickup"} not in actions
+    assert actions == []              # nothing affordable but rest
+
+
+def test_overburdened_char_drops_loot_to_shed_weight():
+    # Overburdened (used >= cap): the walk home is stamina-unaffordable, so
+    # without the v0.15.0 shed escape the char sits stranded until it dies.
+    # It should drop its least-useful carried item to regain mobility.
+    bot = _bot()
+    char = _field_char(stamina=15, carry={"used": 21, "cap": 20},
+                       inventory=[{"kind": "lumber", "item_id": "L1"}])
+    actions = bot.on_frame(_field_frame(char, FLOOR3))
+    assert {"char_uid": "c1", "action": "drop", "item_id": "L1"} in actions
+
+
 def test_village_sells_before_embarking():
     bot = _bot()
     frame = {"world": "village", "tick": 3,

@@ -114,3 +114,18 @@ def test_should_sell_sells_stranded_brewable_keeps_batchable():
     assert exp._should_sell(lone, {}, brew_keep=set(), smelt_keep=set()) is True   # stranded -> sell
     keep_item = _herb("bone", 2)
     assert exp._should_sell(keep_item, {}, brew_keep={"bone-2"}, smelt_keep=set()) is False  # batchable -> keep
+
+
+def test_shed_item_prefers_clutter_then_ore_never_keep_or_gear():
+    # When overburdened we shed the least-useful thing: pure loot clutter (no
+    # craft/consume use) before craft ingredients, and never a field supply or
+    # carried gear (v0.15.0).
+    exp = Explorer()
+    potion = {"kind": "potion_red", "item_id": "P"}                       # KEEP
+    sword = {"kind": "shortsword", "item_id": "W", "uses": ["equip"]}     # gear
+    ore = {"kind": "ore_copper", "item_id": "O", "uses": ["smelt"]}       # craft pair
+    lumber = {"kind": "lumber", "item_id": "L"}                           # pure clutter
+    assert exp._shed_item({"inventory": [potion, sword, ore, lumber]}) == "L"  # clutter first
+    assert exp._shed_item({"inventory": [potion, sword, ore]}) == "O"         # ore before gear/keep
+    assert exp._shed_item({"inventory": [potion, sword]}) is None            # nothing sheddable
+    assert exp._shed_item({"inventory": []}) is None
