@@ -222,6 +222,28 @@ toward the village. The latch clears once the char is light again (`used <=
 cap*HOME_CLEAR_FRAC`, i.e. after the village sells its haul), with hysteresis
 (enter at cap-1, exit at half-cap) so it can't flicker. Expected: drop collapses
 toward the rare genuine shed, pickups convert to `returned`/`sale`, gold rises.
+
+v0.17.0 — 0.16.0 measured as a DECISIVE win (run #56 vs #55/#52): drop/pickup
+collapsed 0.86->0.065 (thrash dead), returned leapt 0.9->9.5/1k (~93% of pickups
+now reach the village vs ~10% before), sale 0.8->3.4/1k, gold income 2.1->11.0/1k
+(2.7x the 0.14.0 baseline), overburden 10.4->0.4/1k, our deaths 1.4->0.84/1k. The
+mechanical loot->gold pipeline is fixed. BUT the gold BALANCE still oscillates
+0-18 and won't accumulate: the guild earns ~11/1k and spends it all, and it is too
+poor to cross the 20-gold potion price, so fielded chars go out potion-less (only
+1 of 9 carried one) and die to poison (status_damage is the top damage source) —
+dropping their gear+loot, a death->reloss treadmill. Root cause in the spend
+order: the per-char village loop arms any bare char (club, 15g, step 3) BEFORE an
+armed char can reach the potion step (25g, step 4), and we already hold ~12 armed
+chars > world_cap (10) — so scarce gold is drained arming bench-warmers who can't
+even be fielded, instead of keeping armed EARNERS alive. Fix: (1) POTION_MIN_GOLD
+25->20 — buy the potion at its actual price (a poison death loses far more than
+20g). (2) a survival reserve on arming: once the guild HAS earners (any char
+fielded or armed), only buy a weapon for a bare char from gold ABOVE a
+WEAPON_BUY_RESERVE (=one potion), so the treasury can climb past the potion
+threshold and armed earners get healed. When there are NO earners yet (bootstrap),
+arm with no reserve — preserving the 0.13.0 escape from the broke-and-bare
+deadlock. Expected: weapon over-buying tapers, potion buys appear, fielded chars
+survive poison, deaths fall further, and gold finally accumulates off ~14.
 """
 
 from __future__ import annotations
@@ -240,7 +262,15 @@ CONTAINERS = frozenset({"chest", "safe"})
 DEFAULT_MAPS = ("vale", "mines", "spire")
 REST_SCORE = 0.5           # the floor: rest wins only when nothing affordable beats it
 POTION_KEEP = 1            # potions to carry into the field per character
-POTION_MIN_GOLD = 25       # only buy a potion with this much gold to spare
+POTION_MIN_GOLD = 20       # buy a potion once we can afford one (its shop price is
+#   20g; v0.17.0 dropped the old arbitrary 25g buffer — a poison death loses the
+#   char's gear+loot, far more than 20g, so a heal is worth buying at cost).
+WEAPON_BUY_RESERVE = 20    # v0.17.0: once the guild HAS earners (any char fielded or
+#   armed), only arm a bare char from gold ABOVE this reserve (=one potion), so the
+#   treasury can climb past the potion price and armed earners get healed instead of
+#   scarce gold being drained arming bench-warmers we can't field (armed count already
+#   exceeds world_cap). With NO earners yet it's ignored — preserving the 0.13.0
+#   broke-and-bare bootstrap escape.
 XP_PRIORITY = ("vit", "end", "str")   # survival first: HP, then stamina, then damage
 XP_STAT_TARGET = 8         # grow each toward the full-rate effective-bonus cap
 EQUIP_SLOTS = ("hand", "offhand", "outfit", "trinket", "boots")
@@ -278,7 +308,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.16.0"
+    version = "explorer/0.17.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -325,6 +355,12 @@ class Explorer:
         cfg = bot.config
         chars = frame.get("chars", [])
         gold = guild.get("gold", 0)
+        # Do we already have earners out (or ready)? If so, arming a bare
+        # bench-warmer must leave a potion's worth of gold in reserve so armed
+        # earners can heal (v0.17.0). If NOT — a fully broke-and-bare guild — arm
+        # with no reserve so the bootstrap can start (the 0.13.0 escape).
+        have_earners = (sum(len(v) for v in (guild.get("chars_by_world", {}) or {}).values()) > 0
+                        or any((c.get("equipment") or {}).get("hand") for c in chars))
 
         for char in chars:
             uid = char["char_uid"]
@@ -371,7 +407,11 @@ class Explorer:
             #    45 gold to 15, so the guild can arm a char the moment it scrapes
             #    a little loot, and that char can then survive → loot → recover.
             if eqp.get("hand") is None:
-                buy = self._afford_weapon(char, frame, gold)
+                # Keep a potion in reserve once we have earners, so arming the
+                # next bench-warmer can't starve an armed earner of its heal
+                # (v0.17.0). No reserve during the broke-and-bare bootstrap.
+                budget = gold - WEAPON_BUY_RESERVE if have_earners else gold
+                buy = self._afford_weapon(char, frame, budget)
                 if buy is not None:
                     kind, price = buy
                     return [self._village_act(

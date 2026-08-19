@@ -296,6 +296,48 @@ def test_village_does_not_buy_a_second_potion():
                for a in actions)
 
 
+_SHOP_CLUB = {"stock": [{"kind": "club", "buy_price": 15, "sell_price": 3}]}
+
+
+def test_village_buys_potion_at_20_gold():
+    # v0.17.0 lowered POTION_MIN_GOLD 25->20 (the potion's shop price): an armed
+    # char with exactly 20 gold and no potion should now buy one.
+    bot = _bot()
+    char = {"char_uid": "c1", "inventory": [], "equipment": {"hand": {"kind": "club"}},
+            "stats": {"str": 2}, "hp": 30, "max_hp": 30}
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 20, "chars_here": ["c1"], "chars_by_world": {"vale": ["e1"]}},
+             "chars": [char]}
+    assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "potion_red"}]
+
+
+def test_village_keeps_potion_reserve_when_arming_bench_with_earners():
+    # v0.17.0: with earners already out (a fielded char), arming a bare
+    # bench-warmer must leave a potion's worth in reserve — so at 25 gold (club 15
+    # + reserve 20 = 35 needed) it does NOT buy the club.
+    bot = _bot()
+    char = {"char_uid": "c1", "inventory": [], "equipment": {}, "stats": {"str": 2},
+            "hp": 30, "max_hp": 30}
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 25, "chars_here": ["c1"], "chars_by_world": {"vale": ["e1"]}},
+             "chars": [char], "shop": _SHOP_CLUB}
+    acts = bot.on_frame(frame)
+    assert all(not (a.get("action") == "buy" and a.get("kind") == "club") for a in acts)
+
+
+def test_village_arms_bare_char_with_no_reserve_during_bootstrap():
+    # No earners yet (nobody fielded, nobody armed) — the broke-and-bare
+    # bootstrap: arm with NO reserve so a 15-gold guild can still buy its first
+    # club (the 0.13.0 escape must survive the v0.17.0 reserve).
+    bot = _bot()
+    char = {"char_uid": "c1", "inventory": [], "equipment": {}, "stats": {"str": 2},
+            "hp": 30, "max_hp": 30}
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 15, "chars_here": ["c1"], "chars_by_world": {}},
+             "chars": [char], "shop": _SHOP_CLUB}
+    assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
+
+
 def _village_char(**over):
     # armed + carrying a potion so the sell/weapon/potion steps all no-op and we
     # reach the spend_xp step.
