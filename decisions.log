@@ -1357,3 +1357,27 @@ Then the next equipment levers: upgrade clubs->shortsword/bow (armed chars never
 upgrade — buy only fires when bare), wire spend_xp (unused banked XP), and M3a forge
 for armor (blocked on a per-world product name — try harvesting a rival's `forged`
 event via /events/spectate).
+
+## 2026-08-19 ~15:30 — iteration 12: 0.20.0 armed-only-field REGRESSED (emptied the field); reverted (0.21.0)
+
+Measured run #76 (0.20.0) vs #75 (0.19.0): the "field only armed chars" filter was
+a REGRESSION — it EMPTIED the field. fielded_mean 9.9->1.8 (the guild holds only ~4
+armed chars, so removing the bare padding collapsed the field to ~2). Income
+cratered with it: sale/1k 9.18->2.84, gold_mean 93.7->6.5, gold_max 530->13 —
+straight back to poverty, a death spiral (empty field -> no income -> no gold ->
+can't arm -> field stays empty). The downside I flagged when shipping 0.20.0 was
+exactly what happened.
+
+Lesson: a bare char in the field still picks up loot and holds a slot, which beats
+an empty one. Equipment is NOT to be gated at the fielding step. Reverted in
+**explorer/0.21.0** (git bfe210b): field ANY available char (0.19.0 behaviour).
+Suite 207 passed; replay clean; reaper green. Deployed to run #77 — field refilled
+to 10 immediately (4 vale / 3 mines / 3 spire), income should recover.
+
+NEXT PASS: (1) confirm run #77 income/gold recovered to the 0.19.0 milestone level
+(gold_mean ~90, sale/1k ~9). (2) THEN the real equipment lever, which must improve
+chars WITHOUT shrinking the field: upgrade weapons on already-armed chars
+(club->shortsword/bow when affordable+qualified — the buy step only fires when hand
+is empty, so armed chars never trade up); OR wire spend_xp (0x — banked XP unused);
+OR M3a forge for armor. ALSO OPEN: why only ~4 armed chars when gold surplus should
+arm all ~10 field slots? (weapon loss on death? arming too slow?) — worth a look.
