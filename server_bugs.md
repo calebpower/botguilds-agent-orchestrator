@@ -68,35 +68,22 @@ isn't re-flagged in a future review.)
 
 ---
 
-## SEC-3 (MEDIUM, NEEDS DEV CONFIRMATION) — guild `color` may be a stored CSS-injection
+## ~~SEC-3 — guild `color` stored CSS-injection~~ — NOT A BUG (server validates)
 
-**Observed.** A guild sets its map colour via `POST /api/guild/color` (cookie auth).
-The public spectate web client renders that server-supplied value straight into a
-DOM element's inline style — `swatch.style.background = guildColor(guild.guild_id)`
-(reference_web/app.js ~line 657), in addition to canvas `fillStyle`/`strokeStyle`.
-Canvas is safe (invalid colours are ignored), but assigning an unvalidated string to
-`element.style.background` is a CSS sink.
-
-**Why it matters.** IF the server does not strictly validate the colour is a real
-CSS colour (hex/rgb/hsl/named), a guild could set it to e.g.
-`url(https://attacker.example/pixel)` (or other CSS), and every visitor to the
-spectate page would have their browser fetch that URL when the swatch renders —
-CSS-based visitor tracking / data exfil / external-resource load, stored and served
-to all spectators. Depending on the exact render path there may be room for worse.
-
-**Expected.** Server-side allowlist the colour to a strict pattern
-(`^#[0-9a-fA-F]{6}$` or a fixed palette) before storing it; the client should also
-treat it as untrusted.
-
-**To confirm (dev side).** Does `POST /api/guild/color` accept a non-colour string
-like `url(...)`? (I did not send a malicious value to the live server.) If it stores
-arbitrary strings, this is a live stored-injection reachable by anyone viewing the
-map.
+Considered and **dismissed by test.** The concern was that the web client renders
+the guild colour into `element.style.background` (reference_web/app.js ~line 657),
+so an unvalidated value like `url(...)` would be a stored CSS-injection. Tested on
+our own guild (logged in with write creds, then `POST /api/guild/color` with
+`color = url(data:image/png;base64,…)`): the server rejected it with **HTTP 400
+`{"error":"bad_color"}`**. So `/api/guild/color` validates server-side and does not
+store arbitrary CSS — no injection. (Kept so it isn't re-flagged.)
 
 ---
 
-_Notes: SEC-1 is confirmed from the wire format/docs (the real one to fix). SEC-2 was
-considered and dismissed — public spectate is intended (mutations are gated on the
-`/me` path). SEC-3 depends on whether the server validates the colour (needs Will to
-check). None were exploited — no malicious payloads were sent to the live server.
+_Notes: after review + testing, **SEC-1 is the only open issue** (cleartext token over
+an unencrypted transport — encrypt it; the token itself is a strong ~190-bit secret,
+so capture-on-the-wire is the sole realistic path). SEC-2 dismissed (public spectate
+is intended; mutations gated on `/me`). SEC-3 dismissed by test (server rejects a
+non-colour value with HTTP 400 `bad_color`). Testing was limited to our own guild
+(a wrong-token hello, and a bad colour); no attacks on other guilds or the server.
 Analysis by the steemer bot's owner for responsible disclosure._
