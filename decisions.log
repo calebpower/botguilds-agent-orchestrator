@@ -1511,3 +1511,29 @@ accumulate during wildlife windows and survive undead windows? deaths/1k down fr
 2.3? does gold break 529 (cap test)? Keep logging band composition to learn the
 band->mood pattern for prediction. Consider using next_refresh/warning to pre-empt
 (evacuate a band about to refresh to undead).
+
+## 2026-08-19 ~21:30 — iteration 17: 0.26.0 measured (survival WON, gold plateaued on recruit drain); shipped 0.27.0 recruit-cap
+
+Measured run #82 (0.26.0 safe-world routing + loosened flee): a big WIN on survival —
+deaths 1.02->0.2/1k (5x), and clustering confirmed working (when spire went 100%
+undead, chars fled it and piled into the 0%-undead vale+mines; spire 1->0 of ours).
+Chest-opens 5 (was 1), field-coin 163g. BUT gold STILL plateaued (~11, one spike 51).
+
+Diagnosed the drain: RECRUITING. It's free (gold delta 0 at recruit ticks), but it
+fired toward the server's high roster/world cap — the roster grew to 23 while we
+field only ~10 (party_cap 5 x 2 safe worlds) — and every new bare recruit gets a 15g
+club. So income (~362g/run) cycled straight back out as clubs: gold went
+0->14->buy->0 and never accumulated.
+
+Shipped **explorer/0.27.0** (git 44daa17): recruit only up to party_cap*maps +
+RECRUIT_BENCH(2) — the fieldable size — instead of the full cap. The undeployable
+bench stops growing, the club-arming drain tapers once the current roster is armed,
+income accumulates. Keeps the operator's 'club per char'. 1 mutation-checked test;
+suite 221 passed; reaper green. Deployed run #83.
+
+NEXT PASS: does gold FINALLY accumulate off ~11 and break 529 (the cap test) now that
+income isn't recycled into clubs? does the roster settle ~15-17 and deaths stay
+~0.2/1k? If gold STILL stuck after the current bench is armed, the club-buy itself is
+the residual drain -> revisit with the operator (who chose to keep clubs) whether to
+freeze it entirely for a pure hoard. Also still open: use next_refresh/warning to
+PRE-EMPT band refreshes (pre-position for a world about to become wildlife).
