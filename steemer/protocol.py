@@ -12,6 +12,7 @@ game reference lives in ``docs/02-protocol.md`` and ``docs/03-actions.md``.
 from __future__ import annotations
 
 import json
+import zlib
 from typing import Any
 
 # --- message types ----------------------------------------------------------
@@ -125,6 +126,16 @@ def encode(message: dict[str, Any]) -> bytes:
 
 
 def decode(raw: bytes) -> dict[str, Any]:
+    """Parse a wire message. The server may zlib-compress messages (frames in
+    particular) — a zlib stream starts with 0x78 — so decompress those
+    transparently and fall back to plain JSON for uncompressed messages. (Added
+    when the server began compressing the ZeroMQ wire mid-run; without it every
+    frame raised UnicodeDecodeError on json.loads and the bot crash-looped.)"""
+    if raw[:1] == b"\x78":
+        try:
+            raw = zlib.decompress(raw)
+        except zlib.error:
+            pass                      # not actually zlib — try as plain JSON
     return json.loads(raw)
 
 

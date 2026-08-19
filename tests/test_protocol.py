@@ -57,3 +57,17 @@ def test_string_field_types_checked():
 
 def test_not_an_object():
     assert p.check_action(["nope"]) == "not_an_object"
+
+
+def test_decode_handles_zlib_compressed_and_plain():
+    # the server began zlib-compressing wire frames mid-run; decode must handle
+    # both a compressed stream (0x78 header) and plain JSON, or every frame
+    # crash-loops the bot on json.loads (UnicodeDecodeError on byte 0x9c).
+    import json as _json
+    import zlib as _zlib
+    msg = {"type": "frame", "tick": 42, "world": "vale"}
+    plain = _json.dumps(msg).encode("utf-8")
+    compressed = _zlib.compress(plain)
+    assert compressed[:2] == b"\x78\x9c"          # zlib default header
+    assert p.decode(plain) == msg
+    assert p.decode(compressed) == msg
