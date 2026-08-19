@@ -280,6 +280,19 @@ everything else including raw `drink` food. This unclogs the pack, so a returnin
 char SELLS (a per-char action) instead of being re-embarked, breaking the thrash.
 Expected: sales rise toward the pickup/return rate, the embark:return ratio falls
 toward 1, and gold finally climbs off ~9.
+
+v0.20.0 — 0.19.0 WORKED (run #75 vs #74: gold_max 19->542, gold_mean 6.3->99.9,
+sale/1k 2.1->9.82, embark churn 8101->906) — the poverty arc is CLOSED, gold
+accumulates. The binding constraint is now EQUIPMENT, not gold: a run-#75 snapshot
+showed 6 of 10 fielded chars BARE-handed and 0 with armor, despite gold cycling to
+500+. Cause: the embark section fields `here_avail[0]` with NO armed-status check,
+so a bare char gets shipped out during a gold-dip (gold oscillates below the 15g
+club price) before the village arms it, then stays bare (returns are rare). Fix:
+embark only ARMED chars — keep bare chars home to be armed first (now affordable),
+so the field is a capable force that fights, survives, and earns. Bootstrap
+exception: if nothing is fielded AND no armed char is home, field a bare char so a
+cold-started guild can still begin looting (preserves the 0.13.0 escape). Expected:
+fielded-armed fraction rises toward 100%, deaths fall, income/kills rise.
 """
 
 from __future__ import annotations
@@ -346,7 +359,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.19.0"
+    version = "explorer/0.20.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -546,12 +559,26 @@ class Explorer:
         # duplicate-send storm that bounced no_such_character), and count those
         # in-flight embarks toward the world cap so we don't over-deploy either.
         here_avail = [u for u in here if u not in inflight]
-        if here_avail and fielded + len(inflight) < world_cap:
+        # Field only ARMED chars (v0.20.0): a bare char can't fight, gets hurt, and
+        # dies without earning; keep it home to be armed first (now that gold
+        # accumulates, arming is affordable). Bootstrap exception: if nothing is
+        # fielded AND no armed char is home, field a bare char so a cold-started
+        # guild can begin looting (the 0.13.0 escape).
+        armed_uids = {c["char_uid"] for c in chars
+                      if (c.get("equipment") or {}).get("hand")}
+        armed_avail = [u for u in here_avail if u in armed_uids]
+        if armed_avail:
+            embark_pool = armed_avail
+        elif fielded == 0 and not armed_uids:
+            embark_pool = here_avail            # cold-start: no earners anywhere
+        else:
+            embark_pool = []                    # bare chars wait to be armed
+        if embark_pool and fielded + len(inflight) < world_cap:
             maps = [m["id"] for m in cfg.get("maps", [])] or list(DEFAULT_MAPS)
             party_cap = cfg.get("party_cap", 5)
             target = min(maps, key=lambda m: by_world.get(m, 0))
             if by_world.get(target, 0) < party_cap:
-                uid = here_avail[0]
+                uid = embark_pool[0]
                 self._embark_at[uid] = tick
                 return [self._village_act(
                     bot, None, {"action": "embark", "map": target,
