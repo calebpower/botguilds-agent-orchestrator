@@ -1871,3 +1871,26 @@ local 248/3 (frontend skipped). No bot redeploy (test/dashboard infra; bot on 0.
 This closes the verify-story gap and UNBLOCKS the dashboard wishlist items (per-char panel,
 heatmaps, timeline, rival panel, nav-explainer). NEXT: build the per-char stats panel (the
 qualifying item, 0.53) verified by a Playwright test.
+
+## 2026-08-20 (iter 34) — per-character stats panel (wishlist 0.53) + measured 0.36
+0.36 depletion-retreat MEASURED (#92 vs #91, both healthy runs): deaths 1.54->1.11/1k,
+move_failed 46->34/1k (less wandering), embark 4.2->3.59/1k (NO field<->village thrash),
+gold climbing to 631. Income/1k 4.88->2.98 — disambiguated to WORLD VARIATION not over-
+eager retreat (village-time flat 31.6%->32.7%; coins-available fell 0.692->0.551
+gold-tiles/frame). So 0.36 is a CLEAN WIN — it rides.
+SHIPPED the per-character stats panel (wishlist winner 0.53, dashboard = near-zero bot
+risk): ui/server.py api_roster (union latest frame per world -> per-char hp/stamina/stats/
+gifts/equipment/inventory/status/pos/latest-decision) + a Party tab with colour-coded HP
+bars, stat/gift chips, gear, inventory, poison chips, live 2s refresh. Verified in the
+reaper gate (251 passed; new Playwright test seeds a poisoned char + asserts the card/
+bars/chip render in chromium). Restarted the live dashboard -> Party tab serving on :8800.
+No bot redeploy (dashboard only; bot on 0.36.0).
+WISHLIST SCORING (fresh, corrected risk_to_bot=bot-only; per-char panel now DONE):
+  behavioral-mob analysis  0.80*0.90*0.708 = 0.510  <- next top (read-only analysis)
+  always-on watchdog       0.80*0.90*0.708 = 0.510
+  loot/danger heatmaps     0.72*0.95*0.708 = 0.484
+  rival-recon tab (NEW)    0.75*0.97*(-0.25) = neg  (just added, tc0 — won't self-qualify)
+  ...(dashboards 0.38-0.48; strategy/mechanic items 0.19-0.35)
+Two items now clear 0.5 (behavioral-mob, watchdog, tie ~0.51). NEXT PASS: implement my
+favourite of that tie (lean behavioral-mob — a learned bestiary directly feeds the chaser
+question + rival-recon), verified/tested; keep watching 0.36 + gold.
