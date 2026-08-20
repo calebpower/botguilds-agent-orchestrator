@@ -1998,3 +1998,27 @@ diagnostic to make it actionable: trace stuck-death positions (surrounded/corner
 bouncing-same-tile). Strategy change => full gate (pytest + replay + reaper) + redeploy, so
 holding for greenlight per process rule (ask, don't spin).
 NEXT PASS: keep measuring; if greenlit, build 0.37 anti-stuck; else measure-only.
+
+ITER 38 (2026-08-20) — bot on explorer/0.36.0, run #93 (measure-only; 0.37 not greenlit).
+HEALTH: watchdog alive (age 0.1s), bot pid 70218 up (no restart since iter36). #93 (57k
+frames): our-death/1k 0.42->0.60 (up), but RIVAL deaths rose in lockstep (all-deaths/1k
+1.32->2.11) => harsher band cycle hitting everyone, our absolute rate still low; move_failed
+39->46.6 (back to #91 levels, band variation); gold recent 605 (in the 580-621 band). No fire.
+WISHLIST: unchanged, top heatmaps 0.481 <0.5. Nothing qualifies; nothing implemented.
+STUCK-DEATH DIAGNOSTIC (read-only, scratchpad/stuck_diag.py) — ATTEMPTED to classify WHY our
+stuck chars die (cornered vs out-of-stamina vs had-exit-didnt-move). RESULT: METHOD INVALID,
+self-caught. v1 said 42/42 stuck deaths were 'cornered' (0 walkable exits); v2 decomposed the
+neighbours and exposed the confound: across 42 cornered deaths (168 neighbour-tiles) the make-up
+was walkable 0 / SOLID 0 / occupied 28 / UNKNOWN 140. ZERO known walls + 83% unseen => the
+single-frame known-map can't judge walkability (a frame's visible.tiles is sparse/incremental
+BY DESIGN — the bot accumulates it into `known`; a single frame is not the char's real map). So
+'cornered' is a RECONSTRUCTION ARTIFACT, NOT a finding. Did NOT record it as one.
+ROBUST facts that survive: 80% of deaths are STUCK (position-based, tile-independent); ~37%
+(19/51) had a predator adjacent at the death frame. CORRECTION to the iter37 recommendation
+framing: I do NOT yet know the stuck MECHANISM (terrain-corner vs mob-pin vs decision-failure),
+so a 0.37 anti-stuck DESIGN is premature. Proper next diagnostic (read-only, next pass): stream
+each world's field frames in tick order accumulating the known-map, snapshot each death char's
+neighbours against THAT map + predator distances -> then the cornered/decision split is valid.
+DECISION: still recommend a 0.37 anti-stuck lever to the operator, but gated on that accumulated-
+map diagnostic first (don't design blind). Held for greenlight; no strategy change shipped.
+NEXT PASS: run the accumulated-known-map stuck diagnostic; health; wishlist.
