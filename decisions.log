@@ -1688,3 +1688,21 @@ top (high value, read-only=near-zero risk, sat since 0.12.0). Shipped steemer/kp
 (mutation-checked). It immediately earned out (flagged the 0.32.0 income tradeoff above).
 The just-added predator-tile item scored -0.13 (turn_count=1 -> negative factor), correctly
 NOT implemented the turn it was added. Re-run the full scoring next pass.
+
+## 2026-08-20 (iter 24, operator-directed) — explorer/0.33.0: let chars reach chests beside predators
+Decision: recover the income 0.32.0 gave up. (A) exempt chest-ACCESS tiles from the
+melee-predator block (coins/loot beside a mob stay blocked — a 2g coin isn't worth a
+-15 hit, but a chest = 1-21g + loot like 24-44g tomes is); (B) in the dodge, crack an
+adjacent chest + grab an underfoot coin (free, already adjacent) BEFORE stepping away.
+Why: the KPI alarm flagged 0.32.0 traded income for survival — at a CONSTANT undead
+level (#87->#88, 5.3->5.6% frame-proportional) deaths fell 3.2->1.7/1k but income -53%
+and chest_opens -69%, because block-every-predator-neighbour walled chars off from
+boxed-in chests. Value-appropriate fix keeps the survival win (traversal protection +
+coins still not beelined into range) while unblocking the high-value target.
+Operator explicitly directed shipping this now (not waiting for the next pull — the
+tradeoff was already confirmed from a full run; the fix used existing #88 data).
+Effect/verify (with the KPI alarm now watching): run#89 chest_opens + income should
+recover toward pre-0.32.0 with deaths HOLDING ~1.7/1k. FALSIFIED if deaths rise (chests
+too often boxed by strong mobs -> gate the chest-reach on hp) or income doesn't recover
+(the loss was coin-traversal not chests -> revisit). Wishlist scoring this pass: top
+remaining item (death post-mortem ~0.47) is <0.5, so no wishlist item shipped alongside.
