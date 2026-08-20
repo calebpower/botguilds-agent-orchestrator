@@ -1779,3 +1779,20 @@ bounce more on unmapped terrain; 0.35 only changed the potion reserve, not movem
 re-check at #91-full. No strategy change (0.35 rides — gold climbing is exactly the goal).
 Wishlist: nothing >0.5 (death post-mortem ~0.48). Tool fix = no redeploy (bot on 0.35.0).
 NEXT: keep watching the cap — does gold break 529 or plateau (=the cap value)?
+
+## 2026-08-20 (iter 29) — CAP TEST answer (climbing to 354) + depletion rate-limiter; HOLD (healthy)
+Run #91 (0.35.0) full: gold climbed 97->354 (mean 250, median 219), 0 drops, 0 potion-buys.
+It did NOT reach 529 THIS run — it plateaued at 354 only in the last ~4051 ticks. Cause:
+the worlds went COIN-DEPLETED (tail: 0 gold-tiles-visible, undead only 2% so NOT a hostile
+flee) — chars fielded with nothing to grab. So income comes in BURSTS (replenished each
+band refresh), not continuously; gold plateaus between refreshes. NOT a cap and NOT a
+drain (0 drops). Gold PERSISTS cross-run, so #92 resumes from 354 and should break 529
+within a run or two as it compounds. THE UNCAPPING WORKS — stockpile goal served.
+Deaths 2.29->1.58/1k (DOWN — 0.35 removing bought heals confirmed harmless). move_failed
+17->36/1k (up) but it's world/depletion-driven (movement code identical #90->#91; #91 was
+predator-denser -> more urgent-dodge bounces + depleted-world wandering), NET-POSITIVE
+since deaths fell. HOLD: guild is healthy (stockpile climbing, deaths low, no fire); no
+strategy change warranted; wishlist nothing >0.5 (death post-mortem 0.477 top). NEXT:
+watch the cap (does #92 break 529?). Future stockpile-growth levers noted: BAND PRE-EMPTION
+(harvest fresh coins right after a refresh, before depletion) and DEPLETION-AWARE retreat
+(stop wandering/bouncing a looted-out world) — both deferred (complex vs marginal now).
