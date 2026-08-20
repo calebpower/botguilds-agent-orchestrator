@@ -437,6 +437,71 @@ def api_observed(db_path: str) -> dict:
         conn.close()
 
 
+def api_roster(db_path: str) -> dict:
+    """The full character roster with per-character detail, unioned from the latest
+    frame of EACH world (a char is only ever in one world's frame at a time). For
+    each char: live HP + stamina, stats + gifts, equipment slots, individual
+    inventory, world + position, status effects, and its latest decision. Robust to
+    an empty/missing DB (returns an empty roster, not an error)."""
+    if not _db_ready(db_path):
+        return {"ok": False, "chars": [], "count": 0}
+    conn = _ro(db_path)
+    try:
+        # Union the latest frame of every world; keep each char's most recent sighting.
+        best: dict[str, tuple[int, dict, str]] = {}
+        for (world,) in conn.execute("SELECT DISTINCT world FROM frames"):
+            row = conn.execute(
+                "SELECT json, tick FROM frames WHERE world=? ORDER BY seq DESC LIMIT 1",
+                (world,)).fetchone()
+            if not row:
+                continue
+            try:
+                frame = json.loads(zlib.decompress(row["json"]))
+            except Exception:
+                continue
+            tick = row["tick"] or frame.get("tick") or 0
+            for c in frame.get("chars", []) or []:
+                uid = c.get("char_uid")
+                if uid and (uid not in best or tick > best[uid][0]):
+                    best[uid] = (tick, c, world)
+
+        chars = []
+        for uid, (tick, c, world) in best.items():
+            eq = c.get("equipment") or {}
+            carry = c.get("carry") or {}
+            dec = conn.execute(
+                "SELECT action, reasoning FROM decisions WHERE char_uid=? "
+                "ORDER BY seq DESC LIMIT 1", (uid,)).fetchone()
+            latest = None
+            if dec:
+                # reasoning can be a full multi-line weighed-options trace; keep only
+                # its last line (the "chose: …" summary / the single offer's why).
+                why = (dec["reasoning"] or "").strip().splitlines()
+                latest = why[-1].strip() if why else (dec["action"] or None)
+            chars.append({
+                "char_uid": uid, "name": c.get("name") or uid,
+                "world": world, "pos": c.get("pos"),
+                "hp": c.get("hp"), "max_hp": c.get("max_hp"),
+                "stamina": c.get("stamina"), "max_stamina": c.get("max_stamina"),
+                "level": c.get("level"), "xp": c.get("xp"),
+                "stats": c.get("stats") or {}, "gifts": list(c.get("gifts") or []),
+                "equipment": {k: eq.get(k) for k in
+                              ("hand", "offhand", "outfit", "trinket", "boots")},
+                "inventory": [it.get("kind") for it in (c.get("inventory") or [])
+                              if it.get("kind")],
+                "carry": {"used": carry.get("used"), "cap": carry.get("cap")},
+                "status": [s.get("kind") for s in (c.get("status") or [])
+                           if isinstance(s, dict) and s.get("kind")],
+                "latest_decision": latest, "at_tick": tick,
+            })
+        chars.sort(key=lambda x: (x["world"] or "", (x["name"] or "").lower()))
+        return {"ok": True, "chars": chars, "count": len(chars)}
+    except _db.Error:
+        return {"ok": False, "chars": [], "count": 0}
+    finally:
+        conn.close()
+
+
 # --------------------------------------------------------------------------- #
 # WebSocket push (hand-rolled RFC6455, stdlib only)
 #
@@ -937,6 +1002,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"rows": api_findings(), "mtime": mtime})
             elif path == "/api/observed":
                 self._json(api_observed(self.db_config))
+            elif path == "/api/roster":
+                self._json(api_roster(self.db_config))
             else:
                 self._send(404, b"not found", "text/plain; charset=utf-8")
         except BrokenPipeError:
@@ -1156,6 +1223,26 @@ pre.log{white-space:pre-wrap;font-family:ui-monospace,"SF Mono",Menlo,Consolas,
   border-radius:12px;padding:16px;overflow-x:auto}
 .empty{color:var(--muted);padding:24px;text-align:center;font-style:italic}
 mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+/* Party (per-character) panel */
+.party-meta{color:var(--muted);margin-bottom:12px;font-size:13px}
+.party-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.pc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}
+.pc-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.pc-name{font-weight:600}
+.pc-where{color:var(--muted);font-size:12px}
+.bar{height:9px;border-radius:5px;background:var(--border);overflow:hidden;margin:3px 0 8px}
+.bar>span{display:block;height:100%}
+.bar-lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2)}
+.hp-ok>span{background:#3fb950}.hp-warn>span{background:#d29922}.hp-crit>span{background:#f85149}
+.sta>span{background:#58a6ff}
+.pc-stats{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;margin:6px 0}
+.pc-stat b{color:var(--ink)}
+.gift{color:#a371f7}
+.pc-row{font-size:12px;color:var(--ink2);margin:4px 0}
+.pc-row .k{color:var(--muted)}
+.chip{display:inline-block;background:var(--border);border-radius:6px;padding:1px 6px;margin:2px 3px 0 0;font-size:11px}
+.chip.pois{background:#5a1d1d;color:#ffb4b4}
+.pc-dec{font-size:11px;color:var(--muted);margin-top:8px;border-top:1px solid var(--border);padding-top:6px;font-style:italic}
 </style>
 </head>
 <body>
@@ -1164,6 +1251,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   <h1>steemer &middot; guild dashboard</h1>
   <nav>
     <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="party">Party</button>
     <button data-tab="decisions">Decisions</button>
     <button data-tab="map">Map</button>
     <button data-tab="timeline">Timeline</button>
@@ -1188,6 +1276,12 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
       <div class="card"><h2>Action errors by reason</h2><div class="bars" id="ov-errors"></div></div>
     </div>
     <div class="card"><h2>Exploration</h2><div id="ov-explore"></div></div>
+  </section>
+
+  <!-- PARTY (per-character stats) -->
+  <section class="tab" id="tab-party">
+    <div class="party-meta" id="party-meta"></div>
+    <div class="party-grid" id="party-cards"></div>
   </section>
 
   <!-- DECISIONS -->
@@ -1331,6 +1425,7 @@ let decCursor=0, mapSeq=0, mapTick=-1, snapVersion=-1,
    and the no-socket fallback). Each loadX ends by subscribing with its cursor. */
 function loadActive(){
   if(active==="overview") loadOverview();
+  else if(active==="party") loadParty();
   else if(active==="decisions") loadDecisions();
   else if(active==="map") loadMap();
   else if(active==="timeline") loadTimeline();
@@ -1960,6 +2055,62 @@ function renderFindings(){
     findingsRaw.length ? "No findings match these filters." : "No findings yet."));
   $("#fx-count").textContent = shown+" / "+findingsRaw.length+" shown";
 }
+/* ---- Party (per-character stats) ---- */
+let partyTimer=null;
+async function loadParty(){
+  await renderParty();
+  clearInterval(partyTimer);
+  partyTimer = setInterval(()=>{
+    if(active==="party") renderParty();
+    else { clearInterval(partyTimer); partyTimer=null; }
+  }, 2000);
+}
+async function renderParty(){
+  const res = await getJSON("/api/roster");
+  const chars = (res && Array.isArray(res.chars)) ? res.chars : [];
+  const meta=$("#party-meta"), grid=$("#party-cards");
+  if(!grid) return;
+  if(!chars.length){ if(meta) meta.textContent=""; grid.innerHTML='<div class="empty">no characters observed yet</div>'; return; }
+  const byWorld={}; chars.forEach(c=>{ byWorld[c.world]=(byWorld[c.world]||0)+1; });
+  if(meta) meta.textContent = chars.length+" characters — "+Object.entries(byWorld).map(([w,n])=>n+" in "+w).join(", ");
+  grid.innerHTML = chars.map(pcCard).join("");
+}
+function pcBar(cls,val,max,label){
+  const pct = max ? Math.max(0,Math.min(100,Math.round(100*val/max))) : 0;
+  return '<div class="bar-lbl"><span>'+label+'</span><span>'+esc(val)+'/'+esc(max)+'</span></div>'
+    +'<div class="bar '+cls+'"><span style="width:'+pct+'%"></span></div>';
+}
+function pcCard(c){
+  const hpPct = c.max_hp ? 100*c.hp/c.max_hp : 0;
+  const hpCls = hpPct>=60?"hp-ok":hpPct>=30?"hp-warn":"hp-crit";
+  const stats = Object.entries(c.stats||{}).map(([k,v])=>{
+    const g=(c.gifts||[]).includes(k);
+    return '<span class="pc-stat'+(g?" gift":"")+'"><span class="k">'+esc(k)+'</span> <b>'+esc(v)+'</b>'+(g?"★":"")+'</span>';
+  }).join("");
+  const eq=c.equipment||{};
+  const eqStr=["hand","offhand","outfit","trinket","boots"].map(s=> eq[s]?esc(eq[s]):"—").join(" · ");
+  const inv=(c.inventory||[]);
+  const invStr = inv.length ? inv.map(k=>'<span class="chip">'+esc(k)+'</span>').join("") : '<span class="k">empty</span>';
+  const status=(c.status||[]).map(s=>{
+    const p=/pois|burn|venom|bleed/.test(String(s));
+    return '<span class="chip'+(p?" pois":"")+'">'+esc(s)+'</span>';
+  }).join("");
+  const carry=c.carry||{};
+  return '<div class="pc">'
+    +'<div class="pc-head"><span class="pc-name">'+esc(c.name)+'</span>'
+      +'<span class="pc-where">'+esc(c.world)+(c.pos?(" ("+esc(c.pos[0])+","+esc(c.pos[1])+")"):"")+'</span></div>'
+    + pcBar(hpCls, c.hp, c.max_hp, "HP")
+    + (c.max_stamina!=null ? pcBar("sta", c.stamina, c.max_stamina, "Stamina") : "")
+    +'<div class="pc-stats">'+stats+'</div>'
+    +(status?('<div class="pc-row"><span class="k">status</span> '+status+'</div>'):"")
+    +'<div class="pc-row"><span class="k">lvl</span> '+esc(c.level)+' · <span class="k">xp</span> '+esc(c.xp)
+      +' · <span class="k">carry</span> '+esc(carry.used)+'/'+esc(carry.cap)+'</div>'
+    +'<div class="pc-row"><span class="k">gear</span> '+eqStr+'</div>'
+    +'<div class="pc-row"><span class="k">inv</span> '+invStr+'</div>'
+    +(c.latest_decision?('<div class="pc-dec">'+esc(c.latest_decision)+'</div>'):"")
+    +'</div>';
+}
+
 async function loadFindings(){
   const res = await getJSON("/api/findings");
   const rows = (res && res.rows) ? res.rows : (Array.isArray(res)?res:[]);

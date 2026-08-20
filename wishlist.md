@@ -10,6 +10,18 @@ top of **Open**.
 
 ## Open
 
+- [ ] **Rival-recon dashboard tab** — a dashboard tab dedicated to intelligence on the
+  OTHER guilds: as much as we can learn about each rival — historical stats over time
+  (size, levels, gear progression), their character movements (which worlds/maps they
+  work, when), inferred *algorithms* (do they park in the village, rush a map, hunt loot,
+  avoid us — extrapolated from `/events/spectate` + the periodic spectate roster), and
+  per-character detail where exposed (inventories, gold, equipment). A long-term
+  *strategy* surface, not a tactical one (spectate lags ~45s and carries no live mob
+  data — see the vision finding). Builds on the existing intel pipeline
+  (`steemer/intel.py` summarize_spectate) + the spectate stream. Dovetails with the
+  "Behavioral analysis of mobs and rival players" and "Rival-awareness dashboard panel"
+  items — this is the fuller, dedicated version. (operator request 2026-08-20)
+
 - [ ] **Short-TTL memory of recently-seen predator tiles** — char sight is partly
   line-of-sight-occluded (~18% of mobs first appear at distance 0, i.e. a predator
   hidden behind a wall/corner until rounded — see the spectate/LOS finding). Keep a
@@ -21,7 +33,12 @@ top of **Open**.
   positions would mislead). Directly targets the occlusion gap the dodge/allowlist
   can't cover. (surfaced answering the operator's LOS/spectate question) (operator request)
 
-- [ ] **Comprehensive per-character stats panel on the dashboard** — a live roster
+- [x] **Comprehensive per-character stats panel on the dashboard** — SHIPPED 2026-08-20
+  (ui/server.py `/api/roster` + the "Party" tab; verified by a Playwright test in the
+  reaper gate). Per-char cards: colour-coded live HP bar + stamina bar, stats with gifts
+  flagged, level/xp, equipment slots, individual inventory, status chips (poison etc.),
+  world+pos, and the latest decision. Wishlist-scoring winner at 0.53 once risk_to_bot
+  was corrected (dashboard = separate sidecar, can't hurt the bot). Original text: — a live roster
   view where each character is a card/row showing everything about it in real time:
   a **live HP bar** (hp/max_hp, colour-coded, + any status like poison/burn), level
   & XP, the six stats (str/dex/int/vit/end/agi) with gifts flagged, stamina/mana
