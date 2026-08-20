@@ -1634,3 +1634,29 @@ drop once normalised for undead %. FALSIFIED if these mobs match char move-speed
 trades blows 1:1 -> need a wider berth / step 2) or income dips from over-dodging.
 Stockpile still healthy (run#86 gold mean 105, above the 100 floor; not climbing high
 only because the 45% world throttles looting). Decided autonomously (10-min rule).
+
+## 2026-08-20 (iter 22) — explorer/0.32.0: invert threat model to a benign allowlist
+Decision: replace the hardcoded MELEE_THREAT_KINDS denylist with a benign ALLOWLIST
+(WILDLIFE_SAFE). A monster is a melee predator by DEFAULT (block-adjacent + dodge)
+unless it's confirmed-benign wildlife or ranged undead (THREAT_KINDS, radius-4 flee).
+_is_melee_predator(kind) centralises it.
+Why: run #87 proved the denylist is structurally doomed. The dodge/block ZEROED the
+known killers (delver 25->0, spider_brown 6->0, wolf 3->1 — the mechanism works!) but
+deaths ROSE to 4.0/1k because a fresh band brought NEW predators lava_ant (40) +
+rhino_beetle (7), in no set. A hardcoded list is always a cycle behind. Inverting makes
+every new/unknown mob avoided on sight. WILDLIFE_SAFE = kinds never once blamed for a
+>=5/tick HP-drop across runs #85-87.
+Effect/verify: new-band deaths should stop spiking; deaths trend down normalised by
+undead % (was 0.144 death/undead-pt in #87 vs 0.063 in #86). FALSIFIED if a genuinely-
+benign new mob gets needlessly avoided (income dip -> add to WILDLIFE_SAFE) OR if
+chasers keep hitting (the KNOWN residual: single-step dodge trades ~1:1 vs same-speed
+chasers — run#87 had 63% still-adjacent next tick, boar rose 13->20). Decided
+autonomously (10-min rule). Stockpile healthy (gold ~95-100 floor, income recovered to
+454g as undead fell 45->28%).
+OPEN FOLLOW-UPS (next levers, in priority): (1) STRENGTHEN THE DODGE for same-speed
+chasers — a multi-step berth / retreat-home when a predator stays adjacent after a
+dodge (the 63% gap). (2) cinder_wisp (undead, in THREAT_KINDS) still caused 39 drops
+despite the radius-4 flee — the flee isn't escaping it (fast chaser?); may need a
+bigger radius or a different evade for fast undead. (3) predator-position MEMORY
+(short TTL) for occluded mobs (see the spectate/LOS finding). (4) 529 cap answer +
+band pre-emption once deaths are under control.
