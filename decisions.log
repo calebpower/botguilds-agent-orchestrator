@@ -1968,3 +1968,33 @@ embarks one itself). Awaiting a clean --send run (bot down) + decision on commit
 NEXT PASS: keep measuring 0.36 + gold; likely NOTHING qualifies on the wishlist (all <0.5) —
 if the operator wants a strategy lever, CHASER-DODGE is teed up (bestiary quantified: wolf
 move_rate 0.22, a moving char outruns it; deaths are stuck chars) -> would be 0.37.0 + full gate.
+
+ITER 37 (2026-08-20) — bot on explorer/0.36.0, run #93 (MEASURE + DIAGNOSE pass; no wishlist
+item qualified, no strategy change shipped — a strategy lever needs operator greenlight).
+HEALTH: watchdog alive (age 0.3s), bot pid 70218 up. #93 (young, 29k frames) deaths/1k 1.46,
+move_failed/1k 45.32, gold oscillating 580-621 (mean 607). No fire.
+CORRECTION to iter35/36 gold claim: gold is NOT compounding unbounded to "all-time highs". #93
+village gold over 9421 samples = min580/max621/mean607, SAWTOOTHING (period ~1-2k ticks, far
+shorter than the ~15k band cycle) around ~607. The drain is NOT the potion-buy (only 6 buys in
+#93) — it is RECRUITING: 66 recruits, spread across the run (Q1 22/Q2 0/Q3 23/Q4 21, NOT a
+one-time startup fill), ~matching the 51 deaths (replace-the-fallen). So gold grows only SLOWLY
+cross-run (551->607 over 2 runs), gated by death-driven recruiting. sell=0 in #93 (worth
+watching — chars may not be offloading chest-loot; young run though).
+DEATH DIAGNOSIS (postmortem #92, our 51 deaths): by_mobility STUCK 41 (80%), fleeing 9. by_killer
+wolf9/boar7/lava_ant6/spider4/delver4/crab4/... = ~67% from clearly-CHASING predators. Cross-ref
+with the bestiary (all chasers move_rate ~0.22 => a moving char OUTRUNS them): the lever is
+ANTI-STUCK, not chaser-dodge. A stuck char can neither flee nor dodge, so a dodge won't save it;
+guaranteeing chars keep moving (robust unstick / never idle-adjacent-to-predator) is the fix.
+This UNIFIES the two open goals: cutting stuck-deaths -> fewer replace-recruits -> gold grows
+faster AND survival improves. NOTE also: our TRUE death rate is ~0.42/1k (51/121k), not 1.32/1k
+— the fast-SQL death count includes RIVAL deaths; the relative trend still holds if rival-frac is
+stable, but absolute our-death rate is ~3x lower than reported.
+WISHLIST (fresh, tc=36-add_minor saturated ~0.708): TOP = heatmaps 0.70*0.97*0.708=0.481,
+shadow-eval 0.75*0.90*0.708=0.478 — BOTH <0.5. Nothing qualifies; implemented nothing (did NOT
+inflate). High-value backlog remains drained.
+RECOMMENDATION to operator: greenlight explorer/0.37.0 = ANTI-STUCK (reframed from chaser-dodge)
+— target the 80%-stuck deaths that drive both mortality and the recruiting gold-drain. Next
+diagnostic to make it actionable: trace stuck-death positions (surrounded/cornered vs
+bouncing-same-tile). Strategy change => full gate (pytest + replay + reaper) + redeploy, so
+holding for greenlight per process rule (ask, don't spin).
+NEXT PASS: keep measuring; if greenlit, build 0.37 anti-stuck; else measure-only.
