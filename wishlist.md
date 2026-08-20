@@ -81,9 +81,14 @@ top of **Open**.
     per-char KPIs → (4) coordinated raids. Guardrail: an experimental per-char
     policy risks that one char underperforming — bounded (one char, not the guild),
     and that's the point (measure, keep winners).
-- [ ] **Cross-run KPI regression alarm** — the loop auto-flags when *any* metric
+- [x] **Cross-run KPI regression alarm** — the loop auto-flags when *any* metric
   regresses vs the prior window. The direct meta-fix for the blindness that let
-  `move_failed` rot for 8 runs; never get blind-sided again.
+  `move_failed` rot for 8 runs; never get blind-sided again. **SHIPPED 2026-08-20
+  (`steemer/kpi_watch.py`, surfaced by the wishlist-scoring formula @ 0.537).** On
+  its first live run (#87→#88) it flagged income −53% / chest_opens −69% and, via a
+  frame-proportional `undead_frac` context KPI, showed the undead level was ~constant
+  (5.3→5.6%) — i.e. 0.32.0 traded income for survival, a finding I'd otherwise have
+  mis-attributed to the world.
 - [ ] **Death post-mortem taxonomy** — for every death, reconstruct the last ~15
   ticks (HP curve, position, killing blow, was flight ever possible?) into a
   structured cause-of-death. Turns deaths into a survival dataset (and feeds the
@@ -160,4 +165,6 @@ top of **Open**.
 
 ## Done
 
-_(nothing yet — newly created)_
+- [x] **Cross-run KPI regression alarm** → `steemer/kpi_watch.py` (2026-08-20, @ run #88,
+  bot on explorer/0.32.0). Read-only DB analysis; `flag_regressions` is mutation-checked.
+  Selected by the operator's wishlist-scoring formula (final 0.537 > 0.5).
