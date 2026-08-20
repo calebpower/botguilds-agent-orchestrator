@@ -428,6 +428,15 @@ THREAT_KINDS = frozenset({"cultist", "zombie", "ghoul", "vampire_bat", "cinder_w
 FLEE_RADIUS = 4            # Manhattan tiles: flee when a THREAT is this close or nearer
 PRED_SPACING_RADIUS = 2    # v0.37.0: step away from a MELEE predator this close (not yet
 #   adjacent) BEFORE it lands the first hit — the anti-stuck lever (see the act() block).
+# v0.38.0 MODE-GATED SPACING: 0.37 spaced at a flat 3.0 in EVERY band, which cost ~-49%
+#   gold-coin gathering (chars fled coins in calm wildlife bands too). Now the spacing SCORE
+#   depends on band severity: in a SEVERE band (undead-heavy or predator-swarmed) it stays
+#   high so a char disengages; in a CALM band it drops below the explore/gather offers so a
+#   char keeps working — but still above rest, so it never idles adjacent to a predator.
+SPACE_SCORE_SEVERE = 3.0    # beats scout(1.0)/frontier(2.0-2.5): char leaves a dangerous band
+SPACE_SCORE_CALM = 1.5      # beats rest(0.5)/scout(1.0), LOSES to frontier(2.0+)/gather(4.0+)
+UNDEAD_SEVERE_FRAC = 0.15   # >=15% of visible mobs undead -> a lethal (poison-DoT) undead band
+MELEE_DENSE_N = 3           # this many melee predators visible -> swarmed, treat as severe
 # v0.32.0: INVERTED to a benign ALLOWLIST. The 0.30/0.31 denylist (golem_stone,
 # delver, boar, spider_brown, …) was structurally doomed: every band-refresh rotates
 # in NEW mobs, so a hardcoded threat list is always a cycle behind and chars die to
@@ -546,7 +555,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.37.0"
+    version = "explorer/0.38.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -986,8 +995,15 @@ class Explorer:
                 if cands:
                     best = max(cands, key=_sp_dist)
                     kind = ctx.enemies[near_preds[0]].get("kind", "melee predator")
+                    # v0.38.0: is THIS band severe? undead fraction (poison-DoT bands are the
+                    # lethal ones) or a melee-predator swarm. `threats` (undead here) and `preds`
+                    # were computed above. In a calm band, spacing yields to gather/explore.
+                    undead_frac = (len(threats) / len(ctx.enemies)) if ctx.enemies else 0.0
+                    severe = undead_frac >= UNDEAD_SEVERE_FRAC or len(preds) >= MELEE_DENSE_N
+                    score = SPACE_SCORE_SEVERE if severe else SPACE_SCORE_CALM
+                    band = "severe" if severe else "calm"
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, best)},
-                          3.0, f"a {kind} is {_sp_dist(pos)} away — spacing off before it closes",
+                          score, f"a {kind} is {_sp_dist(pos)} away ({band} band) — spacing off",
                           urgent=True)
 
         # --- Healthy: fight / gather / explore. ---

@@ -107,27 +107,59 @@ def test_unhealed_char_still_explores_when_shallow():
         _field_frame(char, tiles))
 
 
-# --- v0.37.0 proactive predator spacing (anti-stuck) ---
-# Geometry: char at (0,2), a mob 2 tiles NORTH at (0,4). Without spacing the char
-# would push the north frontier / scout NORTH (toward the mob). Spacing (score 3.0)
-# beats frontier (2.5), so a char near a MELEE predator steps SOUTH (away) instead.
+# --- v0.37.0 predator spacing, v0.38.0 mode-gated by band severity ---
+# Geometry: char at (0,2), mob(s) NORTH. (0,3) borders the unknown -> a north frontier
+# (score 2.5). Spacing scores 3.0 in a SEVERE band (beats the frontier -> char steps
+# SOUTH away) but only 1.5 in a CALM band (loses to the frontier -> char pushes NORTH
+# and keeps working). So the chosen direction reveals the band the char thinks it's in.
 _SPACE_TILES = [[0, 1, "floor"], [0, 2, "floor"], [0, 3, "floor"], [1, 2, "floor"]]
 
 
-def test_spaces_off_from_a_melee_predator_two_tiles_away():
-    # the anti-stuck lever: a wolf closing from dist 2 makes the char step AWAY (S)
-    # before it lands the first hit, rather than idling/scouting north into it.
+def test_severe_band_spaces_off_from_the_predators():
+    # v0.38.0: a predator SWARM (>= MELEE_DENSE_N in view) is a severe band -> spacing (3.0)
+    # beats the frontier, so the char disengages SOUTH (away from the ONE near predator)
+    # rather than working. The extra predators are far NORTH — they only raise the count to
+    # trip MELEE_DENSE_N; they don't block the east frontier the calm case would take, so the
+    # S-vs-not-S choice cleanly reflects the severity gate.
+    bot = _bot()
+    char = _field_char(pos=[0, 2], stamina=40)
+    acts = bot.on_frame(_field_frame(char, _SPACE_TILES, entities=[
+        {"pos": [0, 4], "faction": "monster", "kind": "wolf"},     # near (dist 2)
+        {"pos": [0, 8], "faction": "monster", "kind": "boar"},     # far -> count only
+        {"pos": [0, 10], "faction": "monster", "kind": "wolf"}]))  # far -> count only
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts     # away from the swarm
+
+
+def test_calm_band_yields_spacing_to_exploration():
+    # v0.38.0 the income fix: a LONE wolf (no undead, not a swarm) is a calm band, so spacing
+    # drops to 1.5 and LOSES to the north frontier (2.5) — the char keeps working (pushes N)
+    # instead of fleeing, recovering the gold-gathering 0.37's flat spacing cost.
     bot = _bot()
     char = _field_char(pos=[0, 2], stamina=40)
     acts = bot.on_frame(_field_frame(char, _SPACE_TILES,
                         entities=[{"pos": [0, 4], "faction": "monster", "kind": "wolf"}]))
-    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts     # away from the wolf
-    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts)
+    # it keeps working (explores toward a frontier) rather than fleeing SOUTH away from the
+    # lone wolf — the discriminator vs the severe case, robust to which frontier BFS picks.
+    assert any(a.get("action") == "move" for a in acts)                # not idling
+    assert all(not (a.get("action") == "move" and a.get("dir") == "S") for a in acts)  # not fleeing
+
+
+def test_severe_band_from_a_high_undead_fraction():
+    # severity also trips on undead FRACTION (poison-DoT bands are the lethal ones): a lone
+    # melee predator at dist 2 plus undead in view (>= UNDEAD_SEVERE_FRAC of mobs) -> severe,
+    # so the char spaces off (S) even though it's only one predator. The undead here sits
+    # OUTSIDE FLEE_RADIUS (dist>4) so it raises the fraction without triggering the undead-flee.
+    bot = _bot()
+    char = _field_char(pos=[0, 2], stamina=40)
+    acts = bot.on_frame(_field_frame(char, _SPACE_TILES, entities=[
+        {"pos": [0, 4], "faction": "monster", "kind": "wolf"},
+        {"pos": [0, 12], "faction": "monster", "kind": "cultist"}]))   # undead, far
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts     # severe -> disengage
 
 
 def test_gathering_still_beats_spacing_so_income_is_safe():
-    # a grab underfoot (banked, death-proof) is worth one tick even with a predator at
-    # dist 2 — pickup (6.0) outscores spacing (3.0), then spacing fires next tick.
+    # a grab underfoot (banked, death-proof) is worth one tick in any band — pickup (6.0)
+    # outscores spacing (<=3.0), then spacing fires next tick.
     bot = _bot()
     char = _field_char(pos=[0, 2], stamina=40)
     acts = bot.on_frame(_field_frame(char, _SPACE_TILES,
