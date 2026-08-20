@@ -139,7 +139,17 @@ top of **Open**.
 - [ ] **Band-refresh timing awareness** — the game has periodically-refreshing
   "bands" (we log `band_refresh` events and ignore them); time embarks/retreats
   around them instead of getting caught out.
-- [ ] **Behavioral analysis of mobs and rival players** — learn the *patterns* of
+- [x] **Behavioral analysis of mobs and rival players** — part (a) **monsters SHIPPED
+  2026-08-20** (`steemer/bestiary.py` + `tests/test_bestiary.py`; read-only, pure core
+  mutation-checked). Follows each mob by its stable `eid` across frames to infer per-kind
+  `move_rate` (cadence), `chaser_score` + a `behavior` label (chaser/stationary/skittish/
+  wanderer), `aggro_range`, `hit_rate`, and clean single-adjacent-blame `est_dmg_per_hit`.
+  Wishlist-scoring winner @ 0.578. First live run (#92) independently confirmed the
+  strategy's `_is_melee_predator` allowlist: the chasers-that-hurt (wolf/boar/crab_green/
+  cultist, dmg 4–6) are exactly what it flees, and the benign allowlist members that chase
+  (skunk/bat_brown/rat_grey) deal ZERO measured damage. Part (b) **rival players** remains
+  open — it folds into the dedicated "Rival-recon dashboard tab" item below.
+  Original: learn the *patterns* of
   the things we share the world with. Two kinds: (a) **monsters** — the
   game-programmed behavior (aggro range, movement, attack cadence, retreat,
   status application) inferred from the `visible.entities` (faction=monster) we
@@ -193,3 +203,9 @@ top of **Open**.
   on explorer/0.35.0). Read-only; `classify_death` is pure + mutation-checked. Shares the
   bestiary (WILDLIFE_SAFE/THREAT_KINDS) with the strategy. Boundary wishlist pick (~0.49,
   zero-risk). First run: most deaths are `stuck` chars pinned by wolf/delver.
+- [x] **Behavioral mob analysis (part a: monsters)** → `steemer/bestiary.py` +
+  `tests/test_bestiary.py` (2026-08-20, @ run #92, bot on explorer/0.36.0). Read-only;
+  `build_bestiary` is pure + mutation-checked (3 mutations caught). Tracks each mob by its
+  stable `eid` to measure chaser-vs-stationary behaviour, aggro range, and damage/hit.
+  Wishlist-scoring winner @ 0.578. Independently validated the strategy's predator allowlist
+  on live run #92. Part (b: rival players) folds into the Rival-recon dashboard tab item.
