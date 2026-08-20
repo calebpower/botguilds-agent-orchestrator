@@ -123,15 +123,18 @@ top of **Open**.
 - [ ] **In-world trash talk via `say`** — the bot posts contextual chat using the
   unused `say` verb: taunt a rival parking its roster, celebrate a big haul, mourn
   a death. Free personality (and doubles as campaign-layer eulogies).
-- [ ] **Always-on watchdog + push alerts** — ping the operator when something
+- [x] **Always-on watchdog** — DETECTION HALF SHIPPED 2026-08-20 (`steemer/watchdog.py`
+  + `tests/test_watchdog.py`; read-only, pure oracle mutation-checked + self-tested both
+  sides). `classify_liveness(now, latest_received_at)` → ok/warn/critical from the age of
+  the newest frame; `check_db` reads it via the `seq` PK (instant); CLI exits 0/1/2 for a
+  cron. Catches the silence the KPI/post-mortem tools can't (they read completed runs): the
+  zlib crash-loop (#39-51 empty), the kick-war, a stopped bot. Wishlist-scoring winner @
+  0.538. STILL OPEN (smaller follow-ons): the external PUSH-alert transport, and a "single
+  authoritative host" guard (refuse `bot-up` if a session is already live, or detect the
+  'kicked' log line and back off) to prevent the kick-war outright — see the `svc.sh
+  collides with screen host` finding. Original: ping the operator when something
   actually breaks: bot crash-looping, run window not advancing, bankruptcy, or a
-  mass-death spike. Ops safety for a bot that runs unattended. **NOW HIGH VALUE:**
-  a "latest frame older than N seconds" alarm would have instantly caught BOTH the
-  zlib crash-loop (runs #39-#51, empty) and the 2026-08-18 deploy kick-war (guild
-  single-session collision between the svc.sh bot and the screen host). A companion
-  "single authoritative host" guard (refuse to `bot-up` if a session is already
-  live, or detect the 'kicked' log line and back off) would prevent the kick-war
-  outright — see the `svc.sh collides with screen host` finding.
+  mass-death spike. Ops safety for a bot that runs unattended.
 - [ ] **Version-timeline "story mode"** — the dashboard narrates the bot's
   evolution: each strategy version's hypothesis + its *measured* effect (from
   decisions.log) as a visual timeline. A guided tour of why the bot is the way it
@@ -209,3 +212,7 @@ top of **Open**.
   stable `eid` to measure chaser-vs-stationary behaviour, aggro range, and damage/hit.
   Wishlist-scoring winner @ 0.578. Independently validated the strategy's predator allowlist
   on live run #92. Part (b: rival players) folds into the Rival-recon dashboard tab item.
+- [x] **Always-on watchdog (detection half)** → `steemer/watchdog.py` +
+  `tests/test_watchdog.py` (2026-08-20, @ run #93, bot on explorer/0.36.0). Read-only frame-
+  liveness alarm; `classify_liveness` is pure + mutation-checked + self-tested both sides.
+  Wishlist-scoring winner @ 0.538. Push-alert transport + single-host guard remain open.
