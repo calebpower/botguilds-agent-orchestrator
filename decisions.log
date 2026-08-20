@@ -1894,3 +1894,39 @@ WISHLIST SCORING (fresh, corrected risk_to_bot=bot-only; per-char panel now DONE
 Two items now clear 0.5 (behavioral-mob, watchdog, tie ~0.51). NEXT PASS: implement my
 favourite of that tie (lean behavioral-mob — a learned bestiary directly feeds the chaser
 question + rival-recon), verified/tested; keep watching 0.36 + gold.
+
+ITER 35 (2026-08-20) — bot on explorer/0.36.0, run #92 ongoing (NO redeploy this pass).
+HEALTH (kpi_watch #92 vs #91, both large): deaths 1.54->1.34/1k (down), move_failed
+45.97->37.18/1k (0.36 retreat keeping chars unstuck — the metric I watch stays DOWN),
+gold_mean 425->584 (ALL-TIME HIGH, stockpile compounding cross-run, uncapped). Income/1k
+4.88->3.31 flagged -32% but undead_frac rose 3.3->4.2 and #92 is a PARTIAL ongoing run
+(106k vs 201k frames) — income arrives in band bursts, more undead bands = fewer coin
+windows, and net wealth is still climbing to an all-time high => known band/undead-cycle
+variation, NOT a strategy regression. No fire.
+WISHLIST SCORING (fresh, risk=bot-only; per-char panel DONE last pass):
+  behavioral-mob analysis  0.85*0.96*0.708 = 0.578  <- WINNER, shipped this pass
+  always-on watchdog       0.80*0.95*0.708 = 0.538  <- next top
+  loot/danger heatmaps     0.70*0.97*0.708 = 0.481
+  shadow-eval gate         0.75*0.90*0.708 = 0.478
+  ...(other dashboards 0.38-0.41; campaign 0.283; strategy/mechanic 0.16-0.36;
+     rival-recon tab -0.19 just-added)
+SHIPPED steemer/bestiary.py + tests/test_bestiary.py (commit 78d4b2e, read-only, NOT
+pushed). Follows each mob by its stable eid across frames to infer per-kind move_rate,
+chaser_score+behavior label, aggro_range, hit_rate, and single-adjacent-blame
+est_dmg_per_hit. Pure core mutation-checked (3 mutations caught). Local suite 256 passed
+/3 frontend-skipped; reaper not run (no frontend/strategy change).
+FINDING (live #92 bestiary): independently CONFIRMS the _is_melee_predator allowlist —
+chasers-that-hurt (cultist 0.98/6.0, wolf 0.94/4.3, boar 0.91/6.0, crab_green 0.67/4.0)
+are exactly what the strategy flees; benign allowlist members that chase (skunk 0.86,
+bat_brown 0.71, rat_grey 0.61) deal ZERO measured damage — a behavior-only "approaching=
+dangerous" classifier would false-alarm on them, so the allowlist is right. wolf move_rate
+0.22 (moves ~1 tick in 5) => a char that keeps MOVING outruns it; deaths are stuck chars
+(postmortem), so un-sticking (0.36) is the real lever, not speed. No new bot change needed.
+ALSO answered the operator's security Qs: (1) `say` prompt-injection likelihood hinges on
+whether an LLM is in the runtime chat path (not who wrote the server); the mirror risk is
+OURS if we ever feed rival-authored strings into an LLM (rival-recon item) — treat them as
+hostile data, never instructions, never give that context game-acting tools. (2) Wrote a
+DRY-RUN-default differential canary probe (scratchpad/say_injection_probe.py) — own-guild
+only, seeded/replayable, control-vs-probe token to separate chat-echo from an acting LLM.
+NEXT PASS: measure 0.36 holds + gold keeps climbing; implement always-on watchdog
+(read-only latest-frame-age alarm, 0.538) with a test, unless it's outscored.
