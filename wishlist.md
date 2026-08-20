@@ -10,6 +10,17 @@ top of **Open**.
 
 ## Open
 
+- [ ] **Short-TTL memory of recently-seen predator tiles** — char sight is partly
+  line-of-sight-occluded (~18% of mobs first appear at distance 0, i.e. a predator
+  hidden behind a wall/corner until rounded — see the spectate/LOS finding). Keep a
+  small per-world map of *where a predator was last seen* with a short expiry (a few
+  ticks), and treat those tiles as danger for pathing/dodging even after the mob drops
+  out of sight — so a char keeps steering clear of the spot a golem just slipped
+  behind a wall, instead of forgetting it instantly. Mirrors the existing
+  `STUCK_BLOCK` learned-blocked mechanism. Must expire fast because mobs move (stale
+  positions would mislead). Directly targets the occlusion gap the dodge/allowlist
+  can't cover. (surfaced answering the operator's LOS/spectate question) (operator request)
+
 - [ ] **Comprehensive per-character stats panel on the dashboard** — a live roster
   view where each character is a card/row showing everything about it in real time:
   a **live HP bar** (hp/max_hp, colour-coded, + any status like poison/burn), level
