@@ -1598,3 +1598,23 @@ Reversible: raise POTION_RESERVE or re-freeze. Decided autonomously (10-min rule
 Open follow-ups: (1) the STUCK-deep death (char not moving while bleeding) hints at a
 flee/nav gap; (2) band PRE-EMPTION (next_refresh/band_refresh_warning) to evacuate a
 world before it turns undead — the structural fix for poison-cycle deaths.
+
+## 2026-08-20 (iter 20) — explorer/0.30.0: melee-predator avoidance (the REAL death cause)
+Decision: add MELEE_THREAT_KINDS {golem_stone, delver, boar, drake, lake_drake} and
+block the tiles ADJACENT to them in field pathing, so chars route AROUND strike range
+instead of walking into it. NOT a radius-4 flee (they only hurt in melee).
+Why: run #85 (0.29.0) OVERTURNED the poison-death theory. Safe-world routing works
+(chars cluster in vale/mines at 0% undead, shun spire at 100%), yet deaths STAYED 2.23/1k
+and 12/13 were in MINES — a 0%-UNDEAD world. Traced the killer: golem_stone hits a
+full-HP char (24/24) for -15 the tick it steps adjacent, then it dies. Burst melee, not
+poison DoT — which is why 0.29's heal did nothing (a potion can't outrun a 2-hit kill).
+Empirical blame of big HP-drops (>=5/tick) on the nearest non-wildlife mob: delver 36,
+golem_stone 28, boar 18, lake_drake 5, drake 3 = ~84% of the damage, NONE in the undead
+THREAT set. The 0.25 'undead=danger, wildlife=safe' model was incomplete.
+Effect/verify: deaths should fall sharply (removes ~84% of the damage source) while
+looting/income HOLD (no radius flee, chars still gather everywhere but the mob's 8
+neighbour tiles). FALSIFIED if deaths persist (a CHASER we mis-modelled as avoid-only —
+then add a step-away when adjacent) or income craters (block strands chars from loot).
+Kept 0.29 heal-from-surplus (harmless; real DoT does exist in spire). Decided
+autonomously (10-min rule). NOTE the diagnostic method — empirical HP-drop-adjacency
+blame — is reusable; re-run it to catch any new killer a future band brings.
