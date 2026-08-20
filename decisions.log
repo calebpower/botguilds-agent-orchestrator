@@ -1576,3 +1576,25 @@ MY OWN session's process (hung that long because I was blocked on the operator) 
 there was no second agent, and the classifier was right to stop me killing my own
 process. Lesson: identify a suspicious process by PPID/own-pid before treating it
 as foreign.
+
+## 2026-08-20 (iter 19) — explorer/0.29.0: heal from surplus (potion-buy above a reserve)
+Decision: un-freeze the potion-buy but gate it on POTION_RESERVE (100g) — buy a
+potion-less char a field heal only while gold-price stays >= the reserve. Weapon-buy
+stays frozen (0.28.0).
+Why: run #84 (0.28.0) CONFIRMED the stockpile payoff — gold mean 5.7->68, median
+2->92, climbing past the old 155 peak with ZERO gold drops. But the pure freeze left
+every fielded char 100% bare AND heal-less, and a poison-heavy band cycle (undead
+1.6%->9.3%) spiked deaths 10x to 2.23/1k. Diagnosed as poison DoT, NOT combat: 21/22
+sampled deaths had no undead adjacent; traced chars bleeding 18->12->6->3 potion-less,
+one dying 1hp short of the vale edge. Roster healthy (28) and banked gold death-proof,
+but dying chars stop earning -> income halved (607->269) -> throttles the stockpile.
+So spend the SURPLUS (we finally have one) on the one counter to poison's tick.
+Effect/verify: deaths should fall toward ~0.2-0.3/1k, income recover, gold still
+accumulate above the 100 floor toward the 529 cap test. FALSIFIED if deaths stay high
+(then DoT isn't heal-outrunnable — chars die stuck/too-deep; needs a nav/depth fix,
+e.g. lower POISON_SAFE_DEPTH or fix the stuck-deep char at [54,11] that bled out
+without moving) OR if potion-spend pins gold at ~100 (too many churn-recruits armed).
+Reversible: raise POTION_RESERVE or re-freeze. Decided autonomously (10-min rule).
+Open follow-ups: (1) the STUCK-deep death (char not moving while bleeding) hints at a
+flee/nav gap; (2) band PRE-EMPTION (next_refresh/band_refresh_warning) to evacuate a
+world before it turns undead — the structural fix for poison-cycle deaths.
