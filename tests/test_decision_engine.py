@@ -445,6 +445,31 @@ def test_snatches_underfoot_coin_before_fleeing_undead():
     assert {"char_uid": "c1", "action": "pickup"} in acts
 
 
+def test_routes_around_a_melee_predator_not_into_it():
+    # v0.30.0: run #85's real death cause — a full-HP char stepped ADJACENT to a
+    # golem_stone (a melee predator absent from the undead THREAT set) and took -15,
+    # then died. Now the tiles next to such a mob are blocked, so the char won't step
+    # onto a coin sitting adjacent to the golem. (Mutation: drop golem_stone from
+    # MELEE_THREAT_KINDS and it walks E onto the coin -> into strike range.)
+    bot = _bot()
+    tiles = [[x, 3, "floor"] for x in range(4)] + [[0, 2, "floor"], [0, 4, "floor"]]
+    char = _field_char(pos=[0, 3], stamina=40)
+    frame = _field_frame(char, tiles, gold=[{"pos": [1, 3]}],
+                         entities=[{"pos": [2, 3], "faction": "monster",
+                                    "kind": "golem_stone", "hp_frac": 1.0}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "move", "dir": "E"} not in acts
+
+
+def test_a_distant_melee_predator_does_not_trigger_the_undead_flee():
+    # v0.30.0: golem_stone is melee-AVOIDED (block its neighbours), NOT flee-at-radius-4
+    # like the ranged/chasing undead — so a char 3 tiles from a golem keeps working
+    # (explores north here) instead of running home, preserving wildlife-world looting.
+    bot = _bot()
+    acts = bot.on_frame(_threat_frame("golem_stone"))
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts   # still exploring
+
+
 def test_gold_rush_beelines_to_a_gold_coin_over_loot():
     # v0.24.0: a gold coin outranks ordinary loot — chars go for banked gold first.
     bot = _bot()

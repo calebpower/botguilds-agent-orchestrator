@@ -410,11 +410,22 @@ POISON_SAFE_DEPTH = 12     # v0.23.0: a char with no field heal (potion_red) onl
 DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless of HP
 # v0.25.0: THREAT mobs — the poison/burn-dealing undead that the periodic band-refresh
 # rushes bring (they drive the death spiral). When one is within FLEE_RADIUS a healthy
-# char EVADES (flees, no loot/fight) instead of skirmishing. Extend as new threats
-# are observed; benign wildlife (skunk/boar/cow/rat/frog/…) is deliberately excluded.
+# char EVADES (flees, no loot/fight) instead of skirmishing. These CHASE/range, so we
+# keep a wide berth. (True benign wildlife — skunk/cow/sheep/chicken/turtle/rat/… — is
+# excluded; but see MELEE_THREAT_KINDS: some "wildlife" is NOT benign.)
 THREAT_KINDS = frozenset({"cultist", "zombie", "ghoul", "vampire_bat", "cinder_wisp",
                           "skeleton", "wraith", "lich", "ghast", "specter", "revenant"})
 FLEE_RADIUS = 4            # Manhattan tiles: flee when a THREAT is this close or nearer
+# v0.30.0: MELEE predators that live in the "safe" (non-undead) wildlife worlds and
+# were the ACTUAL death cause once safe-world routing (0.26) sent chars there. Run #85
+# blamed big HP-drops (>=5/tick) on: delver 36, golem_stone 28, boar 18, lake_drake 5,
+# drake 3 — none were in THREAT_KINDS, so chars walked right up to them (traced a full-HP
+# char take -15 the tick it stepped adjacent to a golem_stone, then die). Unlike the
+# ranged/chasing undead, these hurt ONLY in melee, so the fix is NOT a radius-4 flee
+# (that would strand us from the wildlife-world loot) but danger-aware PATHING: block
+# the tiles adjacent to them so we route AROUND, never INTO, strike range. Evidence-
+# gathered, not guessed — add a kind here only once HP-drop data blames it.
+MELEE_THREAT_KINDS = frozenset({"golem_stone", "delver", "boar", "drake", "lake_drake"})
 THREAT_TTL = 1200          # v0.26.0: a world's observed undead level is trusted for this
 #   many ticks; after that it's treated as unknown (re-scoutable) so a world that has
 #   emptied out (everyone fled) gets re-checked once its band may have cycled back to
@@ -507,7 +518,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.29.0"
+    version = "explorer/0.30.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -779,6 +790,14 @@ class Explorer:
         homing = uid in self._homing
         # Don't walk onto other characters OR monsters.
         blocked = ctx.bodies | set(ctx.enemies)
+        # v0.30.0: melee predators (golem_stone/delver/boar/…) only hit when we're
+        # ADJACENT, so also block the tiles next to them — pathing then routes around
+        # their strike range instead of stepping into it (run #85: a full-HP char that
+        # stepped next to a golem_stone took -15 and died). We keep the mob's own tile
+        # and its neighbours out of every walk; looting continues everywhere else.
+        for mp, en in ctx.enemies.items():
+            if en.get("kind") in MELEE_THREAT_KINDS:
+                blocked |= set(nav.neighbors(mp))
 
         trace.observe(f"at {pos} hp {hp}/{max_hp} sta {stamina} "
                       f"carry {carry['used']}/{carry['cap']}"
