@@ -38,7 +38,7 @@ def test_attacks_the_adjacent_enemy():
     frame = _field_frame(
         _field_char(),
         FLOOR3,
-        entities=[{"pos": [1, 0], "faction": "monster", "kind": "rat", "hp_frac": 0.5}],
+        entities=[{"pos": [1, 0], "faction": "monster", "kind": "rat_grey", "hp_frac": 0.5}],
     )
     actions = bot.on_frame(frame)
     assert {"char_uid": "c1", "action": "attack", "target": [1, 0]} in actions
@@ -56,7 +56,7 @@ def test_rests_when_stamina_too_low_to_act():
     char = _field_char(stamina=5)     # below MIN_AFFORD -> rest (send nothing)
     actions = bot.on_frame(_field_frame(char, FLOOR3,
                            entities=[{"pos": [1, 0], "faction": "monster",
-                                      "kind": "rat", "hp_frac": 0.1}]))
+                                      "kind": "rat_grey", "hp_frac": 0.1}]))
     assert actions == []              # no action emitted for a resting char
 
 
@@ -189,7 +189,7 @@ def test_affordability_rests_rather_than_attempting_unaffordable(tmp_path):
     char = _field_char(stamina=15)
     frame = _field_frame(char, FLOOR3,
                          entities=[{"pos": [1, 0], "faction": "monster",
-                                    "kind": "rat", "hp_frac": 0.5}])
+                                    "kind": "rat_grey", "hp_frac": 0.5}])
     assert bot.on_frame(frame) == []
 
 
@@ -198,7 +198,7 @@ def test_acts_once_stamina_is_affordable():
     char = _field_char(stamina=25)     # >= attack cost (~20)
     frame = _field_frame(char, FLOOR3,
                          entities=[{"pos": [1, 0], "faction": "monster",
-                                    "kind": "rat", "hp_frac": 0.5}])
+                                    "kind": "rat_grey", "hp_frac": 0.5}])
     assert {"char_uid": "c1", "action": "attack", "target": [1, 0]} in bot.on_frame(frame)
 
 
@@ -226,7 +226,7 @@ def test_attack_is_not_subject_to_the_move_headroom():
     char = _field_char(stamina=25)
     acts = bot.on_frame(_field_frame(char, FLOOR3,
                         entities=[{"pos": [1, 0], "faction": "monster",
-                                   "kind": "rat", "hp_frac": 0.5}]))
+                                   "kind": "rat_grey", "hp_frac": 0.5}]))
     assert {"char_uid": "c1", "action": "attack", "target": [1, 0]} in acts
 
 
@@ -234,7 +234,7 @@ def test_adjacent_monster_is_attacked_never_walked_onto():
     bot = _bot()
     frame = _field_frame(_field_char(), FLOOR3,
                          entities=[{"pos": [0, 1], "faction": "monster",
-                                    "kind": "rat", "hp_frac": 0.9}])
+                                    "kind": "rat_grey", "hp_frac": 0.9}])
     actions = bot.on_frame(frame)
     assert {"char_uid": "c1", "action": "attack", "target": [0, 1]} in actions
     # no emitted move steps onto the monster tile (0,1)
@@ -280,7 +280,7 @@ def test_retreats_at_60pct_even_when_it_would_have_fought_before(tmp_path):
     char = _field_char(pos=[0, 1], hp=15, max_hp=30, stamina=40)
     frame = _field_frame(char, _south_corridor(),
                          entities=[{"pos": [1, 1], "faction": "monster",
-                                    "kind": "rat", "hp_frac": 0.9}])
+                                    "kind": "rat_grey", "hp_frac": 0.9}])
     actions = bot.on_frame(frame)
     assert {"char_uid": "c1", "action": "move", "dir": "S"} in actions   # fleeing
     assert all(a.get("action") != "attack" for a in actions)             # not fighting
@@ -292,7 +292,7 @@ def test_poison_triggers_retreat_even_at_full_hp(tmp_path):
                        statuses=[{"kind": "poison", "ticks_left": 5, "power": 1}])
     frame = _field_frame(char, _south_corridor(),
                          entities=[{"pos": [1, 1], "faction": "monster",
-                                    "kind": "rat", "hp_frac": 0.9}])
+                                    "kind": "rat_grey", "hp_frac": 0.9}])
     actions = bot.on_frame(frame)
     assert {"char_uid": "c1", "action": "move", "dir": "S"} in actions
     assert all(a.get("action") != "attack" for a in actions)
@@ -308,7 +308,7 @@ def test_hurt_suppresses_offense_when_it_cannot_flee(tmp_path):
              [0, 0, W], [0, 2, W], [-1, 1, W]]
     frame = _field_frame(char, tiles,
                          entities=[{"pos": [1, 1], "faction": "monster",
-                                    "kind": "rat", "hp_frac": 0.5}])
+                                    "kind": "rat_grey", "hp_frac": 0.5}])
     assert bot.on_frame(frame) == []          # heal/flee only, both impossible -> rest
 
 
@@ -487,16 +487,32 @@ def test_dodges_an_adjacent_melee_predator_instead_of_fighting_it():
     assert all(a.get("dir") != "N" for a in moves)   # N (+y) steps toward the delver
 
 
-def test_still_attacks_a_harmless_adjacent_mob():
-    # regression guard: the 0.31.0 dodge is ONLY for melee predators — a harmless rat
-    # adjacent is still attacked, so the dodge does not neuter normal combat.
+def test_still_attacks_a_confirmed_benign_adjacent_mob():
+    # regression guard: the dodge is ONLY for predators — a CONFIRMED-benign mob
+    # (chicken, in WILDLIFE_SAFE) adjacent is still attacked, so the dodge/allowlist
+    # does not neuter normal combat/loot-for-drops on harmless wildlife.
     bot = _bot()
     tiles = [[x, y, "floor"] for x in range(3) for y in range(3)]
     char = _field_char(pos=[1, 1], stamina=40)
     frame = _field_frame(char, tiles,
-                         entities=[{"pos": [1, 2], "faction": "monster", "kind": "rat", "hp_frac": 0.5}])
+                         entities=[{"pos": [1, 2], "faction": "monster", "kind": "chicken", "hp_frac": 0.5}])
     acts = bot.on_frame(frame)
     assert {"char_uid": "c1", "action": "attack", "target": [1, 2]} in acts
+
+
+def test_an_unknown_new_mob_is_avoided_by_default():
+    # v0.32.0 INVERSION: a mob never seen before (a fresh band's lava_ant) is NOT in
+    # WILDLIFE_SAFE, so it is a predator by DEFAULT — dodged when adjacent, never
+    # attacked. This is the whole point: new killers are avoided on sight, not after
+    # the first corpse. (Mutation: add "lava_ant" to WILDLIFE_SAFE and it gets attacked.)
+    bot = _bot()
+    tiles = [[x, y, "floor"] for x in range(3) for y in range(3)]
+    char = _field_char(pos=[1, 1], stamina=40)
+    frame = _field_frame(char, tiles,
+                         entities=[{"pos": [1, 2], "faction": "monster", "kind": "lava_ant", "hp_frac": 1.0}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "attack", "target": [1, 2]} not in acts   # never fight it
+    assert [a for a in acts if a.get("action") == "move"], "should dodge the unknown mob"
 
 
 def test_gold_rush_beelines_to_a_gold_coin_over_loot():
@@ -695,7 +711,7 @@ def test_field_character_that_is_crafting_rests():
     char = _field_char(craft={"kind": "brew", "ticks_left": 5})
     frame = _field_frame(char, FLOOR3,
                          entities=[{"pos": [1, 0], "faction": "monster",
-                                    "kind": "rat", "hp_frac": 0.2}])
+                                    "kind": "rat_grey", "hp_frac": 0.2}])
     # busy crafting -> take no action (any action would error `crafting`)
     assert bot.on_frame(frame) == []
 
@@ -1010,7 +1026,7 @@ def test_decisions_are_persisted(tmp_path):
     bot = _bot(storage=s)
     bot.on_frame(_field_frame(_field_char(), FLOOR3,
                  entities=[{"pos": [1, 0], "faction": "monster",
-                            "kind": "rat", "hp_frac": 0.5}]))
+                            "kind": "rat_grey", "hp_frac": 0.5}]))
     row = s.conn.execute(
         "SELECT char_uid, action, reasoning FROM decisions").fetchone()
     assert row[0] == "c1" and row[1] == "attack"

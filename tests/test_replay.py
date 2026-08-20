@@ -13,7 +13,7 @@ def _record_field_frame_with_enemy(db_path):
                    "inventory": [], "stats": {}, "equipment": {}}],
         "visible": {"tiles": [[0, 0, "floor"], [0, 1, "floor"], [1, 0, "floor"]],
                     "entities": [{"pos": [1, 0], "faction": "monster",
-                                  "kind": "rat", "hp_frac": 0.5}],
+                                  "kind": "rat_grey", "hp_frac": 0.5}],
                     "items": [], "gold": []},
     })
     s.close()

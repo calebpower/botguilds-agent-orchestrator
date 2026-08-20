@@ -411,25 +411,28 @@ DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless 
 # v0.25.0: THREAT mobs — the poison/burn-dealing undead that the periodic band-refresh
 # rushes bring (they drive the death spiral). When one is within FLEE_RADIUS a healthy
 # char EVADES (flees, no loot/fight) instead of skirmishing. These CHASE/range, so we
-# keep a wide berth. (True benign wildlife — skunk/cow/sheep/chicken/turtle/rat/… — is
-# excluded; but see MELEE_THREAT_KINDS: some "wildlife" is NOT benign.)
+# keep a wide berth. (Everything that isn't undead and isn't in WILDLIFE_SAFE is treated
+# as a melee predator — block-adjacent + dodge — see _is_melee_predator.)
 THREAT_KINDS = frozenset({"cultist", "zombie", "ghoul", "vampire_bat", "cinder_wisp",
                           "skeleton", "wraith", "lich", "ghast", "specter", "revenant"})
 FLEE_RADIUS = 4            # Manhattan tiles: flee when a THREAT is this close or nearer
-# v0.30.0: MELEE predators that live in the "safe" (non-undead) wildlife worlds and
-# were the ACTUAL death cause once safe-world routing (0.26) sent chars there. Run #85
-# blamed big HP-drops (>=5/tick) on: delver 36, golem_stone 28, boar 18, lake_drake 5,
-# drake 3 — none were in THREAT_KINDS, so chars walked right up to them (traced a full-HP
-# char take -15 the tick it stepped adjacent to a golem_stone, then die). Unlike the
-# ranged/chasing undead, these hurt ONLY in melee, so the fix is NOT a radius-4 flee
-# (that would strand us from the wildlife-world loot) but danger-aware PATHING: block
-# the tiles adjacent to them so we route AROUND, never INTO, strike range. Evidence-
-# gathered, not guessed — add a kind here only once HP-drop data blames it.
-MELEE_THREAT_KINDS = frozenset({"golem_stone", "delver", "boar", "drake", "lake_drake",
-                                # v0.31.0: added after run #86's HP-drop blame caught them
-                                # (spider_brown 6, wolf 3, crab_green 1) once 0.30.0's
-                                # block-adjacent zeroed out golem_stone's hits.
-                                "spider_brown", "wolf", "crab_green"})
+# v0.32.0: INVERTED to a benign ALLOWLIST. The 0.30/0.31 denylist (golem_stone,
+# delver, boar, spider_brown, …) was structurally doomed: every band-refresh rotates
+# in NEW mobs, so a hardcoded threat list is always a cycle behind and chars die to
+# each newcomer until it's cataloged. Run #87 proved it — the dodge/block ZEROED the
+# known killers (delver 25->0, spider 6->0) but deaths ROSE to 4.0/1k because a fresh
+# band brought lava_ant (40 HP-drops) and rhino_beetle (7), in no set. So flip the
+# model: a monster is a MELEE PREDATOR by DEFAULT unless it's confirmed-benign wildlife
+# here. New/unknown mobs are now avoided (block-adjacent + dodge) on sight instead of
+# after the first corpse. WILDLIFE_SAFE holds only kinds never once blamed for a
+# >=5/tick HP-drop across runs #85-87 (turtle/chicken/cow/sheep/frog/skunk/rat/mole/
+# bat). Undead (THREAT_KINDS) keep their wider radius-4 flee; everything else that
+# isn't benign gets the melee treatment.
+WILDLIFE_SAFE = frozenset({"turtle", "chicken", "cow", "sheep", "frog", "skunk",
+                           "rat_grey", "mole", "bat_brown"})
+# Confirmed-dangerous kinds seen so far (documentation only — the LOGIC uses the
+# allowlist above, so this need not be exhaustive): golem_stone, delver, boar, drake,
+# lake_drake, spider_brown, wolf, crab_green, lava_ant, rhino_beetle.
 THREAT_TTL = 1200          # v0.26.0: a world's observed undead level is trusted for this
 #   many ticks; after that it's treated as unknown (re-scoutable) so a world that has
 #   emptied out (everyone fled) gets re-checked once its band may have cycled back to
@@ -522,7 +525,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.31.0"
+    version = "explorer/0.32.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -800,7 +803,7 @@ class Explorer:
         # stepped next to a golem_stone took -15 and died). We keep the mob's own tile
         # and its neighbours out of every walk; looting continues everywhere else.
         for mp, en in ctx.enemies.items():
-            if en.get("kind") in MELEE_THREAT_KINDS:
+            if self._is_melee_predator(en.get("kind")):
                 blocked |= set(nav.neighbors(mp))
 
         trace.observe(f"at {pos} hp {hp}/{max_hp} sta {stamina} "
@@ -888,7 +891,7 @@ class Explorer:
         # that maximises distance from every melee predator — do NOT fight it (attacking
         # a delver is a fast death) and do NOT linger to loot. Scoped to dist 1, so the
         # wildlife worlds stay lootable otherwise (this is NOT the radius-4 undead flee).
-        preds = [p for p, en in ctx.enemies.items() if en.get("kind") in MELEE_THREAT_KINDS]
+        preds = [p for p, en in ctx.enemies.items() if self._is_melee_predator(en.get("kind"))]
         melee_adj = [p for p in nav.neighbors(pos) if p in preds]
         if melee_adj:
             kind = ctx.enemies[melee_adj[0]].get("kind", "melee predator")
@@ -1044,6 +1047,15 @@ class Explorer:
             return None
         best = min(affordable, key=lambda s: s["buy_price"])
         return best["kind"], best["buy_price"]
+
+    @staticmethod
+    def _is_melee_predator(kind: str | None) -> bool:
+        """v0.32.0: a hostile monster (ctx.enemies is faction==monster only) is a
+        melee predator to avoid UNLESS it is confirmed-benign wildlife or one of the
+        ranged/chasing undead (which get the wider radius-4 flee instead). Default-
+        dangerous, so a brand-new band mob is dodged on sight, not after the first
+        death."""
+        return bool(kind) and kind not in WILDLIFE_SAFE and kind not in THREAT_KINDS
 
     @staticmethod
     def _afford_potion(frame: dict[str, Any], gold: int) -> tuple[str, int] | None:
