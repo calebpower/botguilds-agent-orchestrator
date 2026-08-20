@@ -515,6 +515,53 @@ def test_an_unknown_new_mob_is_avoided_by_default():
     assert [a for a in acts if a.get("action") == "move"], "should dodge the unknown mob"
 
 
+def test_cracks_a_chest_beside_a_predator_before_dodging():
+    # v0.33.0: a chest (1-21g + loot, tomes 24-44g) beside a predator is worth one hit —
+    # crack it, THEN dodge next tick. 0.32.0 would have just dodged and left it. (This is
+    # the income-recovery half of the survival/income tradeoff the KPI alarm flagged.)
+    bot = _bot()
+    tiles = [[x, y, "floor"] for x in range(3) for y in range(3)
+             if (x, y) != (0, 1)] + [[0, 1, "chest"]]
+    char = _field_char(pos=[1, 1], stamina=40)
+    frame = _field_frame(char, tiles,
+                         entities=[{"pos": [1, 2], "faction": "monster",
+                                    "kind": "golem_stone", "hp_frac": 1.0}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "open", "target": [0, 1]} in acts
+
+
+def test_reaches_a_chest_whose_access_is_beside_a_predator():
+    # v0.33.0: a chest boxed in so its only walkable access tile sits beside a predator
+    # is now REACHABLE — 0.32.0 hard-blocked every predator-adjacent tile and cratered
+    # chest-opens (-69%). golem [1,1]; chest [0,0]; the access tile [0,1] is golem-
+    # adjacent (blocked in 0.32.0) but chest-access is now exempt, so the char steps to
+    # it. (Mutation: drop the chest_access exemption and it can't approach.)
+    bot = _bot()
+    tiles = [[0, 0, "chest"], [0, 1, "floor"], [0, 2, "floor"],
+             [1, 1, "floor"], [1, 2, "floor"]]
+    char = _field_char(pos=[0, 2], stamina=40)
+    frame = _field_frame(char, tiles,
+                         entities=[{"pos": [1, 1], "faction": "monster",
+                                    "kind": "golem_stone", "hp_frac": 1.0}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts   # stepping to [0,1]
+
+
+def test_still_will_not_beeline_a_coin_that_sits_beside_a_predator():
+    # v0.33.0 guard: only CHESTS (high value) justify stepping into strike range; a
+    # single ~2g coin is NOT worth a -15 hit, so a predator-adjacent COIN stays blocked
+    # (this is the pre-existing routes-around behaviour, re-asserted after the chest
+    # exemption to prove coins were not also loosened).
+    bot = _bot()
+    tiles = [[x, 3, "floor"] for x in range(4)] + [[0, 2, "floor"], [0, 4, "floor"]]
+    char = _field_char(pos=[0, 3], stamina=40)
+    frame = _field_frame(char, tiles, gold=[{"pos": [1, 3]}],
+                         entities=[{"pos": [2, 3], "faction": "monster",
+                                    "kind": "golem_stone", "hp_frac": 1.0}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "move", "dir": "E"} not in acts
+
+
 def test_gold_rush_beelines_to_a_gold_coin_over_loot():
     # v0.24.0: a gold coin outranks ordinary loot — chars go for banked gold first.
     bot = _bot()

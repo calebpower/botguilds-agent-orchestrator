@@ -525,7 +525,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.32.0"
+    version = "explorer/0.33.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -800,11 +800,20 @@ class Explorer:
         # v0.30.0: melee predators (golem_stone/delver/boar/…) only hit when we're
         # ADJACENT, so also block the tiles next to them — pathing then routes around
         # their strike range instead of stepping into it (run #85: a full-HP char that
-        # stepped next to a golem_stone took -15 and died). We keep the mob's own tile
-        # and its neighbours out of every walk; looting continues everywhere else.
+        # stepped next to a golem_stone took -15 and died).
+        # v0.33.0: but do NOT wall chars off from CHESTS that merely sit by a predator.
+        # Run #88 showed 0.32.0's block-everything-adjacent cratered chest-opens (-69%)
+        # and income (-53%) at a constant undead level — chars couldn't reach chests
+        # next to mobs. A chest is 1-21g PLUS loot (tomes 24-44g), easily worth one hit
+        # + a dodge; a single ~2g coin is NOT worth stepping into a -15 golem swing, so
+        # only chest-ACCESS tiles are exempted from the block (coins/loot beside a mob
+        # stay blocked — but an underfoot coin is grabbed for free in the dodge below,
+        # since standing there already incurs the hit). The char cracks the chest, then
+        # the dodge steps it out next tick.
+        chest_access = {n for c in ctx.containers for n in nav.neighbors(c)}
         for mp, en in ctx.enemies.items():
             if self._is_melee_predator(en.get("kind")):
-                blocked |= set(nav.neighbors(mp))
+                blocked |= (set(nav.neighbors(mp)) - chest_access)
 
         trace.observe(f"at {pos} hp {hp}/{max_hp} sta {stamina} "
                       f"carry {carry['used']}/{carry['cap']}"
@@ -896,6 +905,16 @@ class Explorer:
         if melee_adj:
             kind = ctx.enemies[melee_adj[0]].get("kind", "melee predator")
             trace.observe(f"a {kind} is adjacent — dodging (not fighting)")
+            # v0.33.0: harvest the value we came for BEFORE stepping away — one grab is
+            # worth a hit (banked gold is death-proof), and the dodge takes us out next
+            # tick. Scored above the dodge (7.3) so grab/crack wins this tick.
+            if pos in ctx.gold or pos in ctx.loot:
+                offer({"char_uid": uid, "action": "pickup"}, 7.5,
+                      f"grabbing the loot underfoot before dodging the {kind}")
+            box = next((p for p in nav.neighbors(pos) if p in ctx.containers), None)
+            if box:
+                offer({"char_uid": uid, "action": "open", "target": list(box)}, 7.5,
+                      f"cracking the adjacent chest before dodging the {kind}")
             def _pred_dist(t: tuple[int, int]) -> int:
                 return min(abs(t[0] - q[0]) + abs(t[1] - q[1]) for q in preds)
             cands = [t for t in nav.neighbors(pos)
