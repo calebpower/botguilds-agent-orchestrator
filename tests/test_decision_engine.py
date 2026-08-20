@@ -994,11 +994,45 @@ def test_broke_char_below_cheapest_weapon_buys_nothing():
 
 
 def test_hoard_buys_neither_weapon_nor_potion_while_bare_handed():
-    # v0.28.0 + v0.24.0: at gold 20 the old logic would arm (weapon before potion);
-    # now BOTH the weapon-buy (0.28.0) and the potion-buy (0.24.0 hoard) are frozen,
-    # so a bare char at 20g buys nothing at all — every coin stays in the treasury.
+    # v0.28.0 + v0.29.0: at gold 20 the old logic would arm (weapon before potion);
+    # now the weapon-buy is frozen (0.28.0) and the potion-buy is gated on
+    # POTION_RESERVE (0.29.0) — 20 - 20 = 0 is far below the 100 reserve — so a bare
+    # char at 20g buys nothing at all; every coin stays in the treasury.
     bot = _bot()
     assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(20)))
+
+
+def test_village_heals_a_potionless_char_from_surplus():
+    # v0.29.0: with the hoard well above the reserve (120 - 20 = 100 >= POTION_RESERVE),
+    # a potion-less char buys a field heal to outrun poison's DoT. (Weapon-buy stays
+    # frozen, so the potion is the ONLY buy.)
+    bot = _bot()
+    acts = bot.on_frame(_barehand_frame(120))
+    assert acts == [{"char_uid": "c1", "action": "buy", "kind": "potion_red"}]
+
+
+def test_village_holds_the_reserve_floor_and_skips_the_heal_below_it():
+    # v0.29.0 reserve floor: one gold short of surplus (119 - 20 = 99 < 100) the buy
+    # is skipped so the stockpile never dips below POTION_RESERVE. Mutation-guards the
+    # boundary — off-by-one here would let the drain leak back in.
+    bot = _bot()
+    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(119)))
+
+
+def test_village_does_not_stockpile_a_second_potion():
+    # v0.29.0 buys at most POTION_KEEP: a char already carrying its heal buys no more,
+    # even with a huge surplus — the heal-buy is bounded, unlike the old club drain.
+    bot = _bot()
+    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(500, potions=1)))
+
+
+def test_afford_potion_respects_the_reserve():
+    # Unit-test the gate directly: the potion is offered only when the buy leaves the
+    # treasury at or above POTION_RESERVE (100), and the price is read from the shop.
+    from steemer.strategy.explorer import Explorer, POTION_RESERVE
+    frame = _barehand_frame(0)  # carries _SHOP with potion_red @ 20
+    assert Explorer._afford_potion(frame, POTION_RESERVE + 20) == ("potion_red", 20)
+    assert Explorer._afford_potion(frame, POTION_RESERVE + 19) is None
 
 
 def test_afford_weapon_respects_the_stat_requirement():

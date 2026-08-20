@@ -429,6 +429,19 @@ CONTAINERS = frozenset({"chest", "safe"})
 DEFAULT_MAPS = ("vale", "mines", "spire")
 REST_SCORE = 0.5           # the floor: rest wins only when nothing affordable beats it
 POTION_KEEP = 1            # potions to carry into the field per character
+# v0.29.0: heal from SURPLUS. The 0.24.0 hoard froze the potion-buy to stockpile;
+# 0.28.0 froze the last spend (clubs) and the treasury finally climbed (run #84
+# gold mean 5.7 -> 68, median 2 -> 92, climbing past 155 with ZERO drops). But the
+# freeze left every fielded char 100% bare AND heal-less, and a poison-heavy band
+# cycle (undead 1.6% -> 9.3%) spiked deaths 10x to 2.23/1k. The deaths are NOT
+# combat: 21/22 had no undead adjacent — chars get poisoned deep, flee, and BLEED
+# OUT from the DoT mid-retreat (traced: hp 18->12->6->3 with a potion-less pack).
+# So now that a stockpile EXISTS, spend its SURPLUS on the one thing that outruns
+# poison's tick: buy a heal-less char a potion, but ONLY while gold stays above
+# POTION_RESERVE. This keeps a growing hoard floor (never spends below the reserve)
+# yet keeps earners alive -> more looting -> the hoard grows FASTER. Bounded, unlike
+# the old club drain: at most POTION_KEEP potion per char, and gated on the reserve.
+POTION_RESERVE = 100       # never let the potion-buy pull the treasury below this
 POTION_MIN_GOLD = 20       # buy a potion once we can afford one (its shop price is
 #   20g; v0.17.0 dropped the old arbitrary 25g buffer — a poison death loses the
 #   char's gear+loot, far more than 20g, so a heal is worth buying at cost).
@@ -494,7 +507,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.28.0"
+    version = "explorer/0.29.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -597,11 +610,20 @@ class Explorer:
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "buy", "kind": kind},
                         f"buying a {kind} ({price}g; bare-handed — arming to break the poverty trap)")]
-            # 4) GOLD-RUSH HOARD (v0.24.0): potion-buying is FROZEN — every coin is
-            #    stockpiled. (Operator directive: prioritise grabbing & hoarding gold;
-            #    keep only the cheap club for defence — see step 3.) Survival now comes
-            #    from avoiding combat and staying shallow (v0.23.0), plus free brewed
-            #    potions below, not from spending the treasury on 20-gold potions.
+            # 4) HEAL FROM SURPLUS (v0.29.0): the 0.24.0 hoard froze potion-buying;
+            #    now that a stockpile exists (0.28.0), spend its SURPLUS on the one
+            #    thing that outruns poison's DoT — a field heal for a potion-less
+            #    char — but only while gold stays above POTION_RESERVE, so the hoard
+            #    floor holds and keeps climbing. Run #84 proved the need: a poison
+            #    cycle bled potion-less chars out mid-retreat (deaths 0.2 -> 2.23/1k).
+            potions_held = sum(1 for i in inv if i["kind"] == "potion_red")
+            if potions_held < POTION_KEEP:
+                buy = self._afford_potion(frame, gold)
+                if buy is not None:
+                    kind, price = buy
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "buy", "kind": kind},
+                        f"buying a {kind} ({price}g from surplus; a heal to outrun poison's tick)")]
             # 4b) brew looted ingredients into potions — but only with a bottle we
             #     already hold; the bottle-BUY is frozen too (hoard). Free potions
             #     from foraged herbs still help protect a char's carried loot.
@@ -973,6 +995,21 @@ class Explorer:
             return None
         best = min(affordable, key=lambda s: s["buy_price"])
         return best["kind"], best["buy_price"]
+
+    @staticmethod
+    def _afford_potion(frame: dict[str, Any], gold: int) -> tuple[str, int] | None:
+        """The field heal (``potion_red``) from live shop stock, but ONLY if buying
+        it leaves the treasury at or above POTION_RESERVE (v0.29.0 heal-from-surplus).
+        Prices read from the frame, never hardcoded. ``None`` if out of stock or the
+        buy would dip the hoard below the reserve — so the stockpile floor holds."""
+        stock = (frame.get("shop", {}) or {}).get("stock", []) or []
+        for s in stock:
+            if s.get("kind") == "potion_red" and isinstance(s.get("buy_price"), int):
+                price = s["buy_price"]
+                if gold - price >= POTION_RESERVE:
+                    return "potion_red", price
+                return None
+        return None
 
     @staticmethod
     def _choose_brew(brewables: list[dict[str, Any]]
