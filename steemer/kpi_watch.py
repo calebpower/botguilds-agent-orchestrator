@@ -27,15 +27,20 @@ from typing import Any
 # kpi -> (higher_is_better, min_abs_change, rel_threshold_frac). A KPI absent here is
 # treated as CONTEXT (reported, never flagged) — see CONTEXT_KPIS.
 KPI_SPECS: dict[str, tuple[bool, float, float]] = {
-    "deaths_per_1k":      (False, 0.20, 0.25),
-    "move_failed_per_1k": (False, 1.00, 0.30),
-    "income_total":       (True,  50.0, 0.25),
-    "gold_mean":          (True,  10.0, 0.20),
-    "chest_opens":        (True,  2.00, 0.30),
+    "deaths_per_1k":       (False, 0.20, 0.25),
+    "move_failed_per_1k":  (False, 1.00, 0.30),
+    # v0.35.0-era fix: FLAG the per-1k RATES, never the cumulative totals. Comparing a
+    # 30k mid-run to a 64k full run made income_total/chest_opens look -65% when the
+    # per-frame rate was ~flat — run length confounded the alarm and nearly caused a
+    # misread. Rates are frame-normalised so they compare cleanly across run lengths.
+    "income_per_1k":       (True,  1.00, 0.25),
+    "gold_mean":           (True,  10.0, 0.20),
+    "chest_opens_per_1k":  (True,  0.03, 0.30),
 }
 
-# Reported alongside the KPIs to contextualise them; never itself flagged.
-CONTEXT_KPIS = ("undead_frac", "frames")
+# Reported alongside the KPIs to contextualise them; never itself flagged. The cumulative
+# totals stay here (useful to see) but are NOT flagged — only their per-1k rates are.
+CONTEXT_KPIS = ("undead_frac", "frames", "income_total", "chest_opens")
 
 
 def flag_regressions(
@@ -100,11 +105,15 @@ def compute_run_kpis(conn: Any, run_id: int) -> dict[str, float]:
     kpis: dict[str, float] = {"frames": float(n)}
     kpis["deaths_per_1k"] = 1000.0 * ev_count("death") / n
     kpis["move_failed_per_1k"] = 1000.0 * ev_count("move_failed") / n
-    kpis["chest_opens"] = float(ev_count("opened"))
-    kpis["income_total"] = float(
+    opens = ev_count("opened")
+    kpis["chest_opens"] = float(opens)                 # context (cumulative)
+    kpis["chest_opens_per_1k"] = 1000.0 * opens / n    # flagged (rate)
+    income = float(
         ev_gold_sum("sale", "gold") + ev_gold_sum("gold", "amount")
         + ev_gold_sum("opened", "gold")
     )
+    kpis["income_total"] = income                      # context (cumulative)
+    kpis["income_per_1k"] = 1000.0 * income / n        # flagged (rate)
 
     # gold_mean from village frames (guild.gold snapshots)
     golds: list[int] = []
