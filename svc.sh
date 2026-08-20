@@ -27,7 +27,7 @@ act="${1:-}"; svc="${2:-}"
 DASH_HOST="${DASH_HOST:-0.0.0.0}"; DASH_PORT="${DASH_PORT:-8800}"
 case "$svc" in
     bot)  cmd="./run-live.sh"                       ; pidf="run/bot.pid"  ; log="${STEEMER_LOG:-steemer-live.log}";;
-    web)  cmd="uv run python tools/web_sidecar.py"  ; pidf="run/web.pid"  ; log="web-sidecar.log";;
+    web)  cmd="uv run python tools/web_sidecar.py --color-seconds 1"  ; pidf="run/web.pid"  ; log="web-sidecar.log";;
     dash) cmd="uv run python ui/server.py --host $DASH_HOST --port $DASH_PORT"; pidf="run/dash.pid"; log="ui-server.log";;
     *)    echo "usage: $0 {up|down|restart|status} {bot|web|dash}" >&2; exit 2;;
 esac
