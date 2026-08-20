@@ -435,8 +435,17 @@ PRED_SPACING_RADIUS = 2    # v0.37.0: step away from a MELEE predator this close
 #   char keeps working — but still above rest, so it never idles adjacent to a predator.
 SPACE_SCORE_SEVERE = 3.0    # beats scout(1.0)/frontier(2.0-2.5): char leaves a dangerous band
 SPACE_SCORE_CALM = 1.5      # beats rest(0.5)/scout(1.0), LOSES to frontier(2.0+)/gather(4.0+)
-UNDEAD_SEVERE_FRAC = 0.15   # >=15% of visible mobs undead -> a lethal (poison-DoT) undead band
-MELEE_DENSE_N = 3           # this many melee predators visible -> swarmed, treat as severe
+# v0.39.0 PER-CHARACTER ROLES (operator's Phase 2): a char's role biases the severity
+# threshold at which it flips harvest<->survive, so the roster diversifies its risk. The
+# role is DERIVED from level (protect the XP investment), not stored, so it self-adjusts:
+#   GUARDIAN = a leveled veteran -> disengages EARLY (low thresholds), protect the investment.
+#   FORAGER  = a fresh recruit   -> works the EDGES of danger for income (high thresholds);
+#              cheap to replace, and a forager that banks coins before dying beats a timid one.
+GUARDIAN_LEVEL = 4             # level >= this -> Guardian; else Forager
+UNDEAD_SEVERE_GUARDIAN = 0.08  # veteran trips "severe" at half the undead fraction...
+MELEE_DENSE_GUARDIAN = 2       # ...and at 2 melee predators (disengage early)
+UNDEAD_SEVERE_FORAGER = 0.20   # recruit tolerates a denser band before disengaging...
+MELEE_DENSE_FORAGER = 4        # ...and needs 4 melee predators to call it severe
 # v0.32.0: INVERTED to a benign ALLOWLIST. The 0.30/0.31 denylist (golem_stone,
 # delver, boar, spider_brown, …) was structurally doomed: every band-refresh rotates
 # in NEW mobs, so a hardcoded threat list is always a cycle behind and chars die to
@@ -554,8 +563,17 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 #   what kills the 0.15.0 pickup<->drop thrash (a shed item re-grabbed off own tile).
 
 
+def role_of(char: dict[str, Any]) -> str:
+    """v0.39.0 per-character role, derived from level (not stored, so it self-adjusts as a
+    char levels up). A leveled veteran is a GUARDIAN (worth protecting -> disengages early);
+    a fresh recruit is a FORAGER (cheap -> works the edges of danger for income). Shared by
+    the strategy (biases the severity threshold) and the dashboard (shows the role), so the
+    role has ONE source of truth."""
+    return "guardian" if (char.get("level") or 0) >= GUARDIAN_LEVEL else "forager"
+
+
 class Explorer:
-    version = "explorer/0.38.0"
+    version = "explorer/0.39.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -998,12 +1016,19 @@ class Explorer:
                     # v0.38.0: is THIS band severe? undead fraction (poison-DoT bands are the
                     # lethal ones) or a melee-predator swarm. `threats` (undead here) and `preds`
                     # were computed above. In a calm band, spacing yields to gather/explore.
+                    # v0.39.0: the char's ROLE biases the threshold — a Guardian (veteran)
+                    # disengages early; a Forager (recruit) works a denser band for income.
                     undead_frac = (len(threats) / len(ctx.enemies)) if ctx.enemies else 0.0
-                    severe = undead_frac >= UNDEAD_SEVERE_FRAC or len(preds) >= MELEE_DENSE_N
+                    role = role_of(char)
+                    if role == "guardian":
+                        uf, dn = UNDEAD_SEVERE_GUARDIAN, MELEE_DENSE_GUARDIAN
+                    else:
+                        uf, dn = UNDEAD_SEVERE_FORAGER, MELEE_DENSE_FORAGER
+                    severe = undead_frac >= uf or len(preds) >= dn
                     score = SPACE_SCORE_SEVERE if severe else SPACE_SCORE_CALM
                     band = "severe" if severe else "calm"
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, best)},
-                          score, f"a {kind} is {_sp_dist(pos)} away ({band} band) — spacing off",
+                          score, f"{role}: a {kind} is {_sp_dist(pos)} away ({band} band) — spacing off",
                           urgent=True)
 
         # --- Healthy: fight / gather / explore. ---

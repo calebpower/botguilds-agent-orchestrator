@@ -194,6 +194,8 @@ def test_party_panel_renders_character_cards(dashboard_with_char, page: Page):
     expect(card).to_contain_text("Recruit-1")
     expect(card.locator(".bar")).to_have_count(2)          # HP + stamina bars
     expect(card.locator(".chip.pois")).to_contain_text("poison")   # status chip
+    # v0.39.0 per-char role chip: the seeded char is level 3 (< GUARDIAN_LEVEL) -> forager
+    expect(card.locator(".pc-role.role-forager")).to_contain_text("forager")
 
 
 def test_timeline_story_mode_narrates_versions(dashboard, page: Page):

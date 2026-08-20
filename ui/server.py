@@ -45,6 +45,7 @@ from urllib.parse import parse_qs, urlparse
 # owns the authored lab-notebook loader, and db owns the SQLite/MariaDB seam.
 from steemer import db as _db
 from steemer import findings, metrics
+from steemer.strategy.explorer import role_of
 from steemer.storage import DEFAULT_DB
 
 # Repo root is the parent of this ui/ directory; the authored notebook and the
@@ -625,6 +626,7 @@ def api_roster(db_path: str) -> dict:
                 "hp": c.get("hp"), "max_hp": c.get("max_hp"),
                 "stamina": c.get("stamina"), "max_stamina": c.get("max_stamina"),
                 "level": c.get("level"), "xp": c.get("xp"),
+                "role": role_of(c),        # v0.39.0 per-char role (shared source of truth)
                 "stats": c.get("stats") or {}, "gifts": list(c.get("gifts") or []),
                 "equipment": {k: eq.get(k) for k in
                               ("hand", "offhand", "outfit", "trinket", "boots")},
@@ -1387,6 +1389,10 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
 .pc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}
 .pc-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .pc-name{font-weight:600}
+.pc-role{font-size:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;
+  padding:1px 7px;border-radius:999px;margin-right:auto}
+.pc-role.role-guardian{background:color-mix(in srgb,var(--s1) 22%,transparent);color:var(--s1)}
+.pc-role.role-forager{background:color-mix(in srgb,var(--good) 22%,transparent);color:var(--good)}
 .pc-where{color:var(--muted);font-size:12px}
 .bar{height:9px;border-radius:5px;background:var(--border);overflow:hidden;margin:3px 0 8px}
 .bar>span{display:block;height:100%}
@@ -2333,6 +2339,7 @@ function pcCard(c){
   const carry=c.carry||{};
   return '<div class="pc">'
     +'<div class="pc-head"><span class="pc-name">'+esc(c.name)+'</span>'
+      +(c.role?('<span class="pc-role role-'+esc(c.role)+'" title="risk role (from level): guardians disengage early, foragers work the edges">'+esc(c.role)+'</span>'):"")
       +'<span class="pc-where">'+esc(c.world)+(c.pos?(" ("+esc(c.pos[0])+","+esc(c.pos[1])+")"):"")+'</span></div>'
     + pcBar(hpCls, c.hp, c.max_hp, "HP")
     + (c.max_stamina!=null ? pcBar("sta", c.stamina, c.max_stamina, "Stamina") : "")

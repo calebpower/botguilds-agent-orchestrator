@@ -116,17 +116,17 @@ _SPACE_TILES = [[0, 1, "floor"], [0, 2, "floor"], [0, 3, "floor"], [1, 2, "floor
 
 
 def test_severe_band_spaces_off_from_the_predators():
-    # v0.38.0: a predator SWARM (>= MELEE_DENSE_N in view) is a severe band -> spacing (3.0)
-    # beats the frontier, so the char disengages SOUTH (away from the ONE near predator)
-    # rather than working. The extra predators are far NORTH — they only raise the count to
-    # trip MELEE_DENSE_N; they don't block the east frontier the calm case would take, so the
-    # S-vs-not-S choice cleanly reflects the severity gate.
+    # a predator SWARM is a severe band -> spacing (3.0) beats the frontier, so the char
+    # disengages SOUTH (away from the ONE near predator). The default char has no level, so
+    # it's a FORAGER (MELEE_DENSE_FORAGER == 4); the extra predators are far NORTH (count only,
+    # they don't block the east frontier the calm case would take), giving a clean S-vs-not-S.
     bot = _bot()
     char = _field_char(pos=[0, 2], stamina=40)
     acts = bot.on_frame(_field_frame(char, _SPACE_TILES, entities=[
         {"pos": [0, 4], "faction": "monster", "kind": "wolf"},     # near (dist 2)
         {"pos": [0, 8], "faction": "monster", "kind": "boar"},     # far -> count only
-        {"pos": [0, 10], "faction": "monster", "kind": "wolf"}]))  # far -> count only
+        {"pos": [0, 10], "faction": "monster", "kind": "wolf"},    # far -> count only
+        {"pos": [0, 14], "faction": "monster", "kind": "boar"}]))  # 4th -> trips forager's 4
     assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts     # away from the swarm
 
 
@@ -176,6 +176,36 @@ def test_benign_wildlife_does_not_trigger_spacing():
     acts = bot.on_frame(_field_frame(char, _SPACE_TILES,
                         entities=[{"pos": [0, 4], "faction": "monster", "kind": "chicken"}]))
     assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts     # not spaced away
+
+
+def test_role_of_is_derived_from_level():
+    # v0.39.0: a leveled veteran is a Guardian, a fresh recruit a Forager. Missing level
+    # (a not-yet-seen char) defaults to Forager, the low-risk assumption.
+    from steemer.strategy.explorer import role_of, GUARDIAN_LEVEL
+    assert role_of({"level": GUARDIAN_LEVEL}) == "guardian"
+    assert role_of({"level": GUARDIAN_LEVEL + 3}) == "guardian"
+    assert role_of({"level": GUARDIAN_LEVEL - 1}) == "forager"
+    assert role_of({"level": 1}) == "forager"
+    assert role_of({}) == "forager"
+
+
+def test_guardian_disengages_where_a_forager_keeps_working():
+    # v0.39.0 the role split: in the SAME band (two melee predators, no undead), a GUARDIAN
+    # (MELEE_DENSE_GUARDIAN==2) calls it severe and spaces off SOUTH, while a FORAGER
+    # (MELEE_DENSE_FORAGER==4) calls it calm and keeps working — same threat, different risk
+    # appetite by role, exactly the per-char-mode diversification.
+    from steemer.strategy.explorer import GUARDIAN_LEVEL
+    bot = _bot()
+    ents = [{"pos": [0, 4], "faction": "monster", "kind": "wolf"},    # near (dist 2)
+            {"pos": [0, 8], "faction": "monster", "kind": "boar"}]    # far -> 2 preds total
+    guardian = _field_char(pos=[0, 2], stamina=40, level=GUARDIAN_LEVEL + 1)
+    g_acts = bot.on_frame(_field_frame(guardian, _SPACE_TILES, entities=ents))
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in g_acts     # veteran disengages
+
+    forager = _field_char(pos=[0, 2], stamina=40, level=2)
+    f_acts = bot.on_frame(_field_frame(forager, _SPACE_TILES, entities=ents))
+    assert any(a.get("action") == "move" for a in f_acts)                 # recruit keeps moving
+    assert all(not (a.get("action") == "move" and a.get("dir") == "S") for a in f_acts)  # not fleeing
 
 
 def test_full_char_does_not_pick_up_more_loot():
