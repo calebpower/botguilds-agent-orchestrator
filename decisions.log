@@ -1660,3 +1660,31 @@ despite the radius-4 flee — the flee isn't escaping it (fast chaser?); may nee
 bigger radius or a different evade for fast undead. (3) predator-position MEMORY
 (short TTL) for occluded mobs (see the spectate/LOS finding). (4) 529 cap answer +
 band pre-emption once deaths are under control.
+
+## 2026-08-20 (iter 23) — measured 0.32.0 (big survival win) + shipped KPI-alarm wishlist item
+Measurement (run #88, 0.32.0 allowlist inversion): DEATHS 3.2->1.7/1k while the undead
+level chars actually face was ~constant (5.3->5.6% frame-proportional, per the new KPI
+alarm — NOT the misleading 75% per-world-equal figure). Whack-a-mole STOPPED: HP-drops
+156->50, no new uncataloged predator surged (lava_ant 40->11, rhino_beetle gone).
+1:1-trade 63->42%, move_failed 26->5/1k. The allowlist inversion is validated — the
+death arc is essentially closed by the structural fix.
+BUT the KPI alarm flagged a real TRADEOFF: income -53% (458->215) and chest_opens -69%
+(13->4) at ~constant undead -> 0.32.0 OVER-AVOIDS (chars survive more but reach fewer
+chests). gold_mean held (~100 floor) so the stockpile LEVEL is unhurt for now, but
+growth potential is capped. NEXT PASS: investigate whether the block-adjacent footprint
+is too aggressive (e.g. block-adjacent only for CONFIRMED-dangerous kinds + dodge-only
+for unknowns; or a lighter footprint) to recover income without losing the survival gain.
+Decision: NO strategy change this pass (let 0.32.0 ride one cycle; the death win is
+clean and I want the income-tradeoff diagnosis before tuning). Shipped instead the
+top wishlist item per the operator's new scoring formula.
+
+## 2026-08-20 (iter 23) — wishlist-scoring system (operator) + shipped Cross-run KPI alarm
+Operator instituted a per-pass wishlist scoring: for each item, final =
+good_idea(0-1) * risk_to_bot(0-1, 1=safe) * (0.75 - 1/turn_count), turn_count =
+deploys since the item was added; implement the highest if >0.5, alongside any bot
+change; recalc EVERY pass (env changes the scores); don't game it.
+This pass's winner: Cross-run KPI regression alarm (0.85*0.90*0.70=0.537>0.5) — genuinely
+top (high value, read-only=near-zero risk, sat since 0.12.0). Shipped steemer/kpi_watch.py
+(mutation-checked). It immediately earned out (flagged the 0.32.0 income tradeoff above).
+The just-added predator-tile item scored -0.13 (turn_count=1 -> negative factor), correctly
+NOT implemented the turn it was added. Re-run the full scoring next pass.
