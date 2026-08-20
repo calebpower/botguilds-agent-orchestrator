@@ -1744,3 +1744,22 @@ to a home-retreat (leave the world) instead of oscillating in place; a stationar
 (streak resets after 1 dodge) still lets the char loot nearby. Ship next pass IF deaths
 stay elevated over a fuller/cleaner run (not just this delver bloom). Wishlist: nothing
 >0.5 (death post-mortem ~0.48 top). No ship this pass.
+
+## 2026-08-20 (iter 27) — explorer/0.35.0: raise POTION_RESERVE 100->600 to UNCAP the stockpile
+Settle-check first: run #90 (0.34.0) over the FULL 64k-frame run showed deaths 2.3->2.5/1k
+(FLAT vs #88; the mid-run 3.4 was a transient delver bloom), income 411->463 (up), NO
+regressions. So the death arc is stable, 0.34 confirmed good, and holding last pass was
+correct (the chaser-dodge premise didn't hold). Did NOT ship the chaser-dodge.
+Pivoted to the GOAL (stockpile). Gold-flow accounting: gold pinned at ~100 (mean 99.8,
+max 139); all 16 gold DROPS were -20 potion buys (318g) consuming ~all the +311g income
+-> net ~0. Heals are 99.6% FREE-BREWED (4511 drinks vs 16 buys). And 0.29's heal-from-
+surplus was premised on POISON deaths (iter20 REFUTED — killers are melee predators, un-
+healable by a potion). So the potion-BUY barely helps survival and only caps the hoard.
+Fix: POTION_RESERVE 100->600 (above the 529 cap-test) -> gold can climb past 529
+(answers the operator's open 'is there a gold cap?' question) while still topping up
+heals once genuinely rich; brewing covers heals meanwhile.
+Effect/verify: run#91+ gold_mean should CLIMB above 100 toward/through 529 (or plateau
+at a fixed value = the cap, report it). Deaths must HOLD ~2.5/1k (KPI alarm watches; if
+the ~16 lost bought-heals raise deaths, lower the reserve or gate on undead-present).
+Wishlist: nothing >0.5 this pass (death post-mortem ~0.48 top). Gold persists across runs
+so accumulation compounds run-to-run.
