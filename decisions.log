@@ -1618,3 +1618,19 @@ then add a step-away when adjacent) or income craters (block strands chars from 
 Kept 0.29 heal-from-surplus (harmless; real DoT does exist in spire). Decided
 autonomously (10-min rule). NOTE the diagnostic method — empirical HP-drop-adjacency
 blame — is reusable; re-run it to catch any new killer a future band brings.
+
+## 2026-08-20 (iter 21) — explorer/0.31.0: dodge adjacent melee predators + add spider/wolf/crab
+Decision: (1) add spider_brown/wolf/crab_green to MELEE_THREAT_KINDS; (2) when a melee
+predator is ADJACENT, DODGE (step to the tile farthest from all predators) and do NOT
+attack it; boxed-in fallback retreats home. Keeps 0.30 block-adjacent + 0.29 heal.
+Why: run #86 (0.30.0) validated block-adjacent (golem_stone HP-drops 28->0, no boxing-
+in: move_failed FELL 24.4->16.1/1k, only 3 stuck events) but deaths held ~2.85/1k
+because (a) the world hit an EXTREME 45% undead (was 12.2% — flat deaths vs ~4x poison
+is a relative win) and (b) delver 25 + boar 13 still hit: the MOB drifts onto a
+stationary char, which block-adjacent (stops US approaching) can't prevent. New killers
+in the HP-drop blame: spider_brown 6, wolf 3, crab_green 1.
+Effect/verify: next run's HP-drop blame for delver/boar/spider/wolf should fall; deaths
+drop once normalised for undead %. FALSIFIED if these mobs match char move-speed (dodge
+trades blows 1:1 -> need a wider berth / step 2) or income dips from over-dodging.
+Stockpile still healthy (run#86 gold mean 105, above the 100 floor; not climbing high
+only because the 45% world throttles looting). Decided autonomously (10-min rule).
