@@ -2122,3 +2122,28 @@ tab-shell test's has_text="Map" ambiguous (substring match) -> fixed it to match
 attribute + include every tab (a correctness fix, not weakening). Reaper re-run 273 passed/2 skip.
 Committed a738cca, PUSHED (standing auth). Restarted dash (pid 71989); both endpoints live on :8800.
 No bot redeploy (dashboard-only). Bot still on 0.37.0 run #94.
+
+ITER 42 (2026-08-20) — RE-MEASURE 0.37.0 on MATURED #94 (58k frames). Health: watchdog alive;
+all 3 services up (bot 71198, sidecar 71514 @1s-color, dash 71989).
+VERDICT: 0.37 = CONFIRMED SURVIVAL WIN with a real, offset gathering tradeoff (NOT a regression).
+  - move_failed/1k 46.35->28.37 (DOWN 39%, robust — holds from the 25k read). The clearest win.
+  - our-death/1k 0.570->0.378 (DOWN 34%, now n=22 = less noisy than iter41's 8). Holds.
+  - recruit/1k 2.62->2.23 (DOWN 15%) — fewer deaths => fewer replace-recruits, the predicted
+    mechanism CONFIRMED.
+  - net gold STABLE ~604-605 (did NOT fall).
+  - TRADEOFF (real, not band variation — did NOT recover with more band cycles): gold-coin/1k
+    1.37->0.70 (DOWN 49%), pickup/1k 3.10->2.08 (DOWN 33%), sale/1k 0.27->0.19. Chars gather less
+    because spacing steers them out of predator-dense zones instead of foraging through them.
+    OFFSET by the lower recruiting drain, so net wealth holds. Favorable tradeoff.
+  - postmortem #94: stuck-fraction 73% (16/22) — down from the 80% baseline but residual deaths
+    STILL stuck-dominated => the 0.38 stamina-economy lever has headroom.
+DECISION: did NOT tighten (criterion was 'coins down AND net gold fell'; net gold held). Tightening
+would trade survival back for marginal income. OPEN QUESTION for a future pass: does long-run
+stockpile GROWTH RATE speed up (fewer recruits) or slow (fewer coins)? Confounded with band cycle;
+needs another run or two. Flag to operator: 0.37 favors survival over gathering-rate; if they want
+income recovery that's a separate future lever.
+WISHLIST (v0.37, tc=37-add_minor): heatmaps + story-mode SHIPPED (one-off). Top remaining: how-nav
+0.72*0.97*0.71=0.496, rival-awareness 0.482, trash-talk 0.479 — all <0.5. Nothing qualifies; none
+implemented. sidecar-watchdog tc=1 (added 0.37) => negative.
+NEXT: keep watching 0.37 stockpile-growth-rate on #94/#95; the 0.38 STAMINA-ECONOMY lever (residual
+73% stuck deaths; not_enough_stamina) awaits operator greenlight.
