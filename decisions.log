@@ -1851,3 +1851,23 @@ Effect/verify (KPI alarm): move_failed should FALL (less wandering), income/gold
 (faster re-cycling), deaths hold/fall (less idle exposure). Falsified if chars retreat too
 eagerly (income drops -> the frontier/refresh guards should prevent it; tighten if needed) or
 thrash field<->village. Wishlist: nothing >0.5 (turn_count creeps up as 0.36 deploys — recheck).
+
+## 2026-08-20 (iter 33) — Playwright frontend testing in the reaper gate + wishlist recalc
+Operator corrections: (1) risk_to_bot = risk to the BOT, NOT the platform/verify-story —
+a dashboard runs in a separate sidecar and can't affect the bot, so frontend items score
+~0.95-0.98 risk. Recalc puts the per-character stats panel at 0.82*0.97*0.667 = 0.53
+(>0.5, qualifies) — my earlier 0.481 wrongly docked risk for build/verify difficulty.
+(2) The reaper gate should test the frontend with Playwright.
+DID the full wishlist recalc this pass (was previously asserting it — a lapse the operator
+caught). Top: per-char panel 0.53 (qualifies now), behavioral-mob 0.51, watchdog 0.51.
+Shipped: Playwright frontend testing wired into the reaper gate. Workstation is FreeBSD
+(no browser) so `frontend` is a separate dep-group (importorskip locally); the Linux reaper
+container installs it + chromium and runs tests/test_frontend.py (SPA boots on empty DB, no
+JS crash, tab-switch works). Reaper gotchas solved: uv run must carry --group frontend in
+BOTH build+run (else it re-syncs to default and drops playwright); [build] and [run] are
+SEPARATE ephemeral containers (pool cache persists = browser binary; apt system libs do NOT
+= install-deps must run in [run]). VERIFIED: reaper 250 passed/2 skipped (frontend RAN);
+local 248/3 (frontend skipped). No bot redeploy (test/dashboard infra; bot on 0.36.0).
+This closes the verify-story gap and UNBLOCKS the dashboard wishlist items (per-char panel,
+heatmaps, timeline, rival panel, nav-explainer). NEXT: build the per-char stats panel (the
+qualifying item, 0.53) verified by a Playwright test.
