@@ -360,15 +360,25 @@ def _frame_overlay(blob) -> dict:
     }
 
 
-def api_heatmap(db_path: str, world: str | None, sample: int = 400) -> dict:
-    """Per-tile density heatmaps for a world. Monster/gold/loot positions live only in
-    frame JSON, so they come from a BOUNDED sample of the most recent ``sample`` frames
-    (the same sampling the KPI tools use — a full-history decode would hang the request);
-    deaths come from the ``events`` table (cheap, indexed by world). Returns
-    ``{world, bounds, frames_sampled, deaths, layers}`` where each layer in
-    ``layers = {monster, gold, loot, death}`` is a list of ``[x, y, count]``."""
-    empty = {"world": world, "bounds": None, "frames_sampled": 0, "deaths": 0,
-             "layers": {"monster": [], "gold": [], "loot": [], "death": []}}
+def api_heatmap(db_path: str, world: str | None, sample: int = 1200) -> dict:
+    """Per-tile heatmap layers for a world, drawn as a Map overlay.
+
+    Monster/gold/loot positions and our-character OCCUPANCY (time spent per tile) come from
+    a BOUNDED sample of the most recent ``sample`` frames (a full-history decode would hang
+    the request); deaths come from the ``events`` table (cheap, indexed by world).
+
+    The key layer is **danger**, which corrects the SURVIVOR BIAS the operator flagged: we
+    see more gold and take more deaths near the village simply because we're THERE more, so
+    a raw death count reads a well-trodden safe tile as "deadly". ``danger`` normalises each
+    tile's death share by its occupancy share — ``(deaths[t]/Σdeaths) / (occ[t]/Σocc)`` — a
+    deaths-PER-TIME-THERE multiplier: >1 = deadlier than our presence predicts (genuinely
+    dangerous), <1 = safer. Only defined where we have occupancy, so it can't be faked by a
+    tile we never visit. Returns ``layers = {danger, death, occupancy, monster, gold, loot}``
+    (each ``[x, y, value]``); death/occupancy/monster/gold/loot are raw counts, danger is the
+    multiplier ×100 (int) so the client scales it like the others."""
+    empty = {"world": world, "bounds": None, "frames_sampled": 0, "deaths": 0, "occ_total": 0,
+             "layers": {"danger": [], "death": [], "occupancy": [],
+                        "monster": [], "gold": [], "loot": []}}
     if not _db_ready(db_path):
         return empty
     conn = _ro(db_path)
@@ -387,15 +397,17 @@ def api_heatmap(db_path: str, world: str | None, sample: int = 400) -> dict:
         mon: Counter = Counter()
         gold: Counter = Counter()
         loot: Counter = Counter()
+        occ: Counter = Counter()      # our-character time-in-tile (the survivor-bias baseline)
         rows = conn.execute("SELECT json FROM frames WHERE world = ? ORDER BY seq DESC LIMIT ?",
                             (world, sample)).fetchall()
         for r in rows:
             blob = r["json"]
             blob = blob.encode("latin-1") if isinstance(blob, str) else blob
             try:
-                vis = (json.loads(zlib.decompress(blob)).get("visible")) or {}
+                frame = json.loads(zlib.decompress(blob))
             except (zlib.error, json.JSONDecodeError):
                 continue
+            vis = frame.get("visible") or {}
             for e in vis.get("entities") or []:
                 p = e.get("pos")
                 if p and e.get("faction") == "monster":
@@ -408,6 +420,10 @@ def api_heatmap(db_path: str, world: str | None, sample: int = 400) -> dict:
                 p = it.get("pos")
                 if p:
                     loot[(p[0], p[1])] += 1
+            for c in frame.get("chars") or []:      # frame.chars are OUR guild's characters
+                p = c.get("pos")
+                if p:
+                    occ[(p[0], p[1])] += 1
 
         death: Counter = Counter()
         for r in conn.execute("SELECT payload_json FROM events WHERE kind = 'death' AND world = ?",
@@ -418,13 +434,26 @@ def api_heatmap(db_path: str, world: str | None, sample: int = 400) -> dict:
             if pos:
                 death[(pos[0], pos[1])] += 1
 
+        # danger = deaths-per-time-there, survivor-bias corrected. Normalise both to shares so
+        # the all-run deaths and the sampled occupancy are comparable, then divide. Defined
+        # only where we have occupancy (elsewhere a per-visit rate is meaningless).
+        occ_total = sum(occ.values())
+        death_total = sum(death.values())
+        danger: list = []
+        if occ_total and death_total:
+            for tile, d in death.items():
+                o = occ.get(tile, 0)
+                if o:
+                    mult = (d / death_total) / (o / occ_total)
+                    danger.append([tile[0], tile[1], round(mult * 100)])
+
         def flat(c: Counter) -> list:
             return [[x, y, n] for (x, y), n in c.items()]
 
         return {"world": world, "bounds": bounds, "frames_sampled": len(rows),
-                "deaths": sum(death.values()),
-                "layers": {"monster": flat(mon), "gold": flat(gold),
-                           "loot": flat(loot), "death": flat(death)}}
+                "deaths": death_total, "occ_total": occ_total,
+                "layers": {"danger": danger, "death": flat(death), "occupancy": flat(occ),
+                           "monster": flat(mon), "gold": flat(gold), "loot": flat(loot)}}
     except (*_db.Error, zlib.error, json.JSONDecodeError, KeyError):
         return empty
     finally:
@@ -1246,9 +1275,6 @@ label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13
 #mapCanvas{display:block;width:100%;height:100%;image-rendering:pixelated;
   cursor:grab}
 #mapCanvas.grabbing{cursor:grabbing}
-.hm-wrap{border:1px solid var(--border);border-radius:8px;background:#0a0a0f;
-  height:min(70vh,640px)}
-#hmCanvas{display:block;width:100%;height:100%;image-rendering:pixelated}
 .map-controls{position:absolute;top:10px;right:10px;display:flex;
   flex-direction:column;gap:6px;z-index:2}
 .map-controls button{width:34px;height:34px;border:1px solid var(--border);
@@ -1386,7 +1412,6 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     <button data-tab="party">Party</button>
     <button data-tab="decisions">Decisions</button>
     <button data-tab="map">Map</button>
-    <button data-tab="heatmap">Heatmap</button>
     <button data-tab="timeline">Timeline</button>
     <button data-tab="findings">Findings</button>
     <button data-tab="logs">Logs</button>
@@ -1440,7 +1465,19 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   <section class="tab" id="tab-map">
     <div class="filters">
       <label class="chk">world <select id="m-world"></select></label>
+      <label class="chk">overlay
+        <select id="m-overlay">
+          <option value="">none</option>
+          <option value="danger">Danger (deaths / time here)</option>
+          <option value="death">Deaths (raw)</option>
+          <option value="occupancy">Time here (occupancy)</option>
+          <option value="monster">Monsters</option>
+          <option value="gold">Gold</option>
+          <option value="loot">Loot</option>
+        </select></label>
       <span class="small" id="map-info"></span>
+      <span class="grow"></span>
+      <span class="small" id="hm-info"></span>
     </div>
     <div class="map-wrap" id="mapWrap">
       <canvas id="mapCanvas"></canvas>
@@ -1453,25 +1490,6 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     </div>
     <div class="small" style="margin-top:6px">drag to pan &middot; wheel or pinch to zoom &middot; hover for tile coords</div>
     <div class="legend" id="map-legend"></div>
-  </section>
-
-  <!-- HEATMAP -->
-  <section class="tab" id="tab-heatmap">
-    <div class="filters">
-      <label class="chk">world <select id="h-world"></select></label>
-      <label class="chk">layer
-        <select id="h-layer">
-          <option value="death">Danger (deaths)</option>
-          <option value="monster">Monsters</option>
-          <option value="gold">Gold</option>
-          <option value="loot">Loot</option>
-        </select></label>
-      <span class="grow"></span>
-      <span class="small" id="h-info"></span>
-    </div>
-    <div class="hm-wrap"><canvas id="hmCanvas"></canvas></div>
-    <div class="small" style="margin-top:6px">brighter = more of the selected thing on that tile
-      &middot; deaths span all runs; monster/gold/loot sampled from recent frames</div>
   </section>
 
   <!-- TIMELINE -->
@@ -1585,7 +1603,6 @@ function loadActive(){
   else if(active==="party") loadParty();
   else if(active==="decisions") loadDecisions();
   else if(active==="map") loadMap();
-  else if(active==="heatmap") loadHeatmap();
   else if(active==="timeline") loadTimeline();
   else if(active==="findings") loadFindings();
   else if(active==="logs") loadLogs();
@@ -1598,7 +1615,6 @@ $("#theme").onclick = ()=>{
     : (matchMedia("(prefers-color-scheme:dark)").matches ? "light":"dark");
   document.documentElement.setAttribute("data-theme", next);
   if(active==="map") drawMap();   // colours come from CSS vars; just repaint
-  if(active==="heatmap") drawHeatmap();
 };
 
 /* ---- bar chart (single series -> blue, no legend) ---- */
@@ -1863,6 +1879,22 @@ let mapData = null;          // last fetched /api/map payload for mapWorld
 let mapWorld = null;         // world currently displayed
 const mapViews = {};         // world -> {scale, ox, oy}
 let mapWired = false;        // interaction handlers attached once
+let mapHeat = null, mapHeatWorld = null;   // lazily-fetched /api/heatmap overlay for mapWorld
+const HEAT_COLORS = {danger:[255,60,60], death:[220,80,80], occupancy:[70,150,255],
+                     monster:[255,150,40], gold:[255,215,0], loot:[150,120,255]};
+// Fetch the heat overlay for the current world only when a layer is selected (it decodes
+// ~1200 frames, so it's lazy + cached per world), then repaint the map.
+async function ensureHeat(){
+  const layer = ($("#m-overlay")||{}).value || "";
+  const info = $("#hm-info"); if(info) info.textContent = "";
+  if(!layer || !mapWorld){ drawMap(); return; }
+  if(!mapHeat || mapHeatWorld !== mapWorld){
+    if(info) info.textContent = "loading overlay…";
+    mapHeat = await getJSON("/api/heatmap?world="+encodeURIComponent(mapWorld));
+    mapHeatWorld = mapWorld;
+  }
+  drawMap();
+}
 const MIN_SCALE = 0.4, MAX_SCALE = 64;
 const clampScale = s => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
 
@@ -1917,6 +1949,24 @@ function drawMap(){
     ctx.fillStyle=tileColor(kind);
     ctx.fillRect(x*s+ox, drawnRow(y,H)*s+oy, s+0.6, s+0.6);
   }
+  // heat overlay (drawn over terrain, under the moving-thing dots) — same transform
+  const hl=($("#m-overlay")||{}).value||"";
+  if(hl && mapHeat && mapHeat.world===mapWorld && mapHeat.layers){
+    const pts=mapHeat.layers[hl]||[];
+    let hmx=1; for(const p of pts) if(p[2]>hmx) hmx=p[2];
+    const [cr,cg,cb]=HEAT_COLORS[hl]||[255,255,255];
+    for(const [x,y,val] of pts){
+      ctx.fillStyle=`rgba(${cr},${cg},${cb},${0.20+0.70*Math.sqrt(val/hmx)})`;   // sqrt: low values visible
+      ctx.fillRect(x*s+ox, drawnRow(y,H)*s+oy, s+0.6, s+0.6);
+    }
+    const info=$("#hm-info");
+    if(info){
+      const unit = hl==="danger" ? "danger = deaths/time (×100; >100 deadlier than we're present)"
+        : hl==="occupancy" ? "time-in-tile" : hl==="death" ? "raw deaths (survivor-biased)"
+        : "sightings (sampled)";
+      info.textContent = pts.length ? `${pts.length} tiles · max ${hmx} · ${unit}` : "no data for this layer";
+    }
+  }
   // faint grid only when zoomed in enough to read it, clipped to world extent
   if(s>=8){
     ctx.strokeStyle=cssVar("--grid")||"#333"; ctx.lineWidth=1;
@@ -1954,6 +2004,7 @@ function tileAt(mx,my){
 // Events so mouse, touch-drag and two-finger pinch share one code path.
 function wireMap(){
   if(mapWired) return; mapWired=true;
+  const ov=$("#m-overlay"); if(ov) ov.onchange = ensureHeat;   // toggle the heat overlay
   const cv=$("#mapCanvas"), coords=$("#mapCoords");
   const pointers=new Map();       // active pointerId -> {x,y}
   let pinchDist=0;                 // last two-finger distance, 0 = not pinching
@@ -2034,8 +2085,10 @@ async function loadMap(){
   // Preserve the view across refreshes: only fit when the world changed (or on
   // the very first draw of a world, when no saved view exists).
   if(mapWorld!==m.world || !mapViews[m.world]){ mapWorld=m.world; fitView(m); }
+  if(mapHeatWorld && mapHeatWorld!==mapWorld){ mapHeat=null; mapHeatWorld=null; }  // stale on switch
   drawMap();
   renderMapMeta();
+  ensureHeat();          // (re)fetch the overlay for this world if one is selected
   subscribe();
 }
 function renderMapMeta(){
@@ -2081,56 +2134,6 @@ function applyMap(msg){
   if(msg.cursor){ mapSeq=msg.cursor.seq; mapTick=msg.cursor.tick; }
   if(active==="map"){ drawMap(); renderMapMeta(); }
 }
-
-/* ---- HEATMAP ---- */
-let hmData=null, hmWorldsFilled=false;
-const HM_COLORS={death:[255,64,64], monster:[255,150,40], gold:[255,215,0], loot:[90,170,255]};
-async function loadHeatmap(){
-  if(!hmWorldsFilled){
-    hmWorldsFilled=true;
-    const worlds=await getJSON("/api/worlds");
-    const sel=$("#h-world"); sel.innerHTML="";
-    (worlds||[]).filter(w=>w!=="village").forEach(w=>{
-      const o=el("option",null,w); o.value=w; sel.appendChild(o); });
-    sel.onchange=loadHeatmap;
-    $("#h-layer").onchange=drawHeatmap;
-  }
-  const world=$("#h-world").value;
-  hmData=await getJSON("/api/heatmap"+(world?("?world="+encodeURIComponent(world)):""));
-  if(hmData && hmData.world){ const s=$("#h-world");
-    if([...s.options].some(o=>o.value===hmData.world)) s.value=hmData.world; }
-  drawHeatmap();
-}
-function drawHeatmap(){
-  const cv=$("#hmCanvas"); if(!cv) return;
-  const wrap=cv.parentElement;
-  const W=cv.width=wrap.clientWidth, H=cv.height=wrap.clientHeight;
-  const ctx=cv.getContext("2d");
-  ctx.fillStyle="#0a0a0f"; ctx.fillRect(0,0,W,H);
-  if(!W||!H) return;
-  const info=$("#h-info");
-  if(!hmData || !hmData.bounds){
-    ctx.fillStyle="#8a8a97"; ctx.font="14px sans-serif";
-    ctx.fillText("no data for this world yet",14,26);
-    if(info) info.textContent=""; return;
-  }
-  const [bw,bh]=hmData.bounds;
-  const layer=$("#h-layer").value;
-  const pts=(hmData.layers&&hmData.layers[layer])||[];
-  const total=pts.reduce((a,p)=>a+p[2],0);
-  if(info) info.textContent=`${hmData.world}: ${pts.length} tiles · ${total} `
-    +(layer==="death"?"deaths (all runs)":"sightings (recent)")+` · ${bw}×${bh}`;
-  const s=Math.max(1, Math.min(W/bw, H/bh));   // fit world to canvas, square tiles
-  const ox=(W-bw*s)/2, oy=(H-bh*s)/2;
-  let mx=1; for(const p of pts) if(p[2]>mx) mx=p[2];
-  const [cr,cg,cb]=HM_COLORS[layer]||[255,255,255];
-  for(const [x,y,n] of pts){
-    const a=0.15+0.85*Math.sqrt(n/mx);         // sqrt keeps low counts visible
-    ctx.fillStyle=`rgba(${cr},${cg},${cb},${a})`;
-    ctx.fillRect(ox+x*s, oy+(bh-1-y)*s, Math.ceil(s), Math.ceil(s));  // y north = up
-  }
-}
-window.addEventListener("resize", ()=>{ if(active==="heatmap") drawHeatmap(); });
 
 /* ---- TIMELINE ---- */
 async function loadTimeline(){

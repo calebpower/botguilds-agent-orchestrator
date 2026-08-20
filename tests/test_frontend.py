@@ -116,15 +116,23 @@ def dashboard_with_char(tmp_path_factory):
 
 
 def _seed_heatmap_db(path):
-    """A minimal mirror with tiles (for bounds) and a death event (the danger layer),
-    so the Heatmap tab has real per-tile data to paint."""
+    """A minimal mirror for the Map heat overlay: tiles (map bounds), a frame with our
+    char standing on a tile (OCCUPANCY, so the survivor-bias-corrected 'danger' layer is
+    computable), and a death on that same tile (deaths/time -> a finite danger value)."""
     import json as _json
+    import time as _time
+    import zlib as _zlib
     from steemer import db as _db
     conn = _db.connect({"type": "sqlite", "path": str(path)})
     _db.apply_schema(conn)
     for (x, y) in [(0, 0), (5, 8), (9, 9)]:            # tiles_seen -> world bounds 10x10
         conn.execute("INSERT INTO tiles_seen (world, x, y, kind) VALUES (?,?,?,?)",
                      ("mines", x, y, "floor"))
+    frame = {"world": "mines", "tick": 60, "bounds": [10, 10], "guild": {"gold": 100},
+             "chars": [{"char_uid": "c1", "pos": [5, 8], "hp": 20, "max_hp": 24}],
+             "visible": {"tiles": [[5, 8, "floor"]], "entities": [], "items": [], "gold": []}}
+    conn.execute("INSERT INTO frames (tick, world, received_at, run_id, json) VALUES (?,?,?,?,?)",
+                 (60, "mines", _time.time(), 1, _zlib.compress(_json.dumps(frame).encode())))
     conn.execute(
         "INSERT INTO events (tick, world, kind, payload_json, run_id) VALUES (?,?,?,?,?)",
         (50, "mines", "death",
@@ -161,19 +169,18 @@ def dashboard_with_heatmap(tmp_path_factory):
         proc.kill()
 
 
-def test_heatmap_tab_paints_the_danger_layer(dashboard_with_heatmap, page: Page):
-    # clicking Heatmap fetches /api/heatmap and paints the canvas; the default Danger
-    # layer must report the seeded death (proves the endpoint + render are wired, not a
-    # blank canvas). A pageerror would fail the crash guard.
+def test_map_danger_overlay_is_survivor_bias_corrected(dashboard_with_heatmap, page: Page):
+    # the heatmap is now a MAP OVERLAY. Selecting the Danger layer fetches /api/heatmap and
+    # paints it over the map; #hm-info reports the corrected 'danger = deaths/time' metric
+    # (not a raw count) — proving the overlay + the occupancy normalisation are wired.
     crashes = []
     page.on("pageerror", lambda e: crashes.append(str(e)))
     page.goto(dashboard_with_heatmap, wait_until="domcontentloaded")
-    page.locator("button[data-tab='heatmap']").click()
-    expect(page.locator("#tab-heatmap")).to_be_visible()
-    expect(page.locator("#hmCanvas")).to_be_visible()
-    # #h-info is filled by drawHeatmap once data arrives -> "mines: 1 tiles · 1 deaths ..."
-    expect(page.locator("#h-info")).to_contain_text("death")
-    expect(page.locator("#h-info")).to_contain_text("mines")
+    page.locator("button[data-tab='map']").click()
+    expect(page.locator("#tab-map")).to_be_visible()
+    page.locator("#m-overlay").select_option("danger")     # -> ensureHeat() fetch + repaint
+    expect(page.locator("#hm-info")).to_contain_text("danger")
+    expect(page.locator("#hm-info")).to_contain_text("tiles")
     assert crashes == [], f"uncaught JS errors: {crashes}"
 
 
@@ -209,7 +216,7 @@ def test_dashboard_loads_and_renders_the_tab_shell(dashboard, page: Page):
     assert "steemer" in page.title().lower()
     # match by the exact data-tab attribute, not display text — "Map" would substring-match
     # the "Heatmap" button and make the locator ambiguous.
-    for tab in ("overview", "party", "decisions", "map", "heatmap",
+    for tab in ("overview", "party", "decisions", "map",
                 "timeline", "findings", "logs"):
         expect(page.locator(f"button[data-tab='{tab}']")).to_be_visible()
     # an empty db must render the empty state, not crash the JS
