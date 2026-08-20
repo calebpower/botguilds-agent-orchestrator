@@ -1763,3 +1763,19 @@ at a fixed value = the cap, report it). Deaths must HOLD ~2.5/1k (KPI alarm watc
 the ~16 lost bought-heals raise deaths, lower the reserve or gate on undead-present).
 Wishlist: nothing >0.5 this pass (death post-mortem ~0.48 top). Gold persists across runs
 so accumulation compounds run-to-run.
+
+## 2026-08-20 (iter 28) — CAP TEST: stockpile CLIMBING + fixed the KPI-alarm run-length confound
+THE CAP TEST (0.35.0, run #91): gold is FINALLY CLIMBING — mean 183.7, trajectory
+97->123->152->187->198 (last 198), 0 gold-drops, 0 potion-buys. Off the ~100 floor,
+rising toward the 529 all-time max. Deaths 1.75/1k (DOWN from 2.5) — removing the bought
+heals did NOT hurt survival (confirms heals are brewed, the potion-buy was inert). The
+stockpile GOAL is finally being served; gold persists across runs so it compounds.
+KPI-ALARM MISLEAD + FIX: the alarm flagged income -65% / chest_opens -67%, but those were
+CUMULATIVE totals confounded by comparing a 30k mid-run to a 64k full run. Per-1k they're
+actually UP (income 6.5->8.0/1k, chests 0.12->0.18/1k). Fixed kpi_watch to flag per-1k
+RATES (income_per_1k, chest_opens_per_1k) and demote the totals to context. After the fix,
+only move_failed (+94%, 17->33/1k) still flags — likely a YOUNG-RUN artifact (early runs
+bounce more on unmapped terrain; 0.35 only changed the potion reserve, not movement);
+re-check at #91-full. No strategy change (0.35 rides — gold climbing is exactly the goal).
+Wishlist: nothing >0.5 (death post-mortem ~0.48). Tool fix = no redeploy (bot on 0.35.0).
+NEXT: keep watching the cap — does gold break 529 or plateau (=the cap value)?
