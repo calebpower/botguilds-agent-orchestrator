@@ -2223,3 +2223,17 @@ veterans protected). Measure: deaths + income vs #95, IDEALLY split by role; che
 first (iter44 lesson). If foragers die a lot MORE with no income payoff -> thresholds too bold, tighten.
 NEXT: measure 0.39 (coin-rich band + role-split deaths); Phase 3 (Prospector mechanic-probing) and a
 stamina-economy lever await operator greenlight.
+
+ONE-OFF (2026-08-20, operator-directed build; separate from the scheduled 19:36 Phase-2/3 loop):
+SHIPPED the CODEX tab — an auto-populated wiki, regenerated from current data every load. Operator
+asked its wishlist score first (it's -0.21: just-added tc=1 -> -0.25 factor, so negative by the
+formula despite good_idea 0.85 x risk 0.97) then directed me to build it anyway (like the heatmap/
+story one-offs). api_codex + /api/codex + a Codex tab (Monsters/Lands/Items/Mechanics sub-nav):
+  - MONSTERS: bestiary over a 4000-frame bounded sample, each classified undead/predator/benign.
+  - LANDS: per world terrain (tiles_seen kinds) + size + mobs seen + total deaths.
+  - ITEMS: kinds seen (visible items + inventories) with inferred type.
+  - MECHANICS: docs/*.md (title+summary) + confirmed discovery/correction findings.
+Read-only dashboard, zero bot risk. Gate: local 272/3; codex HTTP smoke (all 4 sections); reaper
+278/2 (Playwright test seeds wolf/land/egg + asserts all panes). Committed 75e7e74, pushed. Dash
+restarted (pid 73215); live on :8800. Bot untouched (still 0.39.0 run #96). The scheduled 19:36
+loop (verify Phase 2 -> build Phase 3 if decent) is unaffected.
