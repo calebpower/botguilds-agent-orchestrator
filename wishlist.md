@@ -89,10 +89,13 @@ top of **Open**.
   frame-proportional `undead_frac` context KPI, showed the undead level was ~constant
   (5.3→5.6%) — i.e. 0.32.0 traded income for survival, a finding I'd otherwise have
   mis-attributed to the world.
-- [ ] **Death post-mortem taxonomy** — for every death, reconstruct the last ~15
+- [x] **Death post-mortem taxonomy** — for every death, reconstruct the last ~15
   ticks (HP curve, position, killing blow, was flight ever possible?) into a
   structured cause-of-death. Turns deaths into a survival dataset (and feeds the
-  campaign layer's char deeds).
+  campaign layer's char deeds). **SHIPPED 2026-08-20 (`steemer/postmortem.py`,
+  wishlist-scoring boundary call ~0.49, zero-risk read-only).** On run #91 it
+  immediately showed most deaths are `stuck` (pinned in place, not fleeing) by
+  wolf/delver — auto-characterizing the chaser residual.
 - [ ] **Shadow-evaluation deploy gate** — before shipping a candidate strategy,
   replay it AND the incumbent over the last N recorded frames and compare
   predicted KPIs. A "is this actually better?" check that would've caught the
@@ -167,4 +170,9 @@ top of **Open**.
 
 - [x] **Cross-run KPI regression alarm** → `steemer/kpi_watch.py` (2026-08-20, @ run #88,
   bot on explorer/0.32.0). Read-only DB analysis; `flag_regressions` is mutation-checked.
-  Selected by the operator's wishlist-scoring formula (final 0.537 > 0.5).
+  Selected by the operator's wishlist-scoring formula (final 0.537 > 0.5). Later fixed to
+  flag per-1k RATES not cumulative totals (run-length confound).
+- [x] **Death post-mortem taxonomy** → `steemer/postmortem.py` (2026-08-20, @ run #91, bot
+  on explorer/0.35.0). Read-only; `classify_death` is pure + mutation-checked. Shares the
+  bestiary (WILDLIFE_SAFE/THREAT_KINDS) with the strategy. Boundary wishlist pick (~0.49,
+  zero-risk). First run: most deaths are `stuck` chars pinned by wolf/delver.
