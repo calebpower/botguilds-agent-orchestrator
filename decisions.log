@@ -1833,3 +1833,21 @@ fresh coins post-refresh, beat the depletion plateau); (c) a new mechanic (forgi
 player-market); (d) just let it ride & compound. NEXT PASS: act on operator direction if
 given; else best-judgment default = start the per-char stats panel (operator-requested,
 boundary-qualifying) OR band pre-emption. Keep watching health via kpi_watch + postmortem.
+
+## 2026-08-20 (iter 32) — explorer/0.36.0: depletion-aware retreat (first band-signal use)
+Best-judgment next-arc lever (operator gave no redirect): stockpile-RATE via band pre-emption.
+Study of run #91 confirmed the opportunity: a band refresh REPLENISHES coins (vale gold-tiles
+0.12->1.43 across a refresh), yet 58% of fielded char-frames have ZERO gold-tiles visible —
+worlds go coin-depleted BETWEEN refreshes and chars scout-WANDER (wasted stamina + idle
+predator exposure = the post-mortem's 80% stuck-deaths). next_refresh{band,in_ticks} is live.
+Shipped: when a char is out of work (no reachable gold/loot/chest AND no frontier, not homing),
+head HOME to re-embark somewhere fresher instead of wandering — UNLESS next_refresh.in_ticks
+<= REFRESH_STAY_TICKS(400), then stay for the imminent fresh coins. FIRST use of the band
+timing signal for positioning. Two-birds: speeds the stockpile (cycle to coin-rich worlds) +
+cuts idle predator exposure. Bounded/safe (only fires when nothing productive to do).
+Also CONFIRMED cross-run gold persistence: run #92 started at gold 596 (carried from #91's
+~595) -> the stockpile compounds across runs, as predicted.
+Effect/verify (KPI alarm): move_failed should FALL (less wandering), income/gold hold or rise
+(faster re-cycling), deaths hold/fall (less idle exposure). Falsified if chars retreat too
+eagerly (income drops -> the frontier/refresh guards should prevent it; tighten if needed) or
+thrash field<->village. Wishlist: nothing >0.5 (turn_count creeps up as 0.36 deploys — recheck).
