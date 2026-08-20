@@ -407,6 +407,16 @@ POISON_SAFE_DEPTH = 12     # v0.23.0: a char with no field heal (potion_red) onl
 #   the y=0 village edge). Poison is a DOT that kills chars mid-retreat from deep
 #   ground; capping how far an un-healed char ventures keeps its walk home short
 #   enough to survive. A char carrying a potion may range deep (it can drink en route).
+# v0.36.0: DEPLETION-AWARE retreat. Run #91 study: 58% of fielded char-frames have ZERO
+# gold-tiles visible — worlds go COIN-DEPLETED between band refreshes, and a char with
+# nothing left to grab or explore currently just scout-WANDERS (the 1.0 "stepping to
+# scout" offer) — wasting stamina (move_failed) and idling exposed to predators (the
+# post-mortem's stuck-deaths). A band refresh REPLENISHES coins (vale gold-tiles 0.12
+# -> 1.43 across a refresh). So: when a char is genuinely out of work (no reachable
+# gold/loot/chest AND no frontier), head HOME to re-embark to a fresher world — UNLESS
+# this world's next_refresh is imminent (fresh coins land here in < REFRESH_STAY_TICKS),
+# in which case stay put and wait for them rather than pay a home round-trip.
+REFRESH_STAY_TICKS = 400
 DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless of HP
 # v0.25.0: THREAT mobs — the poison/burn-dealing undead that the periodic band-refresh
 # rushes bring (they drive the death spiral). When one is within FLEE_RADIUS a healthy
@@ -534,7 +544,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.35.0"
+    version = "explorer/0.36.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -976,9 +986,11 @@ class Explorer:
         # Pursue loot only when NOT heading home (v0.16.0): a homing char that
         # grabs or chases loot re-fills — and would re-grab the item it just shed
         # off its own tile (the 0.15.0 thrash). It should walk its haul home.
+        productive = False   # v0.36.0: did anything worth staying for turn up this tick?
         if not homing:
             if pos in ctx.loot or pos in ctx.gold:
                 offer({"char_uid": uid, "action": "pickup"}, 6.0, "loot/gold underfoot — grab it")
+                productive = True
             else:
                 # GOLD-RUSH (v0.24.0): grabbing & stockpiling gold is the priority.
                 # Beeline to GOLD coins first — they are instant, banked to the
@@ -989,15 +1001,18 @@ class Explorer:
                 if gstep:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, gstep)},
                           5.0, "beeline to a gold coin (instant banked gold)")
+                    productive = True
                 cstep = self._step(pos, lambda p: any(n in ctx.containers for n in nav.neighbors(p)),
                                    ctx, blocked)
                 if cstep:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, cstep)},
                           4.5, "beeline to a chest (direct gold + loot)")
+                    productive = True
                 lstep = self._step(pos, lambda p: p in ctx.loot, ctx, blocked)
                 if lstep:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, lstep)},
                           4.0, "moving toward loot")
+                    productive = True
 
         # Gather/explore only when NOT heading home (v0.16.0): a homing char that
         # opens a container spills loot it won't grab, and scouting/frontier-pushing
@@ -1030,10 +1045,24 @@ class Explorer:
                 if north:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
                           2.5, "pushing north into unexplored ground")
+                    productive = True
                 any_frontier = self._step(pos, lambda p: nav.frontier(p, ctx.known), ctx, blocked)
                 if any_frontier:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, any_frontier)},
                           2.0, "heading to the nearest frontier")
+                    productive = True
+
+                # v0.36.0 DEPLETION-AWARE retreat: nothing to grab and nowhere to explore
+                # -> this world is looted-out for us. Rather than scout-wander (below) and
+                # idle exposed, head HOME to re-embark somewhere fresher — UNLESS a refresh
+                # is about to replenish coins right here, in which case wait it out.
+                if not productive:
+                    nr = frame.get("next_refresh") or {}
+                    in_ticks = nr.get("in_ticks")
+                    refresh_soon = isinstance(in_ticks, int) and in_ticks <= REFRESH_STAY_TICKS
+                    if not refresh_soon:
+                        self._retreat(uid, pos, ctx, blocked, offer, 1.5,
+                                      "world looted-out, no refresh imminent — home to re-embark")
 
                 for d, (dx, dy) in nav.DIRS.items():
                     nxt = (pos[0] + dx, pos[1] + dy)

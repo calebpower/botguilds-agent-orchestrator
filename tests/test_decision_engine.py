@@ -578,6 +578,45 @@ def test_still_will_not_beeline_a_coin_that_sits_beside_a_predator():
     assert {"char_uid": "c1", "action": "move", "dir": "E"} not in acts
 
 
+def _walled_box_frame(char, gold=(), items=(), next_refresh=None):
+    # a 3x3 floor box fully ringed by KNOWN walls: every floor tile's neighbours are
+    # seen, so nav.frontier finds nothing unexplored -> the world is 'fully explored'.
+    tiles = [[x, y, "floor"] for x in range(3) for y in range(3)]
+    for x in range(-1, 4):
+        for y in range(-1, 4):
+            if not (0 <= x <= 2 and 0 <= y <= 2):
+                tiles.append([x, y, "wall"])
+    f = {"world": "vale", "tick": 10, "chars": [char],
+         "visible": {"tiles": tiles, "entities": [], "items": list(items), "gold": list(gold)}}
+    if next_refresh is not None:
+        f["next_refresh"] = next_refresh
+    return f
+
+
+def test_depleted_char_heads_home_when_no_refresh_is_imminent(tmp_path):
+    # v0.36.0: nothing to grab, nowhere to explore, and no next_refresh -> the world is
+    # looted-out, so head HOME to re-embark somewhere fresher instead of scout-wandering.
+    s = Storage(str(tmp_path / "d.db"), commit_every=1)
+    bot = _bot(storage=s)
+    bot.on_frame(_walled_box_frame(_field_char(pos=[1, 1], stamina=40)))
+    row = s.conn.execute("SELECT action, reasoning FROM decisions").fetchone()
+    s.close()
+    assert row[0] == "move"
+    assert "looted-out" in row[1]      # the depletion-retreat won, not the 1.0 scout
+
+
+def test_depleted_char_stays_put_when_a_refresh_is_imminent(tmp_path):
+    # v0.36.0 refresh guard: same looted-out world, but this world refreshes in 50 ticks
+    # (< REFRESH_STAY_TICKS) -> DON'T pay a home round-trip; wait for the fresh coins.
+    s = Storage(str(tmp_path / "d.db"), commit_every=1)
+    bot = _bot(storage=s)
+    bot.on_frame(_walled_box_frame(_field_char(pos=[1, 1], stamina=40),
+                                   next_refresh={"band": 1, "in_ticks": 50}))
+    row = s.conn.execute("SELECT reasoning FROM decisions").fetchone()
+    s.close()
+    assert "looted-out" not in (row[0] or "")   # stayed (scouts/waits), did not retreat
+
+
 def test_gold_rush_beelines_to_a_gold_coin_over_loot():
     # v0.24.0: a gold coin outranks ordinary loot — chars go for banked gold first.
     bot = _bot()
