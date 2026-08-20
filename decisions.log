@@ -2182,3 +2182,25 @@ GATE: local 270/3-skip; danger HTTP smoke; reaper 275/2-skip. Committed ec671a3,
 restarted (pid 72543); overlay live on :8800. Read-only — no bot redeploy.
 STATUS: both operator tasks this turn DONE — 0.38 mode-gated spacing (deployed run #95) + heatmap
 rework. Phases 2/3 (per-char roles Forager/Guardian; Prospector mechanic-probing) still queued.
+
+ITER 44 (2026-08-20) — MEASURE 0.38.0 on run #95 (young, 29.8k frames). Health: watchdog alive;
+all 3 services up (bot 72337, sidecar 71514 @1s, dash 72543). No fire.
+INCOME VERDICT DEFERRED — coin-depleted band. #95 vs #94: gold-coin/1k 0.74->0.67 (NOT recovered),
+pickup/1k 1.92->2.22 (+16%). But the disambiguation control (coins-AVAILABLE per field frame,
+1500-sample) shows #95 = 0.000 gold-tiles/frame / 0.0% frames-with-gold vs #94's 0.519 / 32.1%.
+=> #95 has cycled into a FULLY coin-depleted band; there are no coins to gather, so the low pickup
+rate is BAND not a 0.38 failure (the ~20 coin events in #95 came from an earlier coin-rich band).
+0.38's income-recovery goal is UNMEASURABLE until a refresh replenishes coins. Did NOT tighten or
+reconsider on a coin-dry snapshot.
+SURVIVAL side FINE: move_failed/1k 32.02->20.41 (down further — mechanic working), recruit/1k
+1.93->1.44 (fewer replace-recruits), gold STABLE ~591 (holds despite zero coin income because
+fewer deaths => fewer recruits => less spend — the survival->stockpile linkage). our-death/1k
+0.305->0.436 but only n=13 (young, noise-dominated; ±0.12 error bar) — not actionable yet.
+Live log does NOT record spacing decisions (only the verbose replay does); deploy replay showed
+58 severe : 27 calm on vale frames, so the calm relaxation DOES fire ~1/3 of the time.
+WISHLIST (v0.38, tc=38-add_minor): top how-nav 0.72*0.97*0.712=0.497 (op-requested, just under 0.5),
+rival-awareness 0.483, trash-talk 0.481, sidecar-watchdog tc1=neg. Nothing >0.5; none implemented.
+NEXT: re-measure 0.38 income on a MATURED #95 IN A COIN-RICH BAND (watch coins-available>0 first,
+else the comparison is void). Phases 2 (per-char roles) / 3 (Prospector) + stamina-economy await
+operator greenlight. Available read-only prep: DANGER-layer (deaths/time) analysis of which areas/
+mobs are actually lethal, to feed Guardian assignment + mode thresholds.
