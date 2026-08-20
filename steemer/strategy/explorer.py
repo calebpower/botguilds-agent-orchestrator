@@ -426,6 +426,8 @@ DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless 
 THREAT_KINDS = frozenset({"cultist", "zombie", "ghoul", "vampire_bat", "cinder_wisp",
                           "skeleton", "wraith", "lich", "ghast", "specter", "revenant"})
 FLEE_RADIUS = 4            # Manhattan tiles: flee when a THREAT is this close or nearer
+PRED_SPACING_RADIUS = 2    # v0.37.0: step away from a MELEE predator this close (not yet
+#   adjacent) BEFORE it lands the first hit — the anti-stuck lever (see the act() block).
 # v0.32.0: INVERTED to a benign ALLOWLIST. The 0.30/0.31 denylist (golem_stone,
 # delver, boar, spider_brown, …) was structurally doomed: every band-refresh rotates
 # in NEW mobs, so a hardcoded threat list is always a cycle behind and chars die to
@@ -544,7 +546,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.36.0"
+    version = "explorer/0.37.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -958,6 +960,35 @@ class Explorer:
                 self._retreat(uid, pos, ctx, blocked, offer, 7.2,
                               f"cornered by a {kind} — retreating", urgent=True)
             return
+
+        # --- Melee-predator PROACTIVE SPACING (v0.37.0, anti-stuck): the death
+        # analysis (postmortem #92) found ~80% of our deaths are STUCK chars, and the
+        # accumulated-map diagnostic REFUTED terrain-cornering (only 8/168 death-neighbours
+        # were known walls) — the real failure is chars that REST or scout-wander while a
+        # melee predator closes from dist 2. The dist-1 dodge above fires too late: a
+        # same-speed chaser that reaches adjacency lands a hit and often stays adjacent.
+        # But every chaser moves at ~0.22 tiles/tick (bestiary), so a char that keeps
+        # MOVING outruns it. So if a melee predator is within PRED_SPACING_RADIUS (2) —
+        # not adjacent (handled above) — step to the tile that maximises distance from
+        # every near predator. Scored 3.0: ABOVE aimless scout(1.0)/frontier(2.0-2.5) so a
+        # char steps away instead of idling/wandering into it, but BELOW real gathering
+        # (loot 4.0 / gold 5.0 / pickup 6.0) so a grab is still worth one tick (banked gold
+        # is death-proof; this fires next tick). Scoped to MELEE predators (benign wildlife
+        # is excluded via _is_melee_predator) so wildlife bands stay lootable. ---
+        if not homing:
+            near_preds = [p for p in preds
+                          if abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= PRED_SPACING_RADIUS]
+            if near_preds:
+                def _sp_dist(t: tuple[int, int]) -> int:
+                    return min(abs(t[0] - q[0]) + abs(t[1] - q[1]) for q in near_preds)
+                cands = [t for t in nav.neighbors(pos)
+                         if nav.is_walkable(t, ctx.known, blocked) and _sp_dist(t) > _sp_dist(pos)]
+                if cands:
+                    best = max(cands, key=_sp_dist)
+                    kind = ctx.enemies[near_preds[0]].get("kind", "melee predator")
+                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, best)},
+                          3.0, f"a {kind} is {_sp_dist(pos)} away — spacing off before it closes",
+                          urgent=True)
 
         # --- Healthy: fight / gather / explore. ---
         adj = [p for p in nav.neighbors(pos) if p in ctx.enemies]

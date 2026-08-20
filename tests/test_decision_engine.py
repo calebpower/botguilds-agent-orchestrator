@@ -107,6 +107,45 @@ def test_unhealed_char_still_explores_when_shallow():
         _field_frame(char, tiles))
 
 
+# --- v0.37.0 proactive predator spacing (anti-stuck) ---
+# Geometry: char at (0,2), a mob 2 tiles NORTH at (0,4). Without spacing the char
+# would push the north frontier / scout NORTH (toward the mob). Spacing (score 3.0)
+# beats frontier (2.5), so a char near a MELEE predator steps SOUTH (away) instead.
+_SPACE_TILES = [[0, 1, "floor"], [0, 2, "floor"], [0, 3, "floor"], [1, 2, "floor"]]
+
+
+def test_spaces_off_from_a_melee_predator_two_tiles_away():
+    # the anti-stuck lever: a wolf closing from dist 2 makes the char step AWAY (S)
+    # before it lands the first hit, rather than idling/scouting north into it.
+    bot = _bot()
+    char = _field_char(pos=[0, 2], stamina=40)
+    acts = bot.on_frame(_field_frame(char, _SPACE_TILES,
+                        entities=[{"pos": [0, 4], "faction": "monster", "kind": "wolf"}]))
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts     # away from the wolf
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts)
+
+
+def test_gathering_still_beats_spacing_so_income_is_safe():
+    # a grab underfoot (banked, death-proof) is worth one tick even with a predator at
+    # dist 2 — pickup (6.0) outscores spacing (3.0), then spacing fires next tick.
+    bot = _bot()
+    char = _field_char(pos=[0, 2], stamina=40)
+    acts = bot.on_frame(_field_frame(char, _SPACE_TILES,
+                        entities=[{"pos": [0, 4], "faction": "monster", "kind": "wolf"}],
+                        gold=[{"pos": [0, 2]}]))
+    assert {"char_uid": "c1", "action": "pickup"} in acts
+
+
+def test_benign_wildlife_does_not_trigger_spacing():
+    # a chicken (WILDLIFE_SAFE) at dist 2 is NOT a predator -> no spacing; the char is
+    # free to push the north frontier toward it. Guards that spacing is predator-scoped.
+    bot = _bot()
+    char = _field_char(pos=[0, 2], stamina=40)
+    acts = bot.on_frame(_field_frame(char, _SPACE_TILES,
+                        entities=[{"pos": [0, 4], "faction": "monster", "kind": "chicken"}]))
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts     # not spaced away
+
+
 def test_full_char_does_not_pick_up_more_loot():
     # A pack-full char (used >= cap-1) standing on loot, with just enough stamina
     # to afford a pickup (cost ~10) but NOT the stamina-gated walk-home move
