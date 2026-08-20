@@ -1723,3 +1723,24 @@ escapes; below ~12 (truly exhausted) resting is forced/unavoidable.
 Effect/verify: fewer no-op ticks while a predator is adjacent; deaths should ease
 further (the KPI alarm + HP-drop diagnostic will confirm on run #90). No wishlist item
 this pass (top remaining death-post-mortem ~0.46 < 0.5).
+
+## 2026-08-20 (iter 26) — HOLD (let 0.34 settle) + diagnosed the chaser residual
+Measured run #90 (0.34.0) vs full #88 (0.32.0): 0.34 WORKED (predator-adjacent-stuck
+62->45%, move_failed 16.8->6.9/1k — wolf-rest bug fixed); 0.33 EXONERATED (0/158 big
+HP-drops occurred adjacent to a chest, so chest-reach isn't the killer); gold_mean
+100.9->105 (stockpile healthy). BUT deaths 2.3->3.4/1k at similar low undead, HP-drop
+blame dominated by DELVER (100). Root: this is a no-safe-world cycle — every wildlife
+world is melee-predator-dense (vale 69%, mines 42% w/ 250 delvers), spire 0%-melee but
+100%-undead. Safe-world routing sends chars to 0%-UNDEAD worlds (vale/mines) which are
+delver-infested. deaths = delver-bloom + the chaser residual (single-step dodge trades
+~1:1 vs same-speed chasers).
+Decision: HOLD strategy this pass (honoring the stated slow-down after 3 rapid ships
+0.32/0.33/0.34; #90 is mid-run + delver-anomalous). Two candidate fixes weighed:
+(a) predator-aware routing (route by TOTAL threat) — REJECTED for now: would prefer
+mines (least-bad 42%) and CONCENTRATE chars into the delver bloom (backfire). (b)
+CHASER-AWARE DODGE — the right next lever: track per-char consecutive predator-adjacency;
+if a predator stays adjacent >=2 ticks despite a dodge (a chaser keeping pace), escalate
+to a home-retreat (leave the world) instead of oscillating in place; a stationary mob
+(streak resets after 1 dodge) still lets the char loot nearby. Ship next pass IF deaths
+stay elevated over a fuller/cleaner run (not just this delver bloom). Wishlist: nothing
+>0.5 (death post-mortem ~0.48 top). No ship this pass.
