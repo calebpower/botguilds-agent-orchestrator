@@ -525,7 +525,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.33.0"
+    version = "explorer/0.34.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -822,7 +822,8 @@ class Explorer:
         # Rest is always available (cost 0) and is the floor.
         trace.consider(None, REST_SCORE, f"rest (double regen); stamina {stamina}")
 
-        def offer(action: dict[str, Any], score: float, why: str) -> None:
+        def offer(action: dict[str, Any], score: float, why: str,
+                  urgent: bool = False) -> None:
             name = action["action"]
             cost = self._cost(name, cfg)
             # Moves need headroom above the raw cost (v0.9.0): the frame we decide
@@ -831,7 +832,14 @@ class Explorer:
             # keeps the char resting (double-rate regen) until the step is a safe
             # bet. Non-movement actions barely ever error on stamina — leave them
             # at the raw cost so combat/healing aren't throttled.
-            need = int(cost * MOVE_STAMINA_SAFETY) if name in ("move", "ride") else cost
+            # v0.34.0: an URGENT survival move (flee/dodge/retreat from a threat) skips
+            # the margin — a possibly-bounced step is far better than resting adjacent
+            # to a predator and dying. (Operator saw a low-stamina char sit and take
+            # wolf hits: the 1.5x margin was starving its only escape.)
+            if name in ("move", "ride") and not urgent:
+                need = int(cost * MOVE_STAMINA_SAFETY)
+            else:
+                need = cost
             if stamina >= need:
                 trace.consider(action, score, why)
             else:
@@ -847,7 +855,8 @@ class Explorer:
             if potion:
                 offer({"char_uid": uid, "action": "use", "item_id": potion["item_id"]},
                       9.0, "drinking a red potion to recover HP")
-            self._retreat(uid, pos, ctx, blocked, offer, 8.5, "hurt — walking home to heal")
+            self._retreat(uid, pos, ctx, blocked, offer, 8.5, "hurt — walking home to heal",
+                          urgent=True)
             return
 
         # --- DRASTIC undead-flee (v0.25.0): mood-driven. If a THREAT mob (poison
@@ -881,10 +890,11 @@ class Explorer:
                     step = self._step(pos, lambda p: p in safe_gold, ctx, blocked)
                     if step:
                         offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
-                              7.5, "grabbing a coin in the safe direction while evading")
+                              7.5, "grabbing a coin in the safe direction while evading",
+                              urgent=True)
                 # Flee to the village (handles the y==0 edge by stepping off it).
                 self._retreat(uid, pos, ctx, blocked, offer, 7.0,
-                              "undead near — fleeing to the village")
+                              "undead near — fleeing to the village", urgent=True)
                 # Cornered fallback (scored below the flee): if the retreat is blocked
                 # there is no escape step, so fight the weakest adjacent enemy out.
                 adj_e = [p for p in nav.neighbors(pos) if p in ctx.enemies]
@@ -922,12 +932,12 @@ class Explorer:
             if cands:
                 best = max(cands, key=_pred_dist)
                 offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, best)},
-                      7.3, f"dodging an adjacent {kind}")
+                      7.3, f"dodging an adjacent {kind}", urgent=True)
             else:
                 # boxed in (all escape tiles border a predator): retreat homeward — still
                 # better than standing to be hit. _retreat handles the y==0 edge.
                 self._retreat(uid, pos, ctx, blocked, offer, 7.2,
-                              f"cornered by a {kind} — retreating")
+                              f"cornered by a {kind} — retreating", urgent=True)
             return
 
         # --- Healthy: fight / gather / explore. ---
@@ -1259,14 +1269,15 @@ class Explorer:
             "open": item, "taste": item,
         }.get(action_name, item)
 
-    def _retreat(self, uid, pos, ctx, blocked, offer, score, why):
+    def _retreat(self, uid, pos, ctx, blocked, offer, score, why, urgent=False):
         if pos[1] == 0:
             offer({"char_uid": uid, "action": "move", "dir": "S"}, score,
-                  why + " (stepping off the south edge to the village)")
+                  why + " (stepping off the south edge to the village)", urgent=urgent)
             return
         step = self._step(pos, lambda p: p[1] == 0, ctx, blocked)
         if step:
-            offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)}, score, why)
+            offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
+                  score, why, urgent=urgent)
 
     @staticmethod
     def _step(pos, is_goal, ctx: FieldContext, blocked):

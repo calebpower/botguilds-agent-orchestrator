@@ -487,6 +487,22 @@ def test_dodges_an_adjacent_melee_predator_instead_of_fighting_it():
     assert all(a.get("dir") != "N" for a in moves)   # N (+y) steps toward the delver
 
 
+def test_low_stamina_char_still_dodges_a_predator_instead_of_resting():
+    # v0.34.0: the operator watched a low-stamina char sit and take wolf hits without
+    # fleeing or fighting — the 1.5x move-stamina margin (raw 20 -> needs 30) was
+    # starving its only escape. A survival move (dodge/flee/retreat) is now URGENT and
+    # gated on the RAW cost, so at stamina 25 (>= raw 20, < margin 30) the char dodges
+    # the adjacent wolf rather than resting. (Mutation: drop urgent -> it rests, [].)
+    bot = _bot()
+    tiles = [[x, y, "floor"] for x in range(3) for y in range(3)]
+    char = _field_char(pos=[1, 1], stamina=25)
+    frame = _field_frame(char, tiles,
+                         entities=[{"pos": [1, 2], "faction": "monster",
+                                    "kind": "wolf", "hp_frac": 1.0}])
+    acts = bot.on_frame(frame)
+    assert any(a.get("action") == "move" for a in acts), "should dodge the wolf, not rest"
+
+
 def test_still_attacks_a_confirmed_benign_adjacent_mob():
     # regression guard: the dodge is ONLY for predators — a CONFIRMED-benign mob
     # (chicken, in WILDLIFE_SAFE) adjacent is still attacked, so the dodge/allowlist
