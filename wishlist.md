@@ -125,9 +125,12 @@ top of **Open**.
   replay it AND the incumbent over the last N recorded frames and compare
   predicted KPIs. A "is this actually better?" check that would've caught the
   0.11.0 "fix that didn't fix."
-- [ ] **Loot & danger heatmaps per world** — where loot, gold, monsters, and
-  deaths cluster on each map; route toward hot zones and see the world we can't
-  fully see.
+- [x] **Loot & danger heatmaps per world** — SHIPPED 2026-08-20 (ui/server.py `api_heatmap`
+  + `/api/heatmap` + the "Heatmap" tab; Playwright test in the reaper gate). Per-tile density
+  canvas with a layer selector: Danger (all-run deaths from events), Monsters/Gold/Loot
+  (sampled from recent frames). Wishlist-scoring winner @ 0.551 once enjoyment/visibility was
+  credited to good_idea (operator: don't dock for "aesthetic but doesn't help the bot").
+  Original: where loot, gold, monsters, and deaths cluster on each map; route toward hot zones.
 - [ ] **In-world trash talk via `say`** — the bot posts contextual chat using the
   unused `say` verb: taunt a rival parking its roster, celebrate a big haul, mourn
   a death. Free personality (and doubles as campaign-layer eulogies).
@@ -143,10 +146,13 @@ top of **Open**.
   collides with screen host` finding. Original: ping the operator when something
   actually breaks: bot crash-looping, run window not advancing, bankruptcy, or a
   mass-death spike. Ops safety for a bot that runs unattended.
-- [ ] **Version-timeline "story mode"** — the dashboard narrates the bot's
-  evolution: each strategy version's hypothesis + its *measured* effect (from
-  decisions.log) as a visual timeline. A guided tour of why the bot is the way it
-  is.
+- [x] **Version-timeline "story mode"** — SHIPPED 2026-08-20 (ui/server.py `api_story` +
+  `/api/story` + a "Story mode" card in the Timeline tab; Playwright test in the reaper gate).
+  Groups the findings notebook by `explorer/X.Y.Z` version (newest first); each version shows
+  its shipped HYPOTHESIS (consideration) + MEASURED effect (measurement/discovery/correction)
+  with colour-coded shipped/measured tags. Wishlist-scoring winner @ 0.537 once enjoyment was
+  credited to good_idea. Original: the dashboard narrates the bot's evolution: each strategy
+  version's hypothesis + its measured effect as a visual timeline.
 - [ ] **Band-refresh timing awareness** — the game has periodically-refreshing
   "bands" (we log `band_refresh` events and ignore them); time embarks/retreats
   around them instead of getting caught out.

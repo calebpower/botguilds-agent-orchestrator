@@ -115,6 +115,68 @@ def dashboard_with_char(tmp_path_factory):
         proc.kill()
 
 
+def _seed_heatmap_db(path):
+    """A minimal mirror with tiles (for bounds) and a death event (the danger layer),
+    so the Heatmap tab has real per-tile data to paint."""
+    import json as _json
+    from steemer import db as _db
+    conn = _db.connect({"type": "sqlite", "path": str(path)})
+    _db.apply_schema(conn)
+    for (x, y) in [(0, 0), (5, 8), (9, 9)]:            # tiles_seen -> world bounds 10x10
+        conn.execute("INSERT INTO tiles_seen (world, x, y, kind) VALUES (?,?,?,?)",
+                     ("mines", x, y, "floor"))
+    conn.execute(
+        "INSERT INTO events (tick, world, kind, payload_json, run_id) VALUES (?,?,?,?,?)",
+        (50, "mines", "death",
+         _json.dumps({"char_uid": "c1", "pos": [5, 8], "guild_id": "g_cd0e2a"}), 1))
+    conn.commit()
+    conn.close()
+
+
+@pytest.fixture(scope="module")
+def dashboard_with_heatmap(tmp_path_factory):
+    port = _free_port()
+    db = tmp_path_factory.mktemp("fe3") / "d.db"
+    _seed_heatmap_db(db)
+    proc = subprocess.Popen(
+        [sys.executable, "ui/server.py", "--host", "127.0.0.1",
+         "--port", str(port), "--db", str(db)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for _ in range(150):
+        if proc.poll() is not None:
+            pytest.fail(f"dashboard exited early:\n{proc.stdout.read() if proc.stdout else ''}")
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.1)
+    else:
+        proc.kill()
+        pytest.fail("dashboard did not open its port in time")
+    yield f"http://127.0.0.1:{port}"
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        proc.kill()
+
+
+def test_heatmap_tab_paints_the_danger_layer(dashboard_with_heatmap, page: Page):
+    # clicking Heatmap fetches /api/heatmap and paints the canvas; the default Danger
+    # layer must report the seeded death (proves the endpoint + render are wired, not a
+    # blank canvas). A pageerror would fail the crash guard.
+    crashes = []
+    page.on("pageerror", lambda e: crashes.append(str(e)))
+    page.goto(dashboard_with_heatmap, wait_until="domcontentloaded")
+    page.locator("button[data-tab='heatmap']").click()
+    expect(page.locator("#tab-heatmap")).to_be_visible()
+    expect(page.locator("#hmCanvas")).to_be_visible()
+    # #h-info is filled by drawHeatmap once data arrives -> "mines: 1 tiles · 1 deaths ..."
+    expect(page.locator("#h-info")).to_contain_text("death")
+    expect(page.locator("#h-info")).to_contain_text("mines")
+    assert crashes == [], f"uncaught JS errors: {crashes}"
+
+
 def test_party_panel_renders_character_cards(dashboard_with_char, page: Page):
     # the operator's per-character stats panel: clicking Party shows a card per char
     # with a live HP bar, and a poison status chip for a poisoned char.
@@ -127,14 +189,29 @@ def test_party_panel_renders_character_cards(dashboard_with_char, page: Page):
     expect(card.locator(".chip.pois")).to_contain_text("poison")   # status chip
 
 
+def test_timeline_story_mode_narrates_versions(dashboard, page: Page):
+    # story mode reads the findings notebook (not the DB), so the empty-db dashboard is
+    # fine. Clicking Timeline must render per-version nodes, each carrying a "shipped"
+    # hypothesis tag — proves /api/story + renderStory are wired, not a blank card.
+    page.goto(dashboard, wait_until="domcontentloaded")
+    page.locator("button[data-tab='timeline']").click()
+    expect(page.locator("#tab-timeline")).to_be_visible()
+    expect(page.locator("#tl-story .sv").first).to_be_visible()   # >=1 version node
+    expect(page.locator("#tl-story")).to_contain_text("explorer/")
+    expect(page.locator("#tl-story .sv-tag.hyp").first).to_contain_text("shipped")
+
+
 def test_dashboard_loads_and_renders_the_tab_shell(dashboard, page: Page):
     # the single-page app boots on an EMPTY db without throwing, and the tab bar renders.
     crashes = []
     page.on("pageerror", lambda e: crashes.append(str(e)))
     page.goto(dashboard, wait_until="domcontentloaded")
     assert "steemer" in page.title().lower()
-    for tab in ("Overview", "Decisions", "Map", "Timeline", "Findings", "Logs"):
-        expect(page.locator("button[data-tab]", has_text=tab)).to_be_visible()
+    # match by the exact data-tab attribute, not display text — "Map" would substring-match
+    # the "Heatmap" button and make the locator ambiguous.
+    for tab in ("overview", "party", "decisions", "map", "heatmap",
+                "timeline", "findings", "logs"):
+        expect(page.locator(f"button[data-tab='{tab}']")).to_be_visible()
     # an empty db must render the empty state, not crash the JS
     page.wait_for_timeout(500)
     assert crashes == [], f"uncaught JS errors on load: {crashes}"

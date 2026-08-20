@@ -31,6 +31,8 @@ import argparse
 import base64
 import hashlib
 import json
+import re
+from collections import Counter
 import os
 import threading
 import time
@@ -358,6 +360,77 @@ def _frame_overlay(blob) -> dict:
     }
 
 
+def api_heatmap(db_path: str, world: str | None, sample: int = 400) -> dict:
+    """Per-tile density heatmaps for a world. Monster/gold/loot positions live only in
+    frame JSON, so they come from a BOUNDED sample of the most recent ``sample`` frames
+    (the same sampling the KPI tools use — a full-history decode would hang the request);
+    deaths come from the ``events`` table (cheap, indexed by world). Returns
+    ``{world, bounds, frames_sampled, deaths, layers}`` where each layer in
+    ``layers = {monster, gold, loot, death}`` is a list of ``[x, y, count]``."""
+    empty = {"world": world, "bounds": None, "frames_sampled": 0, "deaths": 0,
+             "layers": {"monster": [], "gold": [], "loot": [], "death": []}}
+    if not _db_ready(db_path):
+        return empty
+    conn = _ro(db_path)
+    try:
+        if not world:
+            row = conn.execute("SELECT world, COUNT(*) n FROM tiles_seen GROUP BY world "
+                               "ORDER BY n DESC LIMIT 1").fetchone()
+            world = row[0] if row else None
+        if not world:
+            return empty
+        b = conn.execute("SELECT MAX(x) mx, MAX(y) my FROM tiles_seen WHERE world = ?",
+                         (world,)).fetchone()
+        bounds = ([b["mx"] + 1, b["my"] + 1]
+                  if b and b["mx"] is not None and b["my"] is not None else None)
+
+        mon: Counter = Counter()
+        gold: Counter = Counter()
+        loot: Counter = Counter()
+        rows = conn.execute("SELECT json FROM frames WHERE world = ? ORDER BY seq DESC LIMIT ?",
+                            (world, sample)).fetchall()
+        for r in rows:
+            blob = r["json"]
+            blob = blob.encode("latin-1") if isinstance(blob, str) else blob
+            try:
+                vis = (json.loads(zlib.decompress(blob)).get("visible")) or {}
+            except (zlib.error, json.JSONDecodeError):
+                continue
+            for e in vis.get("entities") or []:
+                p = e.get("pos")
+                if p and e.get("faction") == "monster":
+                    mon[(p[0], p[1])] += 1
+            for g in vis.get("gold") or []:
+                p = g.get("pos")
+                if p:
+                    gold[(p[0], p[1])] += 1
+            for it in vis.get("items") or []:
+                p = it.get("pos")
+                if p:
+                    loot[(p[0], p[1])] += 1
+
+        death: Counter = Counter()
+        for r in conn.execute("SELECT payload_json FROM events WHERE kind = 'death' AND world = ?",
+                              (world,)).fetchall():
+            p = r["payload_json"]
+            p = json.loads(p) if isinstance(p, str) else p
+            pos = p.get("pos")
+            if pos:
+                death[(pos[0], pos[1])] += 1
+
+        def flat(c: Counter) -> list:
+            return [[x, y, n] for (x, y), n in c.items()]
+
+        return {"world": world, "bounds": bounds, "frames_sampled": len(rows),
+                "deaths": sum(death.values()),
+                "layers": {"monster": flat(mon), "gold": flat(gold),
+                           "loot": flat(loot), "death": flat(death)}}
+    except (*_db.Error, zlib.error, json.JSONDecodeError, KeyError):
+        return empty
+    finally:
+        conn.close()
+
+
 def api_log(name: str) -> tuple[str, str, int]:
     """Return ``(kind, text, size)`` for a whitelisted log file.
 
@@ -390,6 +463,45 @@ def api_findings() -> list[dict]:
         return findings.load(FINDINGS_PATH)
     except OSError:
         return []
+
+
+_VERSION_RE = re.compile(r"\b(\d+\.\d+\.\d+)\b")
+
+
+def api_story() -> list[dict]:
+    """Story mode: narrate the bot's evolution by strategy version. Groups the authored
+    findings notebook by the ``explorer/X.Y.Z`` version each one is tagged with, so each
+    version shows its shipped HYPOTHESIS (kind=consideration) and its MEASURED effect
+    (kind=measurement / discovery / correction). Returns newest version first:
+    ``[{version, entries:[{kind,status,title,updated}]}]``."""
+    try:
+        rows = findings.load(FINDINGS_PATH)
+    except OSError:
+        return []
+    by_ver: dict[str, list] = {}
+    for f in rows:
+        vers = set()
+        for t in (f.get("tags") or []):
+            m = _VERSION_RE.search(str(t))
+            if m:
+                vers.add(m.group(1))
+        if not vers:                       # fall back to a version named in the title
+            m = _VERSION_RE.search(f.get("title") or "")
+            if m:
+                vers.add(m.group(1))
+        for v in vers:
+            by_ver.setdefault(v, []).append({
+                "kind": f.get("kind"), "status": f.get("status"),
+                "title": f.get("title"), "updated": f.get("updated")})
+
+    def vkey(v: str):
+        try:
+            return tuple(int(x) for x in v.split("."))
+        except ValueError:
+            return (0,)
+
+    return [{"version": v, "entries": by_ver[v]}
+            for v in sorted(by_ver, key=vkey, reverse=True)]
 
 
 def api_observed(db_path: str) -> dict:
@@ -988,6 +1100,10 @@ class Handler(BaseHTTPRequestHandler):
                     int(one("limit", "100") or 100)))
             elif path == "/api/map":
                 self._json(api_map(self.db_config, one("world")))
+            elif path == "/api/heatmap":
+                self._json(api_heatmap(self.db_config, one("world")))
+            elif path == "/api/story":
+                self._json(api_story())
             elif path == "/api/log":
                 kind, text, size = api_log(one("name", "decisions"))
                 # ``size`` is the byte cursor the page subscribes with for the tail.
@@ -1130,6 +1246,9 @@ label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13
 #mapCanvas{display:block;width:100%;height:100%;image-rendering:pixelated;
   cursor:grab}
 #mapCanvas.grabbing{cursor:grabbing}
+.hm-wrap{border:1px solid var(--border);border-radius:8px;background:#0a0a0f;
+  height:min(70vh,640px)}
+#hmCanvas{display:block;width:100%;height:100%;image-rendering:pixelated}
 .map-controls{position:absolute;top:10px;right:10px;display:flex;
   flex-direction:column;gap:6px;z-index:2}
 .map-controls button{width:34px;height:34px;border:1px solid var(--border);
@@ -1159,6 +1278,19 @@ label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13
   color:var(--ink2)}
 .run .meta b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 .delta.up{color:var(--good)} .delta.down{color:var(--crit)}
+/* story mode — version narrative */
+.sv{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:8px 0;
+  border-top:1px solid var(--border)}
+.sv:first-child{border-top:none}
+.sv-ver{font-weight:600;font-variant-numeric:tabular-nums;color:var(--s1);font-size:13px}
+.sv-items{display:flex;flex-direction:column;gap:6px}
+.sv-item{display:flex;gap:8px;align-items:baseline;font-size:13px}
+.sv-tag{flex:none;font-size:10px;text-transform:uppercase;letter-spacing:.5px;
+  padding:1px 7px;border-radius:999px;font-weight:600;min-width:64px;text-align:center}
+.sv-tag.hyp{background:color-mix(in srgb,var(--s1) 20%,transparent);color:var(--s1)}
+.sv-tag.eff{background:color-mix(in srgb,var(--good) 20%,transparent);color:var(--good)}
+.sv-tag.note{background:var(--plane);color:var(--ink2)}
+.sv-title{color:var(--ink)}
 /* findings — the lab notebook */
 .find-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
   gap:14px}
@@ -1254,6 +1386,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     <button data-tab="party">Party</button>
     <button data-tab="decisions">Decisions</button>
     <button data-tab="map">Map</button>
+    <button data-tab="heatmap">Heatmap</button>
     <button data-tab="timeline">Timeline</button>
     <button data-tab="findings">Findings</button>
     <button data-tab="logs">Logs</button>
@@ -1322,9 +1455,33 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     <div class="legend" id="map-legend"></div>
   </section>
 
+  <!-- HEATMAP -->
+  <section class="tab" id="tab-heatmap">
+    <div class="filters">
+      <label class="chk">world <select id="h-world"></select></label>
+      <label class="chk">layer
+        <select id="h-layer">
+          <option value="death">Danger (deaths)</option>
+          <option value="monster">Monsters</option>
+          <option value="gold">Gold</option>
+          <option value="loot">Loot</option>
+        </select></label>
+      <span class="grow"></span>
+      <span class="small" id="h-info"></span>
+    </div>
+    <div class="hm-wrap"><canvas id="hmCanvas"></canvas></div>
+    <div class="small" style="margin-top:6px">brighter = more of the selected thing on that tile
+      &middot; deaths span all runs; monster/gold/loot sampled from recent frames</div>
+  </section>
+
   <!-- TIMELINE -->
   <section class="tab" id="tab-timeline">
-    <div class="card"><h2>Version timeline (runs)</h2><div id="tl-list"></div></div>
+    <div class="card"><h2>Story mode &mdash; the bot's evolution by version</h2>
+      <div class="small" style="margin-bottom:10px">each strategy version's shipped hypothesis
+        and its measured effect, newest first (from the findings notebook)</div>
+      <div id="tl-story"></div></div>
+    <div class="card" style="margin-top:16px"><h2>Version timeline (runs)</h2>
+      <div id="tl-list"></div></div>
   </section>
 
   <!-- FINDINGS -->
@@ -1428,6 +1585,7 @@ function loadActive(){
   else if(active==="party") loadParty();
   else if(active==="decisions") loadDecisions();
   else if(active==="map") loadMap();
+  else if(active==="heatmap") loadHeatmap();
   else if(active==="timeline") loadTimeline();
   else if(active==="findings") loadFindings();
   else if(active==="logs") loadLogs();
@@ -1440,6 +1598,7 @@ $("#theme").onclick = ()=>{
     : (matchMedia("(prefers-color-scheme:dark)").matches ? "light":"dark");
   document.documentElement.setAttribute("data-theme", next);
   if(active==="map") drawMap();   // colours come from CSS vars; just repaint
+  if(active==="heatmap") drawHeatmap();
 };
 
 /* ---- bar chart (single series -> blue, no legend) ---- */
@@ -1923,12 +2082,85 @@ function applyMap(msg){
   if(active==="map"){ drawMap(); renderMapMeta(); }
 }
 
+/* ---- HEATMAP ---- */
+let hmData=null, hmWorldsFilled=false;
+const HM_COLORS={death:[255,64,64], monster:[255,150,40], gold:[255,215,0], loot:[90,170,255]};
+async function loadHeatmap(){
+  if(!hmWorldsFilled){
+    hmWorldsFilled=true;
+    const worlds=await getJSON("/api/worlds");
+    const sel=$("#h-world"); sel.innerHTML="";
+    (worlds||[]).filter(w=>w!=="village").forEach(w=>{
+      const o=el("option",null,w); o.value=w; sel.appendChild(o); });
+    sel.onchange=loadHeatmap;
+    $("#h-layer").onchange=drawHeatmap;
+  }
+  const world=$("#h-world").value;
+  hmData=await getJSON("/api/heatmap"+(world?("?world="+encodeURIComponent(world)):""));
+  if(hmData && hmData.world){ const s=$("#h-world");
+    if([...s.options].some(o=>o.value===hmData.world)) s.value=hmData.world; }
+  drawHeatmap();
+}
+function drawHeatmap(){
+  const cv=$("#hmCanvas"); if(!cv) return;
+  const wrap=cv.parentElement;
+  const W=cv.width=wrap.clientWidth, H=cv.height=wrap.clientHeight;
+  const ctx=cv.getContext("2d");
+  ctx.fillStyle="#0a0a0f"; ctx.fillRect(0,0,W,H);
+  if(!W||!H) return;
+  const info=$("#h-info");
+  if(!hmData || !hmData.bounds){
+    ctx.fillStyle="#8a8a97"; ctx.font="14px sans-serif";
+    ctx.fillText("no data for this world yet",14,26);
+    if(info) info.textContent=""; return;
+  }
+  const [bw,bh]=hmData.bounds;
+  const layer=$("#h-layer").value;
+  const pts=(hmData.layers&&hmData.layers[layer])||[];
+  const total=pts.reduce((a,p)=>a+p[2],0);
+  if(info) info.textContent=`${hmData.world}: ${pts.length} tiles · ${total} `
+    +(layer==="death"?"deaths (all runs)":"sightings (recent)")+` · ${bw}×${bh}`;
+  const s=Math.max(1, Math.min(W/bw, H/bh));   // fit world to canvas, square tiles
+  const ox=(W-bw*s)/2, oy=(H-bh*s)/2;
+  let mx=1; for(const p of pts) if(p[2]>mx) mx=p[2];
+  const [cr,cg,cb]=HM_COLORS[layer]||[255,255,255];
+  for(const [x,y,n] of pts){
+    const a=0.15+0.85*Math.sqrt(n/mx);         // sqrt keeps low counts visible
+    ctx.fillStyle=`rgba(${cr},${cg},${cb},${a})`;
+    ctx.fillRect(ox+x*s, oy+(bh-1-y)*s, Math.ceil(s), Math.ceil(s));  // y north = up
+  }
+}
+window.addEventListener("resize", ()=>{ if(active==="heatmap") drawHeatmap(); });
+
 /* ---- TIMELINE ---- */
 async function loadTimeline(){
-  const s = await getJSON("/api/snapshot");
+  const [s, story] = await Promise.all([getJSON("/api/snapshot"), getJSON("/api/story")]);
   renderTimeline(s);
+  renderStory(story);
   if(s && s.ok && s.version!=null) snapVersion = s.version;
   subscribe();
+}
+function renderStory(story){
+  const box = $("#tl-story"); if(!box) return; box.innerHTML="";
+  if(!story || !story.length){ box.appendChild(el("div","empty","No version story yet.")); return; }
+  // consideration/shipped = the hypothesis; measurement/discovery/correction = the effect.
+  const roleOf = k => (k==="consideration") ? "hyp"
+    : (k==="measurement"||k==="discovery"||k==="correction"||k==="diagnosis") ? "eff" : "note";
+  const roleLabel = {hyp:"shipped", eff:"measured", note:"note"};
+  for(const v of story){
+    const node = el("div","sv");
+    node.appendChild(el("div","sv-ver","explorer/"+esc(v.version)));
+    const items = el("div","sv-items");
+    for(const e of v.entries){
+      const role = roleOf(e.kind);
+      const row = el("div","sv-item "+role);
+      row.appendChild(el("span","sv-tag "+role, roleLabel[role]));
+      row.appendChild(el("span","sv-title", esc(e.title)||"(untitled)"));
+      items.appendChild(row);
+    }
+    node.appendChild(items);
+    box.appendChild(node);
+  }
 }
 function renderTimeline(s){
   const list = $("#tl-list"); list.innerHTML="";
