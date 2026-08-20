@@ -2101,3 +2101,24 @@ watchdog can't see it) — tc1 so it won't self-qualify yet. Nothing implemented
 PUSHED all commits earlier (operator granted STANDING push auth [[push-authorization]]).
 NEXT PASS: re-measure 0.37 on matured #94 (does move_failed stay ~halved? gold-coin rate recover
 with band cycles? stuck-fraction hold below 80%?). If clean, 0.38 stamina-economy is teed up.
+
+ONE-OFF (2026-08-20, operator-requested; the scheduled 17:30 bot-measurement pass still runs
+separately) — RESCORED the wishlist after an operator correction: good_idea must CREDIT operator
+ENJOYMENT/visibility, NOT dock for "aesthetic but doesn't help the bot" (risk_to_bot already
+handles harm; a read-only dashboard can't harm the bot). [[wishlist-scoring]] updated. The
+enjoyment/visibility items jumped (story-mode 0.55->0.78, trash-talk 0.50->0.75, log-scale
+0.45->0.62); strategy items stayed risk-capped; stale-data rival items barely moved. TWO cleared
+0.5: loot/danger heatmaps (0.80*0.97*0.71=0.551) and version-timeline story mode (0.78*0.97*0.71
+=0.537). Per the one-off "implement all >0.5", SHIPPED BOTH (dashboard, zero bot risk):
+  - HEATMAPS: ui/server.py api_heatmap + /api/heatmap + a Heatmap tab. Per-tile density canvas,
+    layer selector: Danger (all-run deaths from events, cheap) + Monsters/Gold/Loot (sampled from
+    recent frames — positions live only in frame JSON). sqrt alpha so low counts show.
+  - STORY MODE: api_story + /api/story + a Story card in the Timeline tab. Groups the findings
+    notebook by explorer/X.Y.Z version (newest first) -> each version's shipped HYPOTHESIS +
+    MEASURED effect with colour-coded tags. (32 versions render live.)
+GATE: local pytest 268/3-skip; 2 new Playwright tests (heatmap paints seeded danger layer; story
+narrates versions). Reaper caught a REAL regression first pass: the new "Heatmap" button made the
+tab-shell test's has_text="Map" ambiguous (substring match) -> fixed it to match by exact data-tab
+attribute + include every tab (a correctness fix, not weakening). Reaper re-run 273 passed/2 skip.
+Committed a738cca, PUSHED (standing auth). Restarted dash (pid 71989); both endpoints live on :8800.
+No bot redeploy (dashboard-only). Bot still on 0.37.0 run #94.
