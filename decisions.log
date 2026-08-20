@@ -2022,3 +2022,30 @@ neighbours against THAT map + predator distances -> then the cornered/decision s
 DECISION: still recommend a 0.37 anti-stuck lever to the operator, but gated on that accumulated-
 map diagnostic first (don't design blind). Held for greenlight; no strategy change shipped.
 NEXT PASS: run the accumulated-known-map stuck diagnostic; health; wishlist.
+
+ITER 39 (2026-08-20) — bot on explorer/0.36.0, run #93 (measure+diagnose; 0.37 not greenlit).
+HEALTH: watchdog alive, bot pid 70218 up (no restart). #93 (85k frames): our-deaths 0.59/1k,
+all-deaths EASING 2.11->1.88 (harsh band cycle passing), move_failed 47.7/1k, gold recent ~560
+(DIPPED below the 580-621 band — consistent with the thesis: a death-heavier run => more
+replace-recruiting => more gold drain). No fire; gold should recover as deaths ease.
+WISHLIST: unchanged, top heatmaps 0.481 <0.5. Nothing qualifies; nothing implemented.
+STUCK-DEATH MECHANISM — NAILED (corrected diagnostic, scratchpad/stuck_diag2.py + an actions
+cross-check). Rebuilt the ACCUMULATED known-map (250-tick window) instead of a single frame:
+neighbour make-up across 42 stuck deaths = walkable 100 / SOLID 8 / occupied 28 / unknown 32.
+=> TERRAIN-CORNERING REFUTED (only 8/168 solid). Buckets: had_exit_didnt_move 35, fleeing 9,
+cornered_unseen 6, out_of_stamina 1. Then the DECISIVE actions cross-check (actions_sent +
+action_errors, last 15 ticks/death): 36/51 dying chars ISSUED >=1 MOVE (129 moves total; +13
+attack, +2 use); the other 15 issued NOTHING (idle). action_errors: not_enough_stamina 24,
+no_such_item 14, out_of_range 7, unknown_character 7. => the failure is MOVES NOT LANDING, not a
+missing decision-to-move and not terrain. Two sub-mechanisms: (A) ~71% issue moves but stay put
+— stamina-REJECTED (not_enough_stamina) and/or tile-BOUNCES (moved toward a blocked/occluded
+tile despite a walkable option); (B) ~29% idle (rest/craft while a predator closes).
+REVISED 0.37 DESIGN BASIS: the anti-stuck lever is "make escape moves LAND" — primarily the
+STAMINA ECONOMY (don't let a threatened char get stamina-stranded next to a predator; 0.34
+urgent-moves bypass the 1.5x margin but not_enough_stamina still fires 24x, so either they aren't
+triggering here or the char is below the raw ~20 cost), and secondarily escape-DIRECTION choice /
+bounce-recovery (pick a KNOWN-walkable neighbour, and after a bounce try a different one). NOT a
+dodge, NOT terrain-avoidance. This is subtler than iter37 framed it. Still gated on operator
+greenlight (strategy change => full gate + redeploy).
+NEXT PASS: refine the (A) split (stamina-stranded vs tile-bounce fractions) to size the lever;
+health; wishlist. If greenlit, build 0.37 on this basis.
