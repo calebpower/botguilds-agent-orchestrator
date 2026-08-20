@@ -1706,3 +1706,20 @@ recover toward pre-0.32.0 with deaths HOLDING ~1.7/1k. FALSIFIED if deaths rise 
 too often boxed by strong mobs -> gate the chest-reach on hp) or income doesn't recover
 (the loss was coin-traversal not chests -> revisit). Wishlist scoring this pass: top
 remaining item (death post-mortem ~0.47) is <0.5, so no wishlist item shipped alongside.
+
+## 2026-08-20 (iter 25, operator-observed bug) — explorer/0.34.0: urgent survival moves
+Trigger: operator watched a wolf attack one of our chars that neither fled nor fought.
+Root cause (from data): run #88 had 437 wolf-adjacent char-frames but the char failed
+to move 62% of the time (113 low-stamina-stuck). The dodge is a MOVE, and moves need a
+1.5x stamina safety margin (0.9.0: raw 20 -> needs 30). A char below the margin (median
+stamina-when-adjacent 36, min 6) can't afford to dodge -> RESTS adjacent to the wolf,
+taking hits while doing nothing. The margin (meant to stop bounced exploration steps on
+stale frames) was starving the ESCAPE move.
+Fix: offer() gains `urgent`; survival moves (hurt-retreat, undead-flee + safe-gold grab,
+melee-dodge + cornered retreat) offered at RAW cost (no margin) — a bounced step beats
+standing to die. Threaded through _retreat. Fixed the SIBLINGS (undead flee, hurt
+retreat had the same starvation), not just the wolf case. At stamina 12-29 the char now
+escapes; below ~12 (truly exhausted) resting is forced/unavoidable.
+Effect/verify: fewer no-op ticks while a predator is adjacent; deaths should ease
+further (the KPI alarm + HP-drop diagnostic will confirm on run #90). No wishlist item
+this pass (top remaining death-post-mortem ~0.46 < 0.5).
