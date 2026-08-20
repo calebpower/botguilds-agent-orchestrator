@@ -1812,3 +1812,24 @@ characterized. Reinforces the teed-up chaser-dodge lever (but deaths low, not ur
 No strategy change (bot on 0.35.0, gold climbing). Read-only tool -> no redeploy.
 NEXT: watch the cap (does gold break 529?); the post-mortem's stuck-death finding is a
 lead for a future chaser-dodge / stamina-management pass if deaths ever rise.
+
+## 2026-08-20 (iter 31) — CAP ANSWERED (no cap, gold 550): core survival+economy arc COMPLETE
+Headline: the operator's long-open cap question is ANSWERED — NO gold cap at 529. Run #91
+gold climbed 97->354->510->532->541->550 (max 550, 6939 samples >529, 0 drops). 529 was
+just the old high-water mark (the potion-buy had pinned gold at ~100 until 0.35 uncapped
+it). Gold accumulates without bound, compounding cross-run. STOCKPILE GOAL MET.
+Survival also solid: deaths 1.57/1k (down from 2.29). Post-mortem (new tool) full #91:
+80% stuck-chars (55 stuck/13 fleeing) killed by a SPREAD of melee predators (wolf19,
+boar15, delver7). Low rate + ambiguous 'stuck' (burst deaths look stuck regardless of
+mobility) => no clean survival lever; the chaser-dodge wouldn't help a stamina-starved
+can't-move char, and risks income for a small gain. DEFERRED.
+Decision: NO strategy change (both core goals MET, no fire, no wishlist item >0.5 — top
+is per-char stats panel ~0.49 boundary but a big dashboard build with a weak verify story
+in this env; behavioral-mob ~0.48). This is a natural INFLECTION: the economic/survival
+loop that ran ~0.10-0.35 has achieved its objectives. Surfaced to the operator (non-
+blocking) for next-arc direction: (a) per-char stats DASHBOARD (their explicit request,
+visibility into the now-healthy guild); (b) stockpile-RATE via band pre-emption (harvest
+fresh coins post-refresh, beat the depletion plateau); (c) a new mechanic (forging/magic/
+player-market); (d) just let it ride & compound. NEXT PASS: act on operator direction if
+given; else best-judgment default = start the per-char stats panel (operator-requested,
+boundary-qualifying) OR band pre-emption. Keep watching health via kpi_watch + postmortem.
