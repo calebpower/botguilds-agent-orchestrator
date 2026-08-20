@@ -470,6 +470,35 @@ def test_a_distant_melee_predator_does_not_trigger_the_undead_flee():
     assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts   # still exploring
 
 
+def test_dodges_an_adjacent_melee_predator_instead_of_fighting_it():
+    # v0.31.0: run #86 showed delver/boar still hit because the MOB drifts adjacent to a
+    # stationary char (0.30.0 blocks US approaching, not the mob). An adjacent predator
+    # must be DODGED (step to a farther tile), never attacked — fighting a delver is a
+    # fast death. The delver is at [1,2] (north of the char), so the dodge is NOT north.
+    bot = _bot()
+    tiles = [[x, y, "floor"] for x in range(3) for y in range(3)]
+    char = _field_char(pos=[1, 1], stamina=40)
+    frame = _field_frame(char, tiles,
+                         entities=[{"pos": [1, 2], "faction": "monster", "kind": "delver", "hp_frac": 1.0}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "attack", "target": [1, 2]} not in acts   # never fight it
+    moves = [a for a in acts if a.get("action") == "move"]
+    assert moves, "should step away from the predator"
+    assert all(a.get("dir") != "N" for a in moves)   # N (+y) steps toward the delver
+
+
+def test_still_attacks_a_harmless_adjacent_mob():
+    # regression guard: the 0.31.0 dodge is ONLY for melee predators — a harmless rat
+    # adjacent is still attacked, so the dodge does not neuter normal combat.
+    bot = _bot()
+    tiles = [[x, y, "floor"] for x in range(3) for y in range(3)]
+    char = _field_char(pos=[1, 1], stamina=40)
+    frame = _field_frame(char, tiles,
+                         entities=[{"pos": [1, 2], "faction": "monster", "kind": "rat", "hp_frac": 0.5}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "attack", "target": [1, 2]} in acts
+
+
 def test_gold_rush_beelines_to_a_gold_coin_over_loot():
     # v0.24.0: a gold coin outranks ordinary loot — chars go for banked gold first.
     bot = _bot()

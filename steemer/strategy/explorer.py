@@ -425,7 +425,11 @@ FLEE_RADIUS = 4            # Manhattan tiles: flee when a THREAT is this close o
 # (that would strand us from the wildlife-world loot) but danger-aware PATHING: block
 # the tiles adjacent to them so we route AROUND, never INTO, strike range. Evidence-
 # gathered, not guessed — add a kind here only once HP-drop data blames it.
-MELEE_THREAT_KINDS = frozenset({"golem_stone", "delver", "boar", "drake", "lake_drake"})
+MELEE_THREAT_KINDS = frozenset({"golem_stone", "delver", "boar", "drake", "lake_drake",
+                                # v0.31.0: added after run #86's HP-drop blame caught them
+                                # (spider_brown 6, wolf 3, crab_green 1) once 0.30.0's
+                                # block-adjacent zeroed out golem_stone's hits.
+                                "spider_brown", "wolf", "crab_green"})
 THREAT_TTL = 1200          # v0.26.0: a world's observed undead level is trusted for this
 #   many ticks; after that it's treated as unknown (re-scoutable) so a world that has
 #   emptied out (everyone fled) gets re-checked once its band may have cycled back to
@@ -518,7 +522,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.30.0"
+    version = "explorer/0.31.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -877,6 +881,32 @@ class Explorer:
                     offer({"char_uid": uid, "action": "attack", "target": list(w)},
                           6.9, "cornered by undead — fighting out (fallback)")
                 return
+
+        # --- Melee-predator DODGE (v0.31.0): golem/delver/boar/spider/… hit hard ONLY
+        # in melee, and some drift onto a stationary/looting char (0.30.0's block stops
+        # US stepping adjacent, but not the MOB). If one is ADJACENT, step to the tile
+        # that maximises distance from every melee predator — do NOT fight it (attacking
+        # a delver is a fast death) and do NOT linger to loot. Scoped to dist 1, so the
+        # wildlife worlds stay lootable otherwise (this is NOT the radius-4 undead flee).
+        preds = [p for p, en in ctx.enemies.items() if en.get("kind") in MELEE_THREAT_KINDS]
+        melee_adj = [p for p in nav.neighbors(pos) if p in preds]
+        if melee_adj:
+            kind = ctx.enemies[melee_adj[0]].get("kind", "melee predator")
+            trace.observe(f"a {kind} is adjacent — dodging (not fighting)")
+            def _pred_dist(t: tuple[int, int]) -> int:
+                return min(abs(t[0] - q[0]) + abs(t[1] - q[1]) for q in preds)
+            cands = [t for t in nav.neighbors(pos)
+                     if nav.is_walkable(t, ctx.known, blocked) and _pred_dist(t) > _pred_dist(pos)]
+            if cands:
+                best = max(cands, key=_pred_dist)
+                offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, best)},
+                      7.3, f"dodging an adjacent {kind}")
+            else:
+                # boxed in (all escape tiles border a predator): retreat homeward — still
+                # better than standing to be hit. _retreat handles the y==0 edge.
+                self._retreat(uid, pos, ctx, blocked, offer, 7.2,
+                              f"cornered by a {kind} — retreating")
+            return
 
         # --- Healthy: fight / gather / explore. ---
         adj = [p for p in nav.neighbors(pos) if p in ctx.enemies]
