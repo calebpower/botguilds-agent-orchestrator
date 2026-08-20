@@ -2077,3 +2077,27 @@ NOTE: did NOT git push (operator said deploy=redeploy; global rule needs explici
 commits unpushed. Did NOT commit the say-injection probe (operator: "don't include the injection
 probe") — stays in scratchpad.
 NEXT PASS: measure 0.37 on #94 (deaths down? gold recovering? spacing not eating income?).
+
+ITER 41 (2026-08-20) — MEASURE 0.37.0 on run #94 (young, 25k frames — EARLY read). Also fixed
+the stuck map-color (web sidecar dead since Aug 19; restarted ./svc.sh up web, pid 71324).
+HEALTH: watchdog alive; bot 71198 + sidecar 71324 up.
+0.37 EARLY SIGNAL (#94 vs #93) — WIN on target, one watch:
+  - move_failed/1k 46.35 -> 24.20 (DOWN 48%) — ROBUST (thousands of events, band-independent):
+    proactive spacing stops chars getting stuck/bouncing. The clearest evidence 0.37 works.
+  - our-death/1k 0.570 -> 0.281 (down ~51%) but only 7-8 deaths (noisy); rival deaths also fell
+    (1.90->1.29 all/1k) so the cycle eased too — temper the death claim.
+  - postmortem #94 stuck-fraction 80% -> 62% (5/8) — directional, tiny sample (ghoul 2 of the
+    killers = undead, not a spacing target).
+  - gold recovered ~560 -> ~600. WATCH: gold-COIN event rate 1.37 -> 0.67/1k (down 51%); pickup
+    only -12%, foraged UP, sale flat. Spacing (3.0) LOSES to gold-beeline (5.0) so it shouldn't
+    suppress reachable coins by design => likely BAND VARIATION (young run, coin availability
+    varies) like the 0.36 income dip, NOT a spacing cost. Net gold UP, so NOT a wealth
+    regression. Recheck on a matured #94 (>60k frames, more band cycles) to disambiguate.
+VERDICT: 0.37 is an early WIN on its primary target (stuck/move_failed/deaths); gold-income rate
+flagged for a longer-run recheck; net wealth fine. Do NOT tighten (no clear regression) — premature.
+WISHLIST (tc=37-add_minor now; factor ~0.71): top heatmaps 0.482, shadow-eval 0.479 — still <0.5.
+Added a NEW item: extend the watchdog to cover the web SIDECAR (it died ~1.5 days unnoticed; frame-
+watchdog can't see it) — tc1 so it won't self-qualify yet. Nothing implemented (measure pass).
+PUSHED all commits earlier (operator granted STANDING push auth [[push-authorization]]).
+NEXT PASS: re-measure 0.37 on matured #94 (does move_failed stay ~halved? gold-coin rate recover
+with band cycles? stuck-fraction hold below 80%?). If clean, 0.38 stamina-economy is teed up.

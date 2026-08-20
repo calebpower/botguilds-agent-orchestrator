@@ -10,6 +10,14 @@ top of **Open**.
 
 ## Open
 
+- [ ] **Extend the watchdog to cover the web SIDECAR** — `steemer/watchdog.py` only checks the
+  BOT's frame-liveness. The `web` sidecar (`tools/web_sidecar.py`: rainbow map-color rotation +
+  rival intel/spectate + tiles) died externally on 2026-08-19 and sat dead ~1.5 days UNNOTICED
+  (stuck color, paused intel recording) — the frame-watchdog can't see it. Add a sibling
+  liveness check: `intel` table freshness (newest spectate row age) or `run/web.pid` process
+  liveness, classified like `classify_liveness`. Read-only. (surfaced fixing the stuck-color
+  report 2026-08-20; operator asked whether to build it)
+
 - [ ] **Rival-recon dashboard tab** — a dashboard tab dedicated to intelligence on the
   OTHER guilds: as much as we can learn about each rival — historical stats over time
   (size, levels, gear progression), their character movements (which worlds/maps they
