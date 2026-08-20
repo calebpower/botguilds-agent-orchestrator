@@ -10,6 +10,27 @@ top of **Open**.
 
 ## Open
 
+- [ ] **"Codex" tab — an auto-populated wiki (lands / items / monsters / mechanics)** — a
+  dashboard tab that consolidates everything we've learned into one browsable reference,
+  regenerated after each run so it stays current. Most of the data already exists — this is
+  largely presentation + consolidation, not new analysis:
+  - **Monsters** — reuse `steemer/bestiary.py` (per-mob chaser/stationary behaviour, aggro
+    range, hit-rate, est damage/hit, benign-vs-predator-vs-undead classification). One page
+    per mob kind.
+  - **Lands (worlds)** — per world: terrain vocabulary (`tiles_seen` kinds), size/bounds,
+    live undead/threat level (`_world_threat`), band-refresh cadence, and the survivor-bias-
+    corrected **danger** (from the heatmap `danger` layer, deaths/time-in-tile), plus which
+    mobs rotate in.
+  - **Items** — kinds seen (from frames' `visible.items` + character inventories), their slot/
+    type (weapon/outfit/potion/tome), and gold value where known (shop prices / sale events).
+  - **Mechanics** — the game rules we've learned, drawn from `docs/*.md` + the findings
+    notebook (band refreshes, poison/DoT, coins bank instantly, forge blocked on product
+    discovery, stamina gating, etc.).
+  A build step regenerates the codex snapshot from the DB (bestiary, tiles_seen, item
+  sightings, danger) + docs + findings after each run; the tab renders it. High operator-
+  reference/enjoyment value; read-only (dashboard sidecar, zero bot risk). Dovetails with the
+  behavioural-mob work, the heatmap, and rival-recon. (operator request 2026-08-20)
+
 - [ ] **Extend the watchdog to cover the web SIDECAR** — `steemer/watchdog.py` only checks the
   BOT's frame-liveness. The `web` sidecar (`tools/web_sidecar.py`: rainbow map-color rotation +
   rival intel/spectate + tiles) died externally on 2026-08-19 and sat dead ~1.5 days UNNOTICED
