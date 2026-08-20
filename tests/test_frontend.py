@@ -129,8 +129,12 @@ def _seed_heatmap_db(path):
         conn.execute("INSERT INTO tiles_seen (world, x, y, kind) VALUES (?,?,?,?)",
                      ("mines", x, y, "floor"))
     frame = {"world": "mines", "tick": 60, "bounds": [10, 10], "guild": {"gold": 100},
-             "chars": [{"char_uid": "c1", "pos": [5, 8], "hp": 20, "max_hp": 24}],
-             "visible": {"tiles": [[5, 8, "floor"]], "entities": [], "items": [], "gold": []}}
+             "chars": [{"char_uid": "c1", "pos": [5, 8], "hp": 20, "max_hp": 24, "level": 3,
+                        "inventory": [{"kind": "egg"}]}],
+             "visible": {"tiles": [[5, 8, "floor"]], "gold": [],
+                         "entities": [{"eid": 1, "kind": "wolf", "pos": [6, 8],
+                                       "faction": "monster", "hp_frac": 1.0}],
+                         "items": [{"kind": "egg", "pos": [7, 8]}]}}
     conn.execute("INSERT INTO frames (tick, world, received_at, run_id, json) VALUES (?,?,?,?,?)",
                  (60, "mines", _time.time(), 1, _zlib.compress(_json.dumps(frame).encode())))
     conn.execute(
@@ -167,6 +171,25 @@ def dashboard_with_heatmap(tmp_path_factory):
         proc.wait(timeout=5)
     except Exception:
         proc.kill()
+
+
+def test_codex_tab_populates_its_sections(dashboard_with_heatmap, page: Page):
+    # the Codex auto-builds from current data: the seeded wolf (predator), mines land, egg
+    # item, and the docs-based mechanics all appear across the four sub-panes.
+    crashes = []
+    page.on("pageerror", lambda e: crashes.append(str(e)))
+    page.goto(dashboard_with_heatmap, wait_until="domcontentloaded")
+    page.locator("button[data-tab='codex']").click()
+    expect(page.locator("#tab-codex")).to_be_visible()
+    expect(page.locator("#cx-monsters")).to_contain_text("wolf")               # Monsters (default)
+    expect(page.locator("#cx-monsters .cls-predator").first).to_contain_text("predator")
+    page.locator("#tab-codex .cx-btn[data-cx='lands']").click()
+    expect(page.locator("#cx-lands")).to_contain_text("mines")                 # Lands
+    page.locator("#tab-codex .cx-btn[data-cx='items']").click()
+    expect(page.locator("#cx-items")).to_contain_text("egg")                   # Items
+    page.locator("#tab-codex .cx-btn[data-cx='mechanics']").click()
+    expect(page.locator("#cx-mechanics")).to_contain_text("Game rules")        # Mechanics (docs)
+    assert crashes == [], f"uncaught JS errors: {crashes}"
 
 
 def test_map_danger_overlay_is_survivor_bias_corrected(dashboard_with_heatmap, page: Page):
@@ -218,7 +241,7 @@ def test_dashboard_loads_and_renders_the_tab_shell(dashboard, page: Page):
     assert "steemer" in page.title().lower()
     # match by the exact data-tab attribute, not display text — "Map" would substring-match
     # the "Heatmap" button and make the locator ambiguous.
-    for tab in ("overview", "party", "decisions", "map",
+    for tab in ("overview", "party", "decisions", "map", "codex",
                 "timeline", "findings", "logs"):
         expect(page.locator(f"button[data-tab='{tab}']")).to_be_visible()
     # an empty db must render the empty state, not crash the JS

@@ -461,6 +461,145 @@ def api_heatmap(db_path: str, world: str | None, sample: int = 1200) -> dict:
         conn.close()
 
 
+def _item_type(kind: str) -> str:
+    k = str(kind).lower()
+    if k.startswith("potion"):
+        return "potion"
+    if any(w in k for w in ("tome", "scroll", "book")):
+        return "tome"
+    if any(w in k for w in ("club", "sword", "axe", "dagger", "spear", "bow", "staff",
+                            "wand", "mace", "blade")):
+        return "weapon"
+    if any(w in k for w in ("outfit", "armor", "robe", "mail", "plate", "boots", "helm",
+                            "cloak", "trinket", "ring", "amulet", "shield")):
+        return "gear"
+    if any(w in k for w in ("ore", "ingot", "gem", "herb", "essence", "vein", "hide", "bone")):
+        return "material"
+    if any(w in k for w in ("egg", "meat", "fish", "fruit", "bread")):
+        return "food"
+    return "misc"
+
+
+def api_codex(db_path: str, sample: int = 4000) -> dict:
+    """The Codex: an auto-populated wiki of what we've learned, regenerated from current
+    data every load. Four sections:
+      * monsters  — the learned bestiary (behaviour/aggro/damage/class) over recent frames
+      * lands     — per world: terrain vocabulary, size, mobs seen, total deaths
+      * items     — item kinds seen (visible items + inventories) with an inferred type
+      * mechanics — the game-rule docs (docs/*.md) + our confirmed discoveries (findings)
+    Monsters/items share ONE bounded frame decode (positions/kinds live only in frame JSON)."""
+    from steemer import bestiary as _best
+    from steemer.strategy.explorer import WILDLIFE_SAFE, THREAT_KINDS
+    out = {"monsters": [], "lands": [], "items": [], "mechanics": [],
+           "frames_sampled": 0, "generated_run": None}
+    # --- mechanics: docs + confirmed learnings (no DB needed) ---
+    docs = []
+    docs_dir = os.path.join(REPO_ROOT, "docs")
+    try:
+        for fn in sorted(os.listdir(docs_dir)):
+            if not fn.endswith(".md"):
+                continue
+            title = fn[:-3].split("-", 1)[-1].replace("-", " ").title()
+            summary = ""
+            try:
+                with open(os.path.join(docs_dir, fn), encoding="utf-8") as fh:
+                    for line in fh:
+                        s = line.strip().lstrip("# ").strip()
+                        if s:
+                            summary = s[:160]
+                            break
+            except OSError:
+                pass
+            docs.append({"doc": fn, "title": title, "summary": summary})
+    except OSError:
+        pass
+    learnings = []
+    try:
+        for f in findings.load(FINDINGS_PATH):
+            if f.get("kind") in ("discovery", "correction") and f.get("status") == "confirmed":
+                learnings.append({"title": f.get("title"), "tags": f.get("tags") or []})
+    except OSError:
+        pass
+    out["mechanics"] = {"docs": docs, "learnings": learnings[:40]}
+
+    if not _db_ready(db_path):
+        return out
+    conn = _ro(db_path)
+    try:
+        run = conn.execute("SELECT MAX(run_id) m FROM frames").fetchone()
+        out["generated_run"] = run["m"] if run else None
+
+        # --- lands: cheap SQL over tiles_seen + events ---
+        worlds = [r["world"] for r in conn.execute(
+            "SELECT DISTINCT world FROM tiles_seen WHERE world <> 'village'").fetchall()]
+        for w in worlds:
+            terrain = [{"kind": r["kind"], "count": r["c"]} for r in conn.execute(
+                "SELECT kind, COUNT(*) c FROM tiles_seen WHERE world = ? GROUP BY kind "
+                "ORDER BY c DESC", (w,)).fetchall()]
+            b = conn.execute("SELECT MAX(x) mx, MAX(y) my FROM tiles_seen WHERE world = ?",
+                             (w,)).fetchone()
+            deaths = conn.execute("SELECT COUNT(*) c FROM events WHERE world = ? AND kind='death'",
+                                  (w,)).fetchone()["c"]
+            out["lands"].append({
+                "world": w,
+                "size": [b["mx"] + 1, b["my"] + 1] if b and b["mx"] is not None else None,
+                "terrain": terrain, "deaths": deaths, "mob_kinds": []})
+        lands_by_world = {land["world"]: land for land in out["lands"]}
+
+        # --- one bounded frame decode -> bestiary (monsters) + item kinds + per-world mobs ---
+        normed = []
+        items: Counter = Counter()
+        world_mobs: dict = {}
+        for r in conn.execute("SELECT json FROM frames WHERE world <> 'village' "
+                              "ORDER BY seq DESC LIMIT ?", (sample,)).fetchall():
+            blob = r["json"]
+            blob = blob.encode("latin-1") if isinstance(blob, str) else blob
+            try:
+                frame = json.loads(zlib.decompress(blob))
+            except (zlib.error, json.JSONDecodeError):
+                continue
+            normed.append(_best.normalize_frame(frame))
+            w = frame.get("world")
+            vis = frame.get("visible") or {}
+            for it in vis.get("items") or []:
+                if it.get("kind"):
+                    items[it["kind"]] += 1
+            for c in frame.get("chars") or []:
+                for it in c.get("inventory") or []:
+                    if it.get("kind"):
+                        items[it["kind"]] += 1
+            for e in vis.get("entities") or []:
+                if e.get("faction") == "monster" and e.get("kind"):
+                    world_mobs.setdefault(w, set()).add(e["kind"])
+        out["frames_sampled"] = len(normed)
+        for w, kinds in world_mobs.items():
+            if w in lands_by_world:
+                lands_by_world[w]["mob_kinds"] = sorted(kinds)
+
+        def _mob_class(kind: str) -> str:
+            if kind in THREAT_KINDS:
+                return "undead"
+            if kind in WILDLIFE_SAFE:
+                return "benign"
+            return "predator"
+
+        bez = _best.build_bestiary(normed)
+        monsters = []
+        for kind, p in bez.items():
+            monsters.append({"kind": kind, "class": _mob_class(kind), **p})
+        monsters.sort(key=lambda m: m["sightings"], reverse=True)
+        out["monsters"] = monsters
+
+        out["items"] = sorted(
+            [{"kind": k, "type": _item_type(k), "count": n} for k, n in items.items()],
+            key=lambda i: (i["type"], -i["count"]))
+        return out
+    except (*_db.Error, zlib.error, json.JSONDecodeError, KeyError):
+        return out
+    finally:
+        conn.close()
+
+
 def api_log(name: str) -> tuple[str, str, int]:
     """Return ``(kind, text, size)`` for a whitelisted log file.
 
@@ -1135,6 +1274,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(api_heatmap(self.db_config, one("world")))
             elif path == "/api/story":
                 self._json(api_story())
+            elif path == "/api/codex":
+                self._json(api_codex(self.db_config))
             elif path == "/api/log":
                 kind, text, size = api_log(one("name", "decisions"))
                 # ``size`` is the byte cursor the page subscribes with for the tail.
@@ -1319,6 +1460,27 @@ label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13
 .sv-tag.eff{background:color-mix(in srgb,var(--good) 20%,transparent);color:var(--good)}
 .sv-tag.note{background:var(--plane);color:var(--ink2)}
 .sv-title{color:var(--ink)}
+/* codex — the auto-populated wiki */
+.cx-nav{display:flex;gap:6px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.cx-btn{background:transparent;border:1px solid var(--border);color:var(--ink2);
+  padding:5px 12px;border-radius:8px;font-size:13px;cursor:pointer}
+.cx-btn.active{background:var(--plane);color:var(--ink);border-color:var(--chosen);font-weight:600}
+.cx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.cx-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.cx-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.cx-t{font-weight:600}
+.cx-cls{font-size:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;
+  padding:1px 7px;border-radius:999px}
+.cx-cls.cls-undead{background:color-mix(in srgb,var(--s3) 22%,transparent);color:var(--s3)}
+.cx-cls.cls-predator{background:color-mix(in srgb,var(--crit) 20%,transparent);color:var(--crit)}
+.cx-cls.cls-benign{background:color-mix(in srgb,var(--good) 20%,transparent);color:var(--good)}
+.cx-cls.cls-item{background:var(--plane);color:var(--ink2)}
+.cx-b{font-size:12.5px;color:var(--ink2)}
+.cx-item{display:flex;align-items:baseline;gap:8px}
+.cx-mech h3{font-size:13px;color:var(--ink2);margin:14px 0 8px;text-transform:uppercase;
+  letter-spacing:.5px}
+.cx-doc{padding:5px 0;border-top:1px solid var(--border);font-size:13px}
+.cx-doc:first-of-type{border-top:none}
 /* findings — the lab notebook */
 .find-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
   gap:14px}
@@ -1418,6 +1580,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     <button data-tab="party">Party</button>
     <button data-tab="decisions">Decisions</button>
     <button data-tab="map">Map</button>
+    <button data-tab="codex">Codex</button>
     <button data-tab="timeline">Timeline</button>
     <button data-tab="findings">Findings</button>
     <button data-tab="logs">Logs</button>
@@ -1496,6 +1659,22 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     </div>
     <div class="small" style="margin-top:6px">drag to pan &middot; wheel or pinch to zoom &middot; hover for tile coords</div>
     <div class="legend" id="map-legend"></div>
+  </section>
+
+  <!-- CODEX -->
+  <section class="tab" id="tab-codex">
+    <div class="cx-nav">
+      <button class="cx-btn active" data-cx="monsters">Monsters</button>
+      <button class="cx-btn" data-cx="lands">Lands</button>
+      <button class="cx-btn" data-cx="items">Items</button>
+      <button class="cx-btn" data-cx="mechanics">Mechanics</button>
+      <span class="grow"></span>
+      <span class="small" id="cx-info"></span>
+    </div>
+    <div id="cx-monsters" class="cx-pane"></div>
+    <div id="cx-lands" class="cx-pane" hidden></div>
+    <div id="cx-items" class="cx-pane" hidden></div>
+    <div id="cx-mechanics" class="cx-pane" hidden></div>
   </section>
 
   <!-- TIMELINE -->
@@ -1609,6 +1788,7 @@ function loadActive(){
   else if(active==="party") loadParty();
   else if(active==="decisions") loadDecisions();
   else if(active==="map") loadMap();
+  else if(active==="codex") loadCodex();
   else if(active==="timeline") loadTimeline();
   else if(active==="findings") loadFindings();
   else if(active==="logs") loadLogs();
@@ -2139,6 +2319,73 @@ function applyMap(msg){
   }
   if(msg.cursor){ mapSeq=msg.cursor.seq; mapTick=msg.cursor.tick; }
   if(active==="map"){ drawMap(); renderMapMeta(); }
+}
+
+/* ---- CODEX ---- */
+let codexData=null, codexWired=false;
+async function loadCodex(){
+  if(!codexWired){ codexWired=true;
+    document.querySelectorAll("#tab-codex .cx-btn").forEach(b=>{
+      b.onclick=()=>{
+        document.querySelectorAll("#tab-codex .cx-btn").forEach(x=>x.classList.toggle("active",x===b));
+        const pane=b.dataset.cx;
+        ["monsters","lands","items","mechanics"].forEach(p=>{ const e=$("#cx-"+p); if(e) e.hidden=(p!==pane); });
+      };
+    });
+  }
+  const mon=$("#cx-monsters"); if(mon && !codexData) mon.innerHTML='<div class="small">building the codex from recent data…</div>';
+  codexData=await getJSON("/api/codex");
+  renderCodex(codexData);
+}
+function renderCodex(d){
+  if(!d) return;
+  const info=$("#cx-info");
+  if(info) info.textContent = d.generated_run!=null ? ("from run #"+d.generated_run+" · "+(d.frames_sampled||0)+" frames") : "";
+  const mon=$("#cx-monsters");
+  if(mon){ mon.innerHTML="";
+    if(!(d.monsters||[]).length){ mon.appendChild(el("div","empty","No monsters observed yet.")); }
+    else{ const g=el("div","cx-grid");
+      d.monsters.forEach(m=>{ const c=el("div","cx-card");
+        c.innerHTML='<div class="cx-h"><span class="cx-t">'+esc(m.kind)+'</span>'
+          +'<span class="cx-cls cls-'+esc(m["class"])+'">'+esc(m["class"])+'</span></div>'
+          +'<div class="cx-b">'+esc(m.behavior||"?")
+          +(m.est_dmg_per_hit!=null?(' · <b>'+esc(m.est_dmg_per_hit)+'</b> dmg/hit'):'')
+          +(m.aggro_range!=null?(' · aggro '+esc(m.aggro_range)):'')
+          +(m.chaser_score!=null?(' · chase '+esc(m.chaser_score)):'')
+          +'<br><span class="k">'+esc(m.sightings)+' sightings · '+esc(m.individuals)+' seen</span></div>';
+        g.appendChild(c); });
+      mon.appendChild(g); } }
+  const lands=$("#cx-lands");
+  if(lands){ lands.innerHTML="";
+    if(!(d.lands||[]).length){ lands.appendChild(el("div","empty","No lands mapped yet.")); }
+    else{ const g=el("div","cx-grid");
+      d.lands.forEach(l=>{
+        const terr=(l.terrain||[]).slice(0,10).map(t=>'<span class="chip">'+esc(t.kind)+' '+esc(t.count)+'</span>').join("");
+        const mobs=(l.mob_kinds||[]).map(k=>'<span class="chip">'+esc(k)+'</span>').join("")||'<span class="k">—</span>';
+        const c=el("div","cx-card");
+        c.innerHTML='<div class="cx-h"><span class="cx-t">'+esc(l.world)+'</span>'
+          +'<span class="k">'+(l.size?esc(l.size[0])+'×'+esc(l.size[1]):'?')+' · '+esc(l.deaths)+' deaths</span></div>'
+          +'<div class="cx-b"><div class="k">terrain</div>'+terr
+          +'<div class="k" style="margin-top:6px">mobs seen</div>'+mobs+'</div>';
+        g.appendChild(c); });
+      lands.appendChild(g); } }
+  const items=$("#cx-items");
+  if(items){ items.innerHTML="";
+    if(!(d.items||[]).length){ items.appendChild(el("div","empty","No items seen yet.")); }
+    else{ const g=el("div","cx-grid");
+      d.items.forEach(i=>{ const c=el("div","cx-card cx-item");
+        c.innerHTML='<span class="cx-t">'+esc(i.kind)+'</span> <span class="cx-cls cls-item">'+esc(i.type)+'</span> <span class="k">×'+esc(i.count)+'</span>';
+        g.appendChild(c); });
+      items.appendChild(g); } }
+  const mech=$("#cx-mechanics");
+  if(mech){ mech.innerHTML=""; const M=d.mechanics||{}; const w=el("div","cx-mech");
+    w.appendChild(el("h3",null,"Game rules (docs)"));
+    (M.docs||[]).forEach(doc=>{ const r=el("div","cx-doc");
+      r.innerHTML='<span class="cx-t">'+esc(doc.title)+'</span> <span class="k">'+esc(doc.summary||"")+'</span>';
+      w.appendChild(r); });
+    w.appendChild(el("h3",null,"What we've learned"));
+    (M.learnings||[]).forEach(x=>{ const r=el("div","cx-doc"); r.innerHTML='<span>'+esc(x.title)+'</span>'; w.appendChild(r); });
+    mech.appendChild(w); }
 }
 
 /* ---- TIMELINE ---- */

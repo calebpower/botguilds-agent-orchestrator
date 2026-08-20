@@ -10,7 +10,7 @@ top of **Open**.
 
 ## Open
 
-- [ ] **"Codex" tab — an auto-populated wiki (lands / items / monsters / mechanics)** — a
+- [x] **"Codex" tab — an auto-populated wiki (lands / items / monsters / mechanics)** — SHIPPED 2026-08-20 (ui/server.py api_codex + /api/codex + Codex tab, Playwright-tested). Built as a one-off on operator request (score -0.21 by the formula: just-added tc=1, but operator-directed). Reuses the bestiary (monsters), tiles_seen+events (lands), frame item-sightings (items), docs/*.md + confirmed findings (mechanics); regenerated every load. — a
   dashboard tab that consolidates everything we've learned into one browsable reference,
   regenerated after each run so it stays current. Most of the data already exists — this is
   largely presentation + consolidation, not new analysis:
