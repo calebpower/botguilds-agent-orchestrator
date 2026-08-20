@@ -21,6 +21,17 @@ dependencies = [
 dev = [
     "pytest>=8",
 ]
+# Frontend (dashboard) tests via Playwright. Kept in a SEPARATE, non-default group:
+# the workstation is FreeBSD, where Playwright browsers do not run, so local
+# `uv sync` / `uv run pytest` must NOT pull these — the frontend tests importorskip
+# and are collected only where the group is installed. The reaper gate (Linux
+# container) installs it with `uv sync --group frontend` + `playwright install
+# chromium`, so the DASHBOARD is exercised in the pinned gate even though it can't be
+# run locally.
+frontend = [
+    "playwright>=1.40",
+    "pytest-playwright>=0.5",
+]
 
 [build-system]
 requires = ["hatchling"]

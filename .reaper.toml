@@ -21,13 +21,25 @@ exec = "container"
 # digest alone (no tag — reaper rejects tags); this digest IS the bookworm-slim image.
 image = "ghcr.io/astral-sh/uv@sha256:22334efe746f1b69217d455049b484d7b8cacfb2d5f42555580b62415a98e0a3"
 # Cache uv's downloads on the pool, not the tiny root disk (<4 GiB free).
-cmd = "UV_CACHE_DIR=$REAPER_CACHE_UV uv sync --frozen"
-cache = ["uv"]
+# v0.36.0-era: also install the `frontend` group + a chromium browser so the reaper
+# gate exercises the DASHBOARD via Playwright (tests/test_frontend.py). The workstation
+# is FreeBSD (no browser), so the frontend suite can ONLY run here. `--with-deps` pulls
+# chromium's system libs via apt (we run as root); PLAYWRIGHT_BROWSERS_PATH caches the
+# browser binary on the pool ($REAPER_CACHE_PWB) so it isn't re-downloaded every run.
+# The browser BINARY caches on the pool (PLAYWRIGHT_BROWSERS_PATH), so download it once
+# here. The apt SYSTEM libs (libglib/libnss/…) are NOT installed here — reaper runs
+# [build] and [run] in SEPARATE ephemeral containers, so anything apt puts in /usr/lib
+# during build is gone by run; install-deps therefore lives in [run] below.
+cmd = "UV_CACHE_DIR=$REAPER_CACHE_UV uv sync --frozen --group frontend && PLAYWRIGHT_BROWSERS_PATH=$REAPER_CACHE_PWB uv run --group frontend playwright install chromium"
+cache = ["uv", "pwb"]
 
 [run]
-# No pipe: dash has no pipefail, so `... | tee` would mask a failing suite and
-# poison @pristine. Redirect the log into $REAPER_OUT (collected back to out/).
-cmd = "UV_CACHE_DIR=$REAPER_CACHE_UV uv run pytest -q > $REAPER_OUT/pytest.log 2>&1"
+# `uv run` re-syncs the env to the given groups, so it MUST carry --group frontend or
+# it drops Playwright (env reverts to the 8 default packages and the frontend tests
+# importorskip). install-deps must run HERE (this fresh container's /usr/lib) so chromium
+# finds libglib etc.; the browser binary itself comes from the pool cache. No pipe: dash
+# lacks pipefail, so redirect (not tee) so a red suite can't be masked.
+cmd = "PLAYWRIGHT_BROWSERS_PATH=$REAPER_CACHE_PWB UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group frontend playwright install-deps chromium && PLAYWRIGHT_BROWSERS_PATH=$REAPER_CACHE_PWB UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group frontend pytest -q > $REAPER_OUT/pytest.log 2>&1"
 
 [sync]
 # out/ is auto-excluded. Skip the FreeBSD venv (wrong platform), caches, local
