@@ -2049,3 +2049,31 @@ dodge, NOT terrain-avoidance. This is subtler than iter37 framed it. Still gated
 greenlight (strategy change => full gate + redeploy).
 NEXT PASS: refine the (A) split (stamina-stranded vs tile-bounce fractions) to size the lever;
 health; wishlist. If greenlit, build 0.37 on this basis.
+
+ITER 40 (2026-08-20) — OPERATOR GREENLIT 0.37 ("go for it ... deploy the new stuff").
+SHIPPED + DEPLOYED explorer/0.37.0 = PROACTIVE MELEE-PREDATOR SPACING (anti-stuck), built on
+the iter37-39 diagnosis (80% stuck deaths; terrain-cornering refuted 8/168 solid; 36/51 issued
+moves but stayed stuck; mean stamina 45 at death so NOT mainly stamina; the gap = chars rest/
+scout-wander while a melee predator closes from dist 2, the dist-1 dodge firing too late; all
+chasers move ~0.22 so a moving char outruns them). Fix: melee predator within PRED_SPACING_RADIUS
+(2), not adjacent -> step to the max-predator-distance walkable tile, scored 3.0 (above scout 1.0/
+frontier 2.0-2.5, below gather 4.0-6.0 => income-safe), melee-scoped (benign wildlife excluded).
+GATE (full, per strategy-change rule): local pytest 268 passed/3 skipped; 3 new mutation-checked
+tests (radius, score, predator-scoping mutations all caught); bounded replay 1200 frames 0 errors
++ 85 spacing decisions firing on real frames; reaper Linux container (incl. Playwright frontend)
+271 passed/2 skipped. Committed a68a270.
+DEPLOY: down (killed lingering runner remnants explicitly, confirmed pgrep zero — single-session
+kick-war guard), up -> pid 71198, connected tick 1199000 = run #94. Watchdog alive.
+PREDICTION to measure on #94 vs #93: our-death/1k FALLS (fewer stuck deaths); move_failed steady-
+or-down; gold RECOVERS above ~560 (fewer deaths -> less replace-recruiting). Uncertainty: spacing
+could cost some income if it over-triggers in predator-dense wildlife bands (guard: it loses to
+gather 4.0+; only fires vs scout/rest) OR could increase move volume. KPI alarm + postmortem +
+the spacing-decision rate will judge it.
+SECONDARY LEVER SPOTTED for a future 0.38: not_enough_stamina is SPIKING in the live log
+(0.3-0.5/frame, 96-146 per 300 ticks) — chars repeatedly failing moves at low stamina. The
+stamina economy (don't let a threatened char get stamina-stranded; the 0.34 urgent-move bypass
+still needs the raw ~20 cost) is the next anti-death lever after 0.37 is measured.
+NOTE: did NOT git push (operator said deploy=redeploy; global rule needs explicit push auth) — 8
+commits unpushed. Did NOT commit the say-injection probe (operator: "don't include the injection
+probe") — stays in scratchpad.
+NEXT PASS: measure 0.37 on #94 (deaths down? gold recovering? spacing not eating income?).
