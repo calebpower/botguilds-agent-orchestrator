@@ -2204,3 +2204,22 @@ NEXT: re-measure 0.38 income on a MATURED #95 IN A COIN-RICH BAND (watch coins-a
 else the comparison is void). Phases 2 (per-char roles) / 3 (Prospector) + stamina-economy await
 operator greenlight. Available read-only prep: DANGER-layer (deaths/time) analysis of which areas/
 mobs are actually lethal, to feed Guardian assignment + mode thresholds.
+
+ITER 45 (2026-08-20) — SHIPPED + DEPLOYED explorer/0.39.0 = PER-CHARACTER ROLES (operator-greenlit
+Phase 2). A char's ROLE (role_of(char): level>=GUARDIAN_LEVEL(4) => GUARDIAN else FORAGER; derived
+from level, self-adjusting) biases the 0.38 severity threshold: GUARDIAN disengages EARLY (severe
+at undead>=0.08 or >=2 preds — protect the XP investment); FORAGER works the EDGES (severe only at
+>=0.20 or >=4 preds — cheap recruit, bank coins before dying). Same band, different risk appetite =
+the operator's "individuals adhere to different modes". role_of is a SHARED module fn; the Party
+card now shows each char's role chip (api_roster gains `role`) — one source of truth.
+GATE green: local 272/3; replay 1200 frames 0 errors with 4 guardian + 81 forager spacing decisions
+(live, split matches the mostly-recruit roster); reaper 277/2. Mutation-checked. Committed 3b35b56,
+pushed. Redeployed run #96 (pid 72910, watchdog alive); dash restarted (pid 72932). /api/roster live:
+12 foragers / 9 guardians (~43% guardians — roster has leveled up; if too cautious for income, raise
+GUARDIAN_LEVEL).
+PREDICT #96: guardians (veterans) die LESS; foragers (bolder than 0.38) gather MORE (in coin-rich
+bands) at some extra forager-death risk — net a better risk allocation (cheap deaths buy income,
+veterans protected). Measure: deaths + income vs #95, IDEALLY split by role; check coins-available
+first (iter44 lesson). If foragers die a lot MORE with no income payoff -> thresholds too bold, tighten.
+NEXT: measure 0.39 (coin-rich band + role-split deaths); Phase 3 (Prospector mechanic-probing) and a
+stamina-economy lever await operator greenlight.
