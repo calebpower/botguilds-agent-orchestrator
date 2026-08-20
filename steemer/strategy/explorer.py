@@ -446,6 +446,24 @@ BREW_MIN_GOLD = 10         # keep a little gold buffer before buying bottles
 # to arm a bare-handed char — v0.13.0's poverty-bootstrap unlock.
 WEAPON_KINDS = frozenset({"club", "dagger", "shortsword", "spear", "bow"})
 
+# v0.28.0 PURE HOARD: freeze the weapon-buy entirely. Measurement of run #83
+# (0.27.0) proved the club-buy is the SOLE remaining drain on the treasury —
+# every gold DROP was exactly -15 at a `buy`, 26 clubs = 390g/run, spent the
+# instant gold cleared 15 — so gold peaked ~155 then bled straight back to ~2
+# (recent mean 5.7, median 2) and NEVER stockpiled. And the clubs are near-dead
+# weight now: since safe-world routing + undead-flee (0.25/0.26) chars AVOID
+# combat (attacks fell to ~21/1k) — they flee undead and loot wildlife, and
+# ~28 of 42 recruits/run churn out before ever fighting, each having been armed
+# with a club they never swing. Field COINS bank instantly and CHESTS give
+# direct gold+loot regardless of a weapon; only ~3% of gold is kill-tied. So
+# freezing the buy makes net income ~+607g/run and lets gold finally accumulate.
+# Tradeoff (named, not hidden): a truly COLLAPSED guild (0 armed chars, needing
+# to fight its way out of a poverty trap — the v0.13.0 bootstrap case) can no
+# longer auto-arm. That case isn't live (12 chars, fielding 10, income healthy),
+# and the operator's governing directive is "extraordinarily drastic" hoarding;
+# flip this back to False to restore arming if the guild ever re-collapses.
+FREEZE_WEAPON_BUY = True
+
 
 MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina before
 #   stepping — headroom so a ~1-tick-stale frame reading still affords the move on
@@ -476,7 +494,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.27.0"
+    version = "explorer/0.28.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -572,7 +590,7 @@ class Explorer:
             #    prices + stat reqs; a club at 15 lowers the bootstrap escape from
             #    45 gold to 15, so the guild can arm a char the moment it scrapes
             #    a little loot, and that char can then survive → loot → recover.
-            if eqp.get("hand") is None:
+            if eqp.get("hand") is None and not FREEZE_WEAPON_BUY:
                 buy = self._afford_weapon(char, frame, gold)
                 if buy is not None:
                     kind, price = buy

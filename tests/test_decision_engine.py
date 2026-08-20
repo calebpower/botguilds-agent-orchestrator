@@ -342,16 +342,18 @@ def test_village_does_not_buy_a_second_potion():
 _SHOP_CLUB = {"stock": [{"kind": "club", "buy_price": 15, "sell_price": 3}]}
 
 
-def test_village_still_arms_a_bare_char_in_gold_rush():
-    # v0.24.0 hoard keeps ONE exception: a cheap 15g club for a bare char (defence /
-    # kill-for-drops), per the operator's call. Bare char + affordable club -> buys it.
+def test_village_pure_hoard_does_not_arm_even_with_gold_to_spare():
+    # v0.28.0 PURE HOARD: the club-buy was the SOLE remaining treasury drain
+    # (run #83: every -15 gold drop was a club, 390g/run, gold never stockpiled),
+    # and clubs are near-dead weight since chars flee combat (attacks ~21/1k). So
+    # even a bare char with 100g on hand buys NOTHING — every coin is hoarded.
     bot = _bot()
     char = {"char_uid": "c1", "inventory": [], "equipment": {}, "stats": {"str": 2},
             "hp": 30, "max_hp": 30}
     frame = {"world": "village", "tick": 3,
              "guild": {"gold": 100, "chars_here": ["c1"], "chars_by_world": {"vale": ["e1"]}},
              "chars": [char], "shop": _SHOP_CLUB}
-    assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
+    assert all(a.get("action") != "buy" for a in bot.on_frame(frame))
 
 
 def _world_field_frame(world, tiles, entities=()):
@@ -518,17 +520,17 @@ def test_village_spends_banked_xp_on_an_affordable_stat():
     assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "spend_xp", "stat": "end"}]
 
 
-def test_village_arms_bare_char_whenever_affordable():
-    # v0.18.0 reverted the v0.17.0 WEAPON_BUY_RESERVE (it regressed engagement): a
-    # bare char is armed whenever it can afford a weapon, even with earners already
-    # fielded — no potion reserve gating it. Club 15, gold 15 -> buys the club.
+def test_village_hoard_does_not_arm_even_at_exactly_the_club_price():
+    # v0.28.0 freeze at the boundary: gold == the club's exact price (15) is the
+    # tightest case where the old logic would have armed. The pure hoard buys
+    # nothing even here — proving the freeze isn't merely a raised reserve floor.
     bot = _bot()
     char = {"char_uid": "c1", "inventory": [], "equipment": {}, "stats": {"str": 2},
             "hp": 30, "max_hp": 30}
     frame = {"world": "village", "tick": 3,
              "guild": {"gold": 15, "chars_here": ["c1"], "chars_by_world": {"vale": ["e1"]}},
              "chars": [char], "shop": _SHOP_CLUB}
-    assert bot.on_frame(frame) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
+    assert all(a.get("action") != "buy" for a in bot.on_frame(frame))
 
 
 def _village_char(**over):
@@ -978,11 +980,12 @@ def _barehand_frame(gold, str_=1, potions=0):
             "guild": {"gold": gold, "chars_here": ["c1"], "chars_by_world": {}}, "chars": [char]}
 
 
-def test_bare_handed_char_buys_the_cheapest_affordable_weapon_at_15_not_45():
-    # v0.13.0: a broke guild must arm with the 15-gold club, not wait for a 45-gold
-    # shortsword (the deadlock). gold 15 -> buys the club.
+def test_bare_handed_char_with_full_shop_hoards_and_buys_no_weapon():
+    # v0.28.0 freeze, full shop (club 15 / dagger / shortsword 45 all in stock):
+    # an affordable bare char buys NONE of them — proving the freeze covers every
+    # weapon kind, not just the club. (Superseded v0.13.0's arm-with-the-club.)
     bot = _bot()
-    assert bot.on_frame(_barehand_frame(15)) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
+    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(15)))
 
 
 def test_broke_char_below_cheapest_weapon_buys_nothing():
@@ -990,18 +993,23 @@ def test_broke_char_below_cheapest_weapon_buys_nothing():
     assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(14)))
 
 
-def test_gold_arms_a_weapon_before_a_potion_while_bare_handed():
-    # gold 20 could buy a 20-gold potion, but a bare-handed char must arm first.
+def test_hoard_buys_neither_weapon_nor_potion_while_bare_handed():
+    # v0.28.0 + v0.24.0: at gold 20 the old logic would arm (weapon before potion);
+    # now BOTH the weapon-buy (0.28.0) and the potion-buy (0.24.0 hoard) are frozen,
+    # so a bare char at 20g buys nothing at all — every coin stays in the treasury.
     bot = _bot()
-    acts = bot.on_frame(_barehand_frame(20))
-    assert acts and acts[0]["action"] == "buy" and acts[0]["kind"] in ("club", "dagger")
-    assert acts[0]["kind"] != "potion_red"
+    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(20)))
 
 
-def test_weapon_purchase_respects_the_stat_requirement():
-    # str 1 can't qualify for the shortsword (req str4) even at gold 45 -> buys club.
-    bot = _bot()
-    assert bot.on_frame(_barehand_frame(45, str_=1)) == [{"char_uid": "c1", "action": "buy", "kind": "club"}]
+def test_afford_weapon_respects_the_stat_requirement():
+    # The weapon-buy is frozen at the caller (v0.28.0), but the _afford_weapon
+    # selection logic is still live (flip FREEZE_WEAPON_BUY to re-enable arming),
+    # so test it directly: str 1 can't qualify for the shortsword (req str4) even
+    # at gold 45 -> it picks the club, not the shortsword.
+    from steemer.strategy.explorer import Explorer
+    char = {"stats": {"str": 1, "vit": 8, "end": 8}, "gifts": []}
+    frame = _barehand_frame(45, str_=1)
+    assert Explorer._afford_weapon(char, frame, 45) == ("club", 15)
 
 
 def test_village_action_re_send_guard_skips_a_recent_actor():
