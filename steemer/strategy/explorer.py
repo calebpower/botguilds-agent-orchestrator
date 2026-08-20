@@ -459,7 +459,16 @@ POTION_KEEP = 1            # potions to carry into the field per character
 # POTION_RESERVE. This keeps a growing hoard floor (never spends below the reserve)
 # yet keeps earners alive -> more looting -> the hoard grows FASTER. Bounded, unlike
 # the old club drain: at most POTION_KEEP potion per char, and gated on the reserve.
-POTION_RESERVE = 100       # never let the potion-buy pull the treasury below this
+# v0.35.0: raised 100 -> 600 to UNCAP the stockpile. Run #90 gold-flow proved the
+# potion-buy was pinning gold at ~100: all 16 gold drops were -20 potion buys (318g)
+# and consumed essentially all the +311g income -> gold flat at the reserve floor. But
+# heals are 99.6% FREE-BREWED (4511 drinks vs 16 buys), and 0.29's heal-from-surplus
+# was premised on POISON deaths — a diagnosis iter20 REFUTED (the killers are melee
+# predators, which a potion can't out-heal). So the bought potions barely help survival
+# and only cap the hoard. A 600 reserve lets gold climb PAST the 529 cap-test (answering
+# the operator's open "is there a gold cap?" question) while still topping up heals once
+# the guild is genuinely rich. Brewing covers heals meanwhile. (KPI alarm watches deaths.)
+POTION_RESERVE = 600       # never let the potion-buy pull the treasury below this
 POTION_MIN_GOLD = 20       # buy a potion once we can afford one (its shop price is
 #   20g; v0.17.0 dropped the old arbitrary 25g buffer — a poison death loses the
 #   char's gear+loot, far more than 20g, so a heal is worth buying at cost).
@@ -525,7 +534,7 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 class Explorer:
-    version = "explorer/0.34.0"
+    version = "explorer/0.35.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been

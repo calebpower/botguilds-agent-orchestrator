@@ -1135,21 +1135,26 @@ def test_hoard_buys_neither_weapon_nor_potion_while_bare_handed():
     assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(20)))
 
 
-def test_village_heals_a_potionless_char_from_surplus():
-    # v0.29.0: with the hoard well above the reserve (120 - 20 = 100 >= POTION_RESERVE),
-    # a potion-less char buys a field heal to outrun poison's DoT. (Weapon-buy stays
-    # frozen, so the potion is the ONLY buy.)
+def test_village_heals_a_potionless_char_only_above_the_reserve():
+    # v0.29.0 heal-from-surplus, reserve-relative (v0.35.0 raised POTION_RESERVE to 600
+    # to uncap the stockpile): once the hoard clears the reserve (gold - 20 >= reserve),
+    # a potion-less char tops up a field heal. Weapon-buy stays frozen, so the potion is
+    # the only buy.
+    from steemer.strategy.explorer import POTION_RESERVE
     bot = _bot()
-    acts = bot.on_frame(_barehand_frame(120))
+    acts = bot.on_frame(_barehand_frame(POTION_RESERVE + 20))
     assert acts == [{"char_uid": "c1", "action": "buy", "kind": "potion_red"}]
 
 
 def test_village_holds_the_reserve_floor_and_skips_the_heal_below_it():
-    # v0.29.0 reserve floor: one gold short of surplus (119 - 20 = 99 < 100) the buy
-    # is skipped so the stockpile never dips below POTION_RESERVE. Mutation-guards the
-    # boundary — off-by-one here would let the drain leak back in.
+    # reserve floor, boundary: one gold short of surplus (reserve+19 - 20 < reserve) the
+    # buy is skipped so the stockpile never dips below POTION_RESERVE. Mutation-guards the
+    # off-by-one. v0.35.0: at the *live* 600 reserve the treasury (pinned ~100 by the old
+    # 100 reserve) is now far below it, so the potion-buy stops consuming income and gold
+    # can climb past the 529 cap-test.
+    from steemer.strategy.explorer import POTION_RESERVE
     bot = _bot()
-    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(119)))
+    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(POTION_RESERVE + 19)))
 
 
 def test_village_does_not_stockpile_a_second_potion():
