@@ -2147,3 +2147,38 @@ WISHLIST (v0.37, tc=37-add_minor): heatmaps + story-mode SHIPPED (one-off). Top 
 implemented. sidecar-watchdog tc=1 (added 0.37) => negative.
 NEXT: keep watching 0.37 stockpile-growth-rate on #94/#95; the 0.38 STAMINA-ECONOMY lever (residual
 73% stuck deaths; not_enough_stamina) awaits operator greenlight.
+
+ITER 43 (2026-08-20) — SHIPPED + DEPLOYED explorer/0.38.0 = MODE-GATED SPACING (Phase 1 of the
+operator's adaptive-mode direction; the fix for 0.37's -49% coin income tradeoff). Spacing score
+is now gated on BAND SEVERITY (signals already tracked): SEVERE (undead_frac>=0.15 OR >=3 melee
+predators in view) -> spacing 3.0 (disengage, 0.37 behavior); CALM (lone wildlife predator) ->
+spacing 1.5 (loses to frontier/gather so the char keeps working, still beats rest so no idle-
+death). GATE green: local 270/3-skip; replay 1200 frames 0 errors with 58 severe + 27 calm spacing
+decisions (mode discriminates live); reaper 275/2-skip. Mutation-checked both ways. Committed
+b0f0c11, pushed. Redeployed run #95 (pid 72337, tick 1224390, watchdog alive).
+PREDICTION to measure on #95 vs #94: gold-COIN/1k and pickup/1k RECOVER (chars gather in calm
+bands again) WITHOUT losing the survival win (our-death/1k and move_failed/1k HOLD near #94's
+0.38 & 28 — spacing still fires in severe bands). If deaths rise materially, the severity
+thresholds (UNDEAD_SEVERE_FRAC 0.15 / MELEE_DENSE_N 3) are too lax -> tighten. If income doesn't
+recover, calm bands are rarer than assumed / gold-beeline already dominated -> reconsider.
+NEXT: (a) measure 0.38; (b) the operator also asked to rework the HEATMAP (overlay on the Map tab
+instead of its own tab; and normalise deaths/gold by TIME-IN-AREA to kill survivor bias — we
+die/gather more near the village just because we're there more). Doing the heatmap next this turn.
+Phases 2/3 (per-char roles Forager/Guardian; Prospector mechanic-probing) await after 0.38 reads.
+
+ITER 43 (cont.) — HEATMAP REWORK (operator's 2nd ask this turn):
+1. SURVIVOR-BIAS FIX (operator caught it): raw death/gold counts are inflated near the village
+   because we're THERE more. api_heatmap now tallies our-char OCCUPANCY (time-in-tile, free from
+   the same frame-sample decode) and adds a `danger` layer = (deaths[t]/Sum) / (occ[t]/Sum) — a
+   deaths-PER-TIME-THERE multiplier x100 (>100 = deadlier than presence predicts). Defined only
+   where we have occupancy (can't be faked by a never-visited tile). Live vale: top-danger tiles
+   DIFFER from top-raw-death tiles (e.g. danger #1 (71,20)@345 vs raw-death #1 (71,22)@6) — proving
+   the correction changes the picture. Layers now: danger, death, occupancy, monster, gold, loot.
+   NOTE for MY OWN analyses going forward: use danger (deaths/time), not raw death counts.
+2. MOVED heatmap from its own tab to a MAP OVERLAY: removed the Heatmap tab; added an `overlay`
+   selector on the Map tab; heat drawn over terrain (under char/monster dots) via the map's
+   pan/zoom transform, lazily fetched + cached per world.
+GATE: local 270/3-skip; danger HTTP smoke; reaper 275/2-skip. Committed ec671a3, pushed. Dash
+restarted (pid 72543); overlay live on :8800. Read-only — no bot redeploy.
+STATUS: both operator tasks this turn DONE — 0.38 mode-gated spacing (deployed run #95) + heatmap
+rework. Phases 2/3 (per-char roles Forager/Guardian; Prospector mechanic-probing) still queued.
