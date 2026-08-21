@@ -55,6 +55,13 @@ Then VERIFY liveness via the DB with a FRESH MariaDB connection (reused conns gi
 staleness. A `kicked: another session hello'd — exiting` log line at redeploy is GRACEFUL
 supersession of the old session, NOT a kick-war — confirm via DB freshness, not the log.
 
+**Verification tools (use them; they exist because green tests were not enough):**
+- `uv run python -m steemer.shadow --run <id> --limit 3000` — would the candidate actually
+  WIN any ticks? Read the INERT list first. It refuses to rule on a short sample.
+- `tools/mutate.py` — the mutation harness. **Never re-roll it in a scratch script**: the
+  ad-hoc versions restored sources in a way that made CPython serve the MUTANT's stale
+  bytecode, so mutants reported each other's results (see `memory/verification-traps.md`).
+
 **Gate:** if `reaper up` fails with `unable to create VM NNNN: config file already exists`, the
 previous session EXPIRED and `down` forgot it without reclaiming the VM. Recover with
 `reaper down --all && reaper up` — no hypervisor access needed (logged in `/home/cal/reaper_bugs.md`).
@@ -201,40 +208,21 @@ one eid/tile over many ticks → add a per-tile give-up)? move_failed not worse?
 2. 0.44 + 0.45 are MEASURED (iter 58): harvest is entirely ours, 4.1 hits/destroy, no pinning,
    and #103's deaths were the outage window, not the mechanic. **Beware the attribution trap:**
    `eid` (numeric) and `char_uid` (string) are different namespaces — see `decisions.log` iter 58.
-3. **Measure 0.47 on a matured #115** (start of pass, as usual): armor buys > 0 and
-   armored-fraction climbing (it was 0% for 114 runs); gold holding above 150 and reaching
-   the 200 ARMOR_BUY_FLOOR; lumber sales present but not back to 0.45 levels;
-   carry-`full`/move_failed not worse.
+3. **Measure 0.48.1 on a matured #117.** Falsification stated before deploy: mean pairwise
+   distance must FALL in dangerous worlds and stay flat in safe ones; our-char deaths must
+   not rise; damage taken per kill should fall; `move_failed` must not rise (the oscillation
+   tell); safe-world gathering per 1k unchanged.
+   **Do not judge liveness from the first minutes** — a redeploy resets learned state, so a
+   gated branch cannot fire until it is re-learned. v0.48.0 was wrongly called inert this
+   way. Use `uv run python -m steemer.shadow --run <id> --limit 3000`.
 
-4. **BUILD ADAPTIVE COHESION (0.48.0) — operator-directed 2026-08-21, explicitly INSTEAD of
-   the ore lever.** Wishlist item "Adaptive cohesion / raids", 0.539, qualifies. Do not
-   re-litigate the ordering; the mines raid IS the ore run, so this does not drop the M3a
-   thread, it approaches it from the other side.
-
-   **Design already settled — build, don't re-derive:**
-   - **Gather when CLEAR, not when threatened.** This inverts the obvious phrasing for a
-     measured reason: median solo TTK is 6 ticks, our mean pairwise distance is 22-25 steps
-     at a tile/tick, so "gang up, a mob is near" arrives ~16 ticks after the fight ended.
-     Cohesion must be a STANDING leash held while in a dangerous world/band, so the second
-     attacker is already adjacent when anything starts. Only the spreading-out half can be
-     reactive.
-   - **Score slot: ~2.8.** Above frontier (2.5) and scout (1.0) so it pulls idle characters
-     together; BELOW `SPACE_SCORE_SEVERE` (3.0) so predator-spacing always wins — never walk
-     into a mob to reach a friend; below gather (4.0), loot, adjacent-attack (8.0) and
-     retreat (8.5), which must all keep their precedence.
-   - **Gate on the EXISTING band-severity signal** (v0.38) plus world: cohere in
-     mines/spire, stay dispersed in vale (wildlife, 4.93 deaths/1k, our gathering economy).
-   - **Hysteresis, or it will oscillate:** pull when nearest-ally distance > 4, stop at <= 2.
-     Two characters both closing on each other is the obvious jitter case, and
-     cohesion-vs-spacing is the known deadlock hazard (v0.37 anti-stuck is the precedent for
-     how that goes wrong). Order the scores deliberately; never leave them to tie.
-   - Reuse `nav` for distance and the existing per-char roles (v0.39) if a
-     guardian-holds/forager-ranges split helps.
-
-   **Falsification — state these BEFORE deploying:** mean pairwise distance in mines/spire
-   must FALL (from 22-25 toward <8) while vale is UNCHANGED; our-char deaths must not rise
-   and damage-taken per kill should fall; `move_failed` must not rise (that is the
-   oscillation tell); vale gathering (foraged/pickup/gold per 1k) must be unchanged.
-   Mines gathering may fall — acceptable only if kills/XP rise to pay for it.
+4. **NEXT LEVER: the GOLD SINK.** 14-31 clubs bought per run at 15g for bare recruits, while
+   gold peaks ~165 against ARMOR_BUY_FLOOR=200 — so that single sink starves BOTH the armor
+   buy (which has never once fired) and the forge chain. It is a village-economy change, so
+   it will not collide with 0.48.1's field-behaviour window.
+   **Run it through the shadow gate before deploying** (`steemer/shadow.py`); that tool
+   exists because two changes shipped green and did nothing this session.
+   After that: M3a forging still tops the wishlist at 0.571, its product name is known, and
+   we now hold INGOTS — the remaining blocker is ORE.
 
 5. Show the wishlist table; record; commit + push; schedule the next wakeup.
