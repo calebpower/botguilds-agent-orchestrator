@@ -2667,3 +2667,6 @@ we already store (tiles_seen / item kinds / bestiary / docs-03 verbs) and the TE
 of actions_sent x action_errors x events, which immediately yields THE FRONTIER: high-prior cells we have
 never once tried. Slice 3 (the experiment arm) needs the hard gating described in the wishlist entry and
 should not be built until 1-2 exist and the frontier is visible. `say` is excluded as an experiment surface.
+OPERATOR DECISION (asked directly): LEAVE THE MATRIX QUEUED — the formula stands, no one-off override this
+time (unlike the codex/heatmaps precedent). Next pass is FORGE-TO-ARM SLICE 2. The matrix accrues tc normally
+and comes up on its own merits as it ages; do not re-litigate it next pass.

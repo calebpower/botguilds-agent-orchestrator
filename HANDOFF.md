@@ -190,6 +190,11 @@ one eid/tile over many ticks → add a per-tile give-up)? move_failed not worse?
 2. 0.44 + 0.45 are MEASURED (iter 58): harvest is entirely ours, 4.1 hits/destroy, no pinning,
    and #103's deaths were the outage window, not the mechanic. **Beware the attribution trap:**
    `eid` (numeric) and `char_uid` (string) are different namespaces — see `decisions.log` iter 58.
-3. Forge-to-arm Slice 2 — but answer the YIELD question first (does material STOCK accumulate?).
-   Then Slice 3 (forge + product-name discovery).
+3. **Forge-to-arm Slice 2 — this is the operator's explicit call for the next pass** (asked and
+   answered 2026-08-21). Answer the YIELD question FIRST: does material STOCK accumulate? On #103,
+   133 terrain_destroyed produced only 8 lumber `drop` events (~6%). Then seek-resources + prefer
+   the axe/pickaxe. Then Slice 3 (forge + product-name discovery).
+   NOTE: the new **cross-referencing exploration matrix** wishlist item stays QUEUED by operator
+   decision — it scores -0.176 only because it is just-added (tc=1), and the operator declined a
+   one-off override. It accrues tc normally; do not re-litigate it next pass.
 4. Show the wishlist table; record; commit + push; schedule the next wakeup.
