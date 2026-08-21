@@ -2946,3 +2946,41 @@ COHESION_PRED_DENSE=2 (possibly too high) — or note that spire, which is all u
 instantly, is a world we spend only 8% as much time in. Do NOT declare success on a quiet window.
 Also note a redeploy RESETS _world_danger (fresh strategy object), so every deploy has a warm-up period
 before cohesion can fire. Account for that when reading the first minutes of any run.
+
+ITER 62 (2026-08-21) — verification pass, no strategy change. Operator asked for a recommendation and
+approved: (1) replay-check cohesion, (2) build the shadow-eval gate, (3) then the gold sink.
+(1) COHESION VERIFIED on real frames: shadow-replaying 2500 vale frames through the current engine gave
+loot-near-ally offered 220 / CHOSEN 84, and standalone cohesion offered 238 / CHOSEN 43, with the danger gate
+open 1927/2500 ticks. So it works — and I knew that without waiting hours for a live band, which is the whole
+argument for the tool.
+(2) SHIPPED steemer/shadow.py (wishlist 0.563) + tools/mutate.py, and 11+5 tests.
+(3) TWO PROMISING LEADS INVESTIGATED AND BOTH DISSOLVED, cheaply, before becoming levers:
+    * "we rest 65-70% of ticks" — that is the game's DESIGNED pacing (docs/04: "roughly one meaningful
+      action per character every 4-5 ticks" => 75-80% rest expected). We are slightly AHEAD of pacing.
+      Nearly built a whole lever off a misread mechanic; the docs settled it in one read.
+    * "124 recalled events" (idle chars yanked to the village after 2000 unattended ticks) — almost all
+      RIVALS: the char_uids are g_63837f_*, not our g_cd0e2a_*. Run #117 has exactly 1, at 0.03/1k frames.
+MY ERROR, CORRECTED: v0.48.0's cohesion was NOT inert. I measured "offered 28, chosen 0" about 130 ticks
+after deploying it and shipped 0.48.1 on that basis. Over the FULL run #116 it was offered 688 and CHOSEN
+349, first winning at tick 461 — the sample sat inside the warm-up period I had myself documented minutes
+earlier (a redeploy resets the strategy object, so a gate on learned state cannot fire until that state
+exists). 0.48.1 stands on its merits (gather and form up in one tick beats pure movement ticks) but its
+stated justification was false. shadow.verdict() now REFUSES to rule below MIN_DECISIONS so the tool cannot
+repeat it: an INERT verdict from a short window reads as evidence when it is only ignorance.
+HARNESS BUG (serious): the ad-hoc mutation scripts restored sources with shutil.move, giving the file the
+BACKUP's mtime — older than the .pyc built from the mutant — so CPython served the MUTANT's bytecode to
+later runs, and consecutive mutants could report each other's results. Symptom: source visibly said
+`if live:` while behaviour was unmistakably `if True:`. A harness whose job is to prove tests can fail is
+worthless if it can lie about which code ran, and it survived a whole session BECAUSE it was rewritten ad hoc
+each time rather than living in the repo. Now tools/mutate.py with PYTHONDONTWRITEBYTECODE=1, __pycache__
+cleared per mutant, -p no:cacheprovider, and os.utime on restore. ALL 21 MUTANTS FROM THIS SESSION RE-RUN
+UNDER THE FIX: all killed — the earlier results were right, but I could not have known that until now.
+ALSO NOTED (not acted on): `lumber` and `ingot_copper` declare uses:["forge"], which is AUTHORITATIVE and
+better than my hardcoded FORGE_FEEDSTOCK_PREFIXES tuple — a future material would be missed by the prefix
+list. And we now hold INGOTS (66 observations on #117) where we held none before, so the forge chain may be
+feasible; M3a forging is still the top wishlist item at 0.571.
+MISUSE WARNING recorded in shadow.py: do NOT diff two different live runs. The incumbent tally must come from
+the SAME frames the candidate replays over (which the CLI does). Comparing run A to run B conflates code
+change with world variation and cheerfully reports "new branches" like `dodging an adjacent boar`.
+NEXT: the GOLD SINK (14-31 clubs/run at 15g for bare recruits, while gold peaks ~165 against the 200 armor
+floor) — that one sink starves both the armor buy and the forge. Use the shadow gate on it before deploying.
