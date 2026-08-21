@@ -53,6 +53,17 @@ class GuildBot:
         # cannot distinguish "there is ground here" (durable) from "there is a chest
         # here" (was true once); this set is how the second kind stays honest.
         self._seen_this_run: dict[str, set[tuple[int, int]]] = {}
+        # v0.60.0 BAND REFRESH. Each world cycles through bands and periodically REFRESHES,
+        # and the frame tells us where in that cycle we are: `next_refresh: {band, in_ticks}`.
+        # We had ignored the field entirely, which cost iter 71 its measurement -- a refresh
+        # collapsed ground loot 18x and a starving band was indistinguishable from a broken
+        # bot. Per world: the last (band, in_ticks) we saw.
+        self._band: dict[str, tuple[Any, Any]] = {}
+        # Tiles worth RE-CHECKING because a refresh has happened since we last looked at
+        # them. Kept apart from `known` on purpose: `known` records what we have OBSERVED,
+        # and this is a HYPOTHESIS about what a refresh did. Conflating the two would put
+        # a fabrication into the map every other behaviour trusts.
+        self._recheck: dict[str, set[tuple[int, int]]] = {}
         self.tick = 0
         self.config: dict[str, Any] = {}
         self.guild: dict[str, Any] = {}
@@ -80,6 +91,30 @@ class GuildBot:
         if frame.get("world") == "village":
             return self.strategy.village(self, frame) or []
         return self._field(frame)
+
+    def _band_refreshed(self, world: str, frame: dict[str, Any]) -> bool:
+        """Did this world just refresh? Compares the frame's `next_refresh` to the last one
+        we saw for this world.
+
+        Two independent tells, because either alone misses cases: the BAND NUMBER changes,
+        or `in_ticks` JUMPS UP (a countdown only ever falls, so a rise is a new cycle --
+        run #136 showed jumps like 1 -> 2760). The first sighting for a world is never a
+        refresh; we have nothing to compare it to and treating it as one would fire on
+        every deploy.
+        """
+        nr = frame.get("next_refresh")
+        if not isinstance(nr, dict):
+            return False
+        band, in_ticks = nr.get("band"), nr.get("in_ticks")
+        prev = self._band.get(world)
+        self._band[world] = (band, in_ticks)
+        if prev is None:
+            return False
+        prev_band, prev_ticks = prev
+        if band != prev_band:
+            return True
+        return (isinstance(in_ticks, int) and isinstance(prev_ticks, int)
+                and in_ticks > prev_ticks)
 
     def on_action_error(self, message: dict[str, Any]) -> None:
         # v0.50.0: the per-char "why did the last move fail" bookkeeping is gone with
@@ -123,9 +158,22 @@ class GuildBot:
         # conflating the two is what v0.55.0 got wrong -- see `containers` below.
         seen_now = self._seen_this_run.setdefault(world, set())
         visible = frame.get("visible", {}) or {}
+        recheck = self._recheck.setdefault(world, set())
         for t in visible.get("tiles", []):
             known[(t[0], t[1])] = t[2]
             seen_now.add((t[0], t[1]))
+            # Looking at a tile ANSWERS the hypothesis, whichever way it fell: if it
+            # refilled it is a container again by kind, and if it did not there is nothing
+            # to go back for. Either way the guess has served its purpose.
+            recheck.discard((t[0], t[1]))
+
+        # A refresh REFILLS chests (run #136: `chest` sightings spike to 424 in the
+        # loot-rich bucket against 14-80 elsewhere), but our map still says `chest_open`
+        # for every one we emptied, and an opened chest is not a container -- so we would
+        # never go back and would only notice one by walking past it. On a refresh, every
+        # chest we have emptied in this world becomes worth a second look.
+        if self._band_refreshed(world, frame):
+            recheck |= {p for p in seen_now if known.get(p) == "chest_open"}
 
         enemies = {tuple(e["pos"]): e for e in visible.get("entities", [])
                    if e.get("faction") == "monster"}
@@ -146,7 +194,7 @@ class GuildBot:
         # schedule, so a sighting from a previous run is not evidence it is there now.
         # Terrain keeps the full hydrated map; only this target set is scoped to the run,
         # which is exactly the pre-0.55.0 behaviour.
-        containers = {p for p in seen_now if known.get(p) in CONTAINER_KINDS}
+        containers = {p for p in seen_now if known.get(p) in CONTAINER_KINDS} | recheck
 
         # Learned-blocked tiles (chars that bounced here recently) also block nav,
         # so a char that hit a wall stops re-issuing the same doomed move. Expire
