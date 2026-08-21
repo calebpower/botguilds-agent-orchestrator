@@ -582,6 +582,22 @@ POTION_KEEP = 1            # potions to carry into the field per character
 # the free-brew pipeline the 600 reserve was explicitly premised on rather than arguing
 # with that reserve.
 BOTTLE_KEEP = 1            # empty bottles to carry per character (one brew's worth)
+
+# v0.59.0 SCARCE CHAIN INPUTS. The stranded-singleton rule (v0.8.0/v0.10.0) sells a lone
+# brewable or a lone ore because it cannot form a batch or a pair, and that rule is right
+# for ABUNDANT things: an unsold-food pack once pinned characters `full` forever.
+#
+# It is wrong for the two inputs we are actually bottlenecked on, and run #135 caught both
+# going over the counter: 2 `bone` (a VIGOR herb -- the potion_red that lifts
+# POISON_SAFE_DEPTH, the cap this project spent iter 70 tracing) and 5 `ore_copper` (raw
+# forge feedstock; note FORGE_FEEDSTOCK_PREFIXES covers `ingot` but NOT `ore`, so unpaired
+# ore falls to the smelt branch and is banked).
+#
+# A singleton of a scarce input is not clutter, it is HALF A PAIR. Selling it guarantees it
+# stays half a pair forever, which is the same self-defeating leak v0.46.0 fixed for lumber
+# and ingots. Bounded exactly as that fix was: at most SCARCE_LONE_KEEP per KIND per
+# character, so this can never grow into the carry-clog the original rule exists to prevent.
+SCARCE_LONE_KEEP = 2
 # v0.29.0: heal from SURPLUS. The 0.24.0 hoard froze the potion-buy to stockpile;
 # 0.28.0 froze the last spend (clubs) and the treasury finally climbed (run #84
 # gold mean 5.7 -> 68, median 2 -> 92, climbing past 155 with ZERO drops). But the
@@ -791,7 +807,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.58.0"
+    version = "explorer/0.59.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -936,6 +952,8 @@ class Explorer:
             # Forge feedstock (lumber/ingots/flux) reserved up to a per-char cap, so
             # 0.45's harvest actually reaches the forge instead of the shop counter.
             feedstock_keep = self._feedstock_keep_ids(inv)
+            # v0.59.0: lone VIGOR herbs and raw ORE are half a pair, not clutter.
+            scarce_keep = self._scarce_keep_ids(inv)
             # 1) EQUIP carried gear into empty slots — BEFORE selling, or we sell
             #    the weapons/armor we ought to be wearing (the original bug: 0
             #    equips ever, everyone bare-handed and unarmored).
@@ -945,7 +963,8 @@ class Explorer:
             # 2) sell what we can't use: loot, gear that won't fit, and brewables
             #    that can't form a batch (stranded singletons).
             for item in inv:
-                if self._should_sell(item, eqp, brew_keep, smelt_keep, feedstock_keep):
+                if self._should_sell(item, eqp, brew_keep, smelt_keep, feedstock_keep,
+                                     scarce_keep):
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "sell",
                                    "item_id": item["item_id"]},
@@ -2069,9 +2088,37 @@ class Explorer:
             keep.update(it["item_id"] for it in g[:FORGE_RESERVE_PER_CHAR])
         return keep
 
+    @staticmethod
+    def _scarce_keep_ids(inv: list[dict[str, Any]]) -> set[str]:
+        """Item ids of SCARCE chain inputs to hold even when they are stranded.
+
+        Two families, both measured going over the counter on run #135 while the chain
+        that needs them was starved:
+
+        * VIGOR herbs -- the only route to `potion_red`, which is what lifts
+          POISON_SAFE_DEPTH. Read from `knowledge.ESSENCE` rather than listed here, so a
+          newly decoded vigor herb is covered the moment the knowledge file learns it and
+          this code needs no edit (the essence map is per-world DATA by design).
+        * Raw ORE -- forge feedstock that FORGE_FEEDSTOCK_PREFIXES misses, since that
+          tuple covers `ingot` but not the ore an ingot is smelted from.
+
+        Capped at SCARCE_LONE_KEEP per KIND so this can never become the carry-clog the
+        stranded-singleton rule exists to prevent.
+        """
+        by_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for it in inv:
+            kind = it.get("kind") or ""
+            if knowledge.essence_of(kind) == "vigor" or kind.startswith("ore"):
+                by_kind[kind].append(it)
+        keep: set[str] = set()
+        for g in by_kind.values():
+            keep.update(it["item_id"] for it in g[:SCARCE_LONE_KEEP])
+        return keep
+
     def _should_sell(self, item: dict[str, Any], eqp: dict[str, Any],
                      brew_keep: set[str], smelt_keep: set[str],
-                     feedstock_keep: set[str] | None = None) -> bool:
+                     feedstock_keep: set[str] | None = None,
+                     scarce_keep: set[str] | None = None) -> bool:
         """Sell only what we can't use. Keep: field supplies (KEEP), medicinal
         drinks (potions/vials/elixirs/tonics), brew ingredients that can still form
         a batch (`brew_keep`), ore that can still form a smelt pair (`smelt_keep`),
@@ -2084,6 +2131,9 @@ class Explorer:
         kind = item["kind"]
         uses = item.get("uses") or []
         if kind in KEEP or kind.startswith(DRINK_KEEP_PREFIXES):
+            return False
+        # v0.59.0: a stranded SCARCE input is half a pair, not clutter -- keep a couple.
+        if item["item_id"] in (scarce_keep or set()):
             return False
         if "brew" in uses:
             return item["item_id"] not in brew_keep   # sell stranded brewables

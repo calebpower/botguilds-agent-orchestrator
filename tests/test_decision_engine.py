@@ -274,7 +274,10 @@ def test_village_sells_before_embarking():
     frame = {"world": "village", "tick": 3,
              "guild": {"gold": 100, "chars_here": ["c1"], "chars_by_world": {}},
              "chars": [{"char_uid": "c1",
-                        "inventory": [{"kind": "bone", "item_id": "i1", "tier": 1}],
+                        # `tomato` is pure loot. It used to be `bone`, which v0.59.0
+                        # made a KEPT vigor herb -- this test is about the ORDER of
+                        # sell-before-embark, so it needs a genuinely disposable item.
+                        "inventory": [{"kind": "tomato", "item_id": "i1", "tier": 1}],
                         "equipment": {"hand": None}, "stats": {"str": 2},
                         "hp": 10, "max_hp": 10}]}
     actions = bot.on_frame(frame)
@@ -1136,12 +1139,28 @@ def test_village_keeps_a_smeltable_pair_rather_than_selling_it():
     assert acts and acts[0]["action"] == "smelt"
 
 
-def test_village_sells_a_stranded_single_ore():
-    # a lone ore can't smelt -> stranded -> sold (the v0.8.0 anti-clog rule).
+def test_village_KEEPS_a_stranded_single_ore_but_sells_the_surplus():
+    """v0.59.0 REVERSED the v0.8.0 anti-clog rule for ore specifically.
+
+    A lone ore cannot smelt, so the old rule banked it as stranded clutter — and run #135
+    sold 5 `ore_copper` while the forge sat starved and vein-seek had broken 0 veins. A
+    singleton of a scarce input is not clutter, it is HALF A PAIR; selling it guarantees it
+    stays half a pair forever. The anti-clog intent is preserved by the per-kind cap, which
+    is what the second half of this test pins."""
+    from steemer.strategy.explorer import SCARCE_LONE_KEEP
     bot = _bot()
     char = _idle_village_char("c1", inv=[ORE("o1")])
-    assert bot.on_frame(_deploy_frame(["c1"], {}, [char])) == \
-        [{"char_uid": "c1", "action": "sell", "item_id": "o1"}]
+    assert all(a.get("action") != "sell"
+               for a in bot.on_frame(_deploy_frame(["c1"], {}, [char])))
+
+    # The per-kind cap that preserves the anti-clog intent is asserted on the helper, not
+    # through the village loop: with three matching ore a character SMELTS a pair instead,
+    # which outranks selling, so the surplus branch is unreachable from here. The cap is a
+    # bound on hoarding, not a behaviour the loop exhibits — say so rather than contrive a
+    # frame that makes it look otherwise.
+    from steemer.strategy.explorer import Explorer
+    lots = [ORE(f"x{i}") for i in range(SCARCE_LONE_KEEP + 3)]
+    assert len(Explorer._scarce_keep_ids(lots)) == SCARCE_LONE_KEEP
 
 
 def test_village_smelts_only_the_matching_kind_not_a_mismatched_pair():
@@ -1152,7 +1171,9 @@ def test_village_smelts_only_the_matching_kind_not_a_mismatched_pair():
                    {"kind": "ore_iron", "item_id": "o2", "uses": ["smelt"]}])
     acts = bot.on_frame(_deploy_frame(["c1"], {}, [char]))
     assert all(a.get("action") != "smelt" for a in acts)   # no mismatched smelt
-    assert acts and acts[0]["action"] == "sell"            # stranded -> sold
+    # v0.59.0: each is one of a scarce PAIR we are bottlenecked on, so neither is sold
+    # any more. The subject of this test is the mismatched smelt above.
+    assert all(a.get("action") != "sell" for a in acts)
 
 
 class _FakeSpectate:
@@ -1408,7 +1429,8 @@ def test_village_action_re_send_guard_skips_a_recent_actor():
                 "guild": {"gold": 100, "chars_here": ["c1"],
                           "chars_by_world": {"vale": [f"v{i}" for i in range(10)]}},
                 "chars": [{"char_uid": "c1", "hp": 30, "max_hp": 30,
-                           "inventory": [{"kind": "bone", "item_id": "i1", "uses": []}],
+                           # pure loot; `bone` is a kept vigor herb since v0.59.0
+                           "inventory": [{"kind": "tomato", "item_id": "i1", "uses": []}],
                            "equipment": {"hand": {"kind": "club"}, "offhand": None,
                                          "outfit": None, "trinket": None, "boots": None},
                            "stats": {"vit": 8, "end": 8, "str": 8}, "gifts": [], "xp": 0}]}
