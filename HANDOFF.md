@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.57.0` on **run #134**, repo HEAD `6c49e36`, branch `main` (pushed).
+- **Live:** `explorer/0.58.0` on **run #135**, repo HEAD `1aeb9a6`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -38,11 +38,25 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
      walks a character home from 100 tiles out.
   3. **Remembered TERRAIN is durable; remembered CONTENTS are not** (0.56.0). Chests are scoped
      to tiles seen THIS run, because a chest gets opened and refills on the band's schedule.
-- **Open gaps, in priority order:** (1) vein-seek fires (0.12/frame) but **has not converted** —
-  0 veins destroyed on #134 against 129 trees; (2) `nav.frontier` treats OUT-OF-BOUNDS as
-  unexplored, so every map-edge tile is a permanent false frontier (201 off-map moves on #132) —
-  needs the frame's `bounds` plumbed into nav; (3) `shield_iron` has no shop price so it cannot
-  be ranked for a swap, only worn into an empty offhand.
+- **⛓ THE ORE CHAIN, and why three passes of it did nothing (iter 70).** Vein-seek was never
+  the problem. On run #134 it fired 751 times and NO CHARACTER WAS EVER ADJACENT TO A VEIN:
+  characters sit at **median depth y=2** while the shallowest vein is y=26. `POISON_SAFE_DEPTH=12`
+  caps any character without a `potion_red`, and **0.0% carried one** — because brewing needs a
+  `bottle_empty` and there was NO PATH TO ACQUIRE ONE (it appeared only in KEEP and the brew
+  gate's counter). That silently invalidated v0.35.0's `POTION_RESERVE=600`, which was
+  explicitly premised on heals being 99.6% free-brewed. **0.58.0 buys bottles (2 gold).**
+  Verified: 2 bottles → 2 brews on #135, against 0 brews in the previous 31,011 frames.
+  **STILL OPEN — measure in this order:** `potion_red` carried > 0% → mines depth p90 above 12
+  → veins broken above 0. Neither brewing character happened to hold a VIGOR batch; `embercap`
+  is vigor (high confidence) and widely carried, so heals should follow. If it stalls, the next
+  link is to prefer/keep embercap for vigor batches.
+- **Other open gaps:** (1) `nav.frontier` treats OUT-OF-BOUNDS as unexplored, so every map-edge
+  tile is a permanent false frontier (201 off-map moves on #132) — needs the frame's `bounds`
+  plumbed into nav; (2) `shield_iron` has no shop price so it cannot be ranked for a swap, only
+  worn into an empty offhand.
+- **Next pass takes the expectation/reality mismatch detector** (wishlist, 0.534, qualified two
+  passes running). Iters 69 and 70 are its argument: a lever that shipped INERT, a regression
+  that shipped GREEN, and a premise that stopped being true with nothing watching.
 - **⚠ INFRA: `reaper up` HANGS INDEFINITELY after printing its success line.** Cost ~45 min this
   session. `reaper test` against the already-up session works fine (~2 min). Once `reaper list`
   shows the session up, stop waiting on `up` and run `reaper test` directly. Killing `up` also

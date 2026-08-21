@@ -3331,3 +3331,45 @@ INFRA: `reaper up` now HANGS INDEFINITELY AFTER printing its success line (~45 m
 across two occurrences). `reaper test` against the already-up session is fine. Logged in
 /home/cal/reaper_bugs.md with the workaround and a warning that killing `up` also kills the
 heartbeat child.
+
+================================================================================
+iter 70 — 2026-08-21 — the hole under three passes of ore work: BOTTLES (0.58.0, run #135)
+================================================================================
+Chasing why vein-seek still had not broken a vein found the cause well above ore.
+
+RUN #134 (31,011 frames, and 0.57's bound holding beautifully: move failures 0.5% of moves
+against the 5.2% baseline). Vein-seek fired 751 times, all in the mines, streaks averaging
+15 ticks — and NO CHARACTER WAS EVER ADJACENT TO A VEIN. Not once. Depth is why: our
+characters sat at MEDIAN DEPTH 2 (p90 6) while the shallowest remembered vein is y=26 and
+the median is y=88. Only 1.0% of char-frames were within the 14-tile seek range. The seek
+was never the problem.
+
+They cannot go deep. POISON_SAFE_DEPTH (v0.23.0) holds an un-healed char above y=12, and
+0.0% of char-frames carried a potion_red. BOTH routes to one were shut:
+  * BUYING frozen: v0.35.0 raised POTION_RESERVE 100 -> 600 on good evidence (heals were
+    99.6% free-brewed, 4511 drinks vs 16 buys; the buy was pinning gold at ~100). Correct
+    GIVEN brewing supplies heals. At our real 183 gold, `gold - 20 >= 600` cannot pass.
+  * BREWING starved: it needs a `bottle_empty`, and there was NEVER a path to acquire one.
+    The kind appeared in exactly two places in the file — KEEP (never sell) and the brew
+    gate (count them). Bottles could only ever arrive as loot. Run #134: 0 brews.
+So a sound 0.35.0 decision had its premise quietly stop being true, and nothing watched.
+
+0.58.0 fixes the SUPPLY rather than arguing with the reserve. A bottle costs TWO GOLD — the
+cheapest unlock anywhere in this chain. Gated on a char that could brew RIGHT NOW if it had
+one (_choose_brew must already return a safe batch), so it is provably useful rather than a
+standing 2g tax; ordered after arming/armouring and floored at WEAPON_BUY_FLOOR, asserted
+end to end rather than by reading the order.
+
+VERIFIED LIVE on #135 (7,940 frames): 2 bottles bought -> 2 brews, against ZERO brews in
+the previous 31,011 frames. The pipeline is running again AND it is learning: one brew was
+venom-essence (venom_sac+moonbell -> flask_green), the other an UNDECODED LEARNING BATCH
+(4x bitterroot -> potion_purple, tells ['sweet_mist']) — new vocabulary from a mechanism
+that had been dormant for want of a 2-gold item.
+
+NOT YET CLOSED, and named rather than glossed: still 0.0% potion_red. Neither brewing char
+happened to hold a VIGOR batch. embercap is vigor (high confidence) and is carried widely
+(1,666 char-frames), so heals should follow when an embercap-holder reaches the village
+with a bottle. NEXT PASS MEASURES EXACTLY THAT, in order: potion_red carried > 0% -> mines
+depth p90 above 12 -> veins broken above 0. If it stalls, the next link is already named
+(prefer/keep embercap for vigor batches).
+GATE: 658 reaper / 650 local. 10 tests, 8 mutants killed. Live: 0.58.0, run #135, 1aeb9a6.
