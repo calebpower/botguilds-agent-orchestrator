@@ -197,3 +197,25 @@ def test_the_frame_is_RECORDED_AFTER_the_actions_are_SENT():
 
     c._loop(max_ticks=1)              # one frame, then the loop stops itself
     assert order == ["send_actions", "record_frame"], order
+
+
+def test_run_does_NOT_enable_the_async_mirror():
+    """v0.51.1 — the async mirror is DISABLED, and this pins it so it cannot be switched
+    back on without confronting why.
+
+    _AsyncMirror is correct in isolation (every test above passes) but wrong in situ: the
+    MariaDB connection it writes through is ALSO used from the main thread by
+    begin_run/end_run/flush, and mysql-connector is not safe for that. Live, the bot
+    crash-looped with `bytearray index out of range` and wrote ZERO frames across runs
+    #124-126 before it was reverted. My "no other threads touch storage" reasoning was
+    right about threads and wrong about the lifecycle calls.
+
+    Re-enable only when the writer owns its OWN connection — at which point delete this
+    test rather than weakening it.
+    """
+    import inspect
+    from steemer.client import Client
+    src = inspect.getsource(Client.run)
+    assert "_AsyncMirror(" not in src, (
+        "run() constructs an _AsyncMirror again — the writer must own its own connection "
+        "first; sharing the main thread's is what crash-looped the live bot")

@@ -280,8 +280,13 @@ class Client:
 
     def run(self, max_ticks: int | None = None) -> None:
         self.running = True
-        if self.storage is not None and self._async_mirror is None:
-            self._async_mirror = _AsyncMirror(self.storage, self._say)
+        # v0.51.1 DISABLED: _AsyncMirror moved storage writes to a worker thread, but the
+        # MariaDB connection is also used from THIS thread by begin_run/end_run/flush, and
+        # mysql-connector is not safe for that — the live bot crash-looped with
+        # "bytearray index out of range" and wrote zero frames across runs #124-126.
+        # The receive-loop REORDERING (decide+send, then record) is kept: it needs no
+        # thread and removes the write from the action path. Re-enable only once the writer
+        # owns its own connection.
         self._connect()
         try:
             self._loop(max_ticks)

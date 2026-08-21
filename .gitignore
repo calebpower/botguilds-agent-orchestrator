@@ -52,3 +52,6 @@ ui-server.log
 orchestrator/.analyze-window
 # the analyze->apply handoff file (regenerated each analyze pass)
 orchestrator/advice.md
+
+# crash dumps (a segfaulting runner drops these in the repo root)
+*.core
