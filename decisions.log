@@ -2670,3 +2670,20 @@ should not be built until 1-2 exist and the frontier is visible. `say` is exclud
 OPERATOR DECISION (asked directly): LEAVE THE MATRIX QUEUED — the formula stands, no one-off override this
 time (unlike the codex/heatmaps precedent). Next pass is FORGE-TO-ARM SLICE 2. The matrix accrues tc normally
 and comes up on its own merits as it ages; do not re-litigate it next pass.
+WISHLIST AMEND (operator, same day): INCLUDE `say` in the matrix — "you never know if there's a door with a
+magic word". Correct, and my exclusion was over-broad: I had conflated using `say` as a mechanic-discovery
+verb with using it to inject other AGENTS. Those are different activities. The boundary is INTENT, not the
+verb: in-world utterances aimed at discovering a mechanic are in scope; payloads crafted to manipulate
+another agent or a parser (prompt injection, impersonating the server/dev, instructions aimed at rival bots)
+stay in scratchpad/ as a separately-authorised security probe.
+EVIDENCE that makes this the strongest cell family in the cube: across 4.3M actions_sent we have NEVER sent
+`say` — the only verbs we have ever used are move/embark/attack/pickup/recruit/drop/sell/buy/equip/open/use/
+spend_xp/brew/smelt (14). Never sent: say, cast, forge, list, buy_listing, unequip, rest, refresh. And the 23
+observed tile kinds include safe, grave, portal, chest, web, track — a safe has a COMBINATION, a grave is a
+thing you SPEAK at, a portal is speak-friend-and-enter; `open` is already a live verb (2948 sends) with a
+real `nothing_to_open` error, so the game models openable things. The frontier is not a few odd corners of
+the cube — it is most of the verb axis.
+DESIGN NOTE: `say` needs a different third axis. Equipment barely varies the outcome of speaking, so say-cells
+expand over a curated WORDLIST instead: folklore/game conventions (open, sesame, friend, mellon, xyzzy, plugh)
+plus — ranked higher — words the world hands us (grave/sign text, item names, docs strings, `tells` flavour).
+Hard rate-limit: chat is public and social; short, obviously in-world utterances only.

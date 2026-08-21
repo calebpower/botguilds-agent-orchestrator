@@ -53,10 +53,34 @@ top of **Open**.
      the cube updates itself.
   4. **Feedback.** A confirmed mechanic graduates into the strategy, exactly as harvest did.
 
-  **Deliberately excluded:** `say` is not an experiment surface (that is the injection/abuse
-  boundary — the probe stays in `scratchpad/`), and no experiment may sell, drop or consume an
-  item that is not junk. Destructive-to-us verbs are the one place a wrong prior costs real
-  progress rather than one wasted tick.
+  **`say` IS in scope** (operator, 2026-08-21: *"you never know if there's a door with a magic
+  word"*). The evidence backs it: across **4.3M actions sent we have never once used `say`** —
+  the verbs we have ever sent are only move, embark, attack, pickup, recruit, drop, sell, buy,
+  equip, open, use, spend_xp, brew, smelt. Meanwhile the tile vocabulary we have observed
+  contains `safe`, `grave`, `portal`, `chest`, `web` and `track` — a safe has a *combination*, a
+  grave is a thing you *speak at*, a portal is the canonical speak-friend-and-enter. `open`
+  already exists as a verb (2,948 sends) and `nothing_to_open` is a real error reason, so the
+  game clearly models openable things; whether a word opens one is exactly an unknown cell.
+
+  **`say` needs a different third axis.** Equipment barely varies the outcome of speaking; the
+  interesting variable is the WORD. So `say` cells expand over a curated wordlist rather than
+  over the equipment axis — game/folklore conventions (open, sesame, friend, mellon, xyzzy,
+  plugh, please, hello), plus any word the world itself hands us: text on graves, signs, item
+  names, `docs/` strings, and anything a `tells`/flavour field emits. Words found in-world rank
+  above words imported from folklore.
+
+  **The boundary that remains** is not the verb, it is the intent. In scope: in-world utterances
+  aimed at discovering a game mechanic. Out of scope and staying in `scratchpad/` as a separate,
+  separately-authorised security probe: anything crafted to manipulate another *agent* or a
+  parser — prompt-injection payloads, impersonating the server or the dev, instructions aimed at
+  rival bots. Also: chat is public and social, so experiments are hard rate-limited and kept
+  short and obviously in-world — a bot chanting XYZZY at 12 ticks a second is antisocial and
+  invites a throttle. `say` looks cheap (likely no turn cost), which makes it an unusually good
+  experiment surface: low cost per trial, high information per success.
+
+  **Still excluded:** no experiment may sell, drop or consume an item that is not junk.
+  Destructive-to-us verbs are the one place a wrong prior costs real progress rather than one
+  wasted tick.
 
 - [ ] **Move-prediction model — mobs AND rival players** — (a) MOBS: SHIPPED 2026-08-20
   (steemer/mob_predict.py — rule-based predict()/evaluate(), validated live #97: exact 0.81,
