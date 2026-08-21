@@ -61,7 +61,6 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 | Band-refresh timing awareness | 0.80 | 0.92 | 30 | **0.527** | 0.552 | **qualifies** |
 | In-world trash talk (`say`) | 0.75 | 0.95 | 37 | **0.515** | 0.534 | **qualifies** |
 | Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 38 | **0.508** | 0.527 | **qualifies** |
-| Exploration matrix (A) cube + frontier | 0.92 | 1.00 | 5 | **0.506** | 0.690 | **qualifies** |
 | Move-prediction (b) rivals | 0.72 | 0.98 | 25 | **0.501** | 0.529 | **qualifies** |
 | Rival-awareness dashboard panel | 0.62 | 0.97 | 36 | 0.434 | 0.451 | INELIGIBLE — ceiling<0.5 |
 | Impassable-tile analysis | 0.60 | 1.00 | 38 | 0.434 | 0.450 | INELIGIBLE — ceiling<0.5 |
@@ -72,7 +71,7 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 | Log-scale overview bars | 0.45 | 1.00 | 20 | 0.315 | 0.338 | INELIGIBLE — ceiling<0.5 |
 | Expectation/reality mismatch detector | 0.90 | 0.95 | 1 | -0.214 | 0.641 | clears at tc=7 |
 
-**Ten items qualify** — including exploration matrix (A), which crossed at tc=5 exactly as projected when it was split out. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
+**Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
 
 ## Open
@@ -119,48 +118,6 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   suspect; and it is directly operator-visible in the dashboard); risk_to_bot 0.95 (the
   verifier is read-only and the alarm is advisory — the only bot-side change is carrying an
   optional `predict` on offers, which cannot alter a decision).
-
-- [ ] **Exploration matrix (A) — the cube + the frontier** *(READ-ONLY; no bot risk)* —
-  build the noun × verb × equipped cube, score its cells, and populate what we have already
-  tried. Ships an artifact, touches nothing the bot does. (operator request 2026-08-21; split
-  out of the original single item 2026-08-21 because bundling two very different risk profiles
-  under one score is the "bundled" dock the scoring rule warns about)
-
-  **The cube.** Columns = every noun we have ever encountered (the 23 observed tile kinds —
-  floor, wall, path, water, tall_grass, tree, bush, lily, rock, crop, herb, fence, vein, web,
-  track, chest, chest_open, portal, trap, cauldron, forge, safe, grave — plus item kinds from
-  frames/inventories/drops and mob kinds from the bestiary). Rows = every action verb
-  (`docs/03-actions` plus any inferred). Depth = every equippable item **including `none`**, so
-  `tree × attack × none` is a real cell beside `tree × attack × axe`.
-
-  **The score.** Each cell carries a `prior` in 0..1: *is there something one could plausibly do
-  here — a mechanic that exists in real life or in other games?* `tree × attack × axe` high;
-  `grass × consume × sword` low. Per-cell scoring does not scale to thousands of cells, so
-  priors derive from auditable **rule families** ("chopping verb × woody target × bladed tool =
-  high"), with per-cell overrides where a family gets it wrong. The families are the reasoning;
-  a noun the game invents tomorrow is scored the moment it appears.
-
-  **`say` gets a different depth axis.** Equipment barely varies the outcome of speaking — the
-  variable is the WORD. So `say` cells expand over a curated wordlist instead: folklore/game
-  conventions (open, sesame, friend, mellon, xyzzy, plugh) and, **ranked higher, words the world
-  itself hands us** — grave and sign text, item names, `docs/` strings, `tells`/flavour fields.
-  A word found in-world is a far better prior than one imported from Tolkien.
-
-  **The tested layer comes free and retroactive.** `actions_sent` × `action_errors` × `events`
-  already records what we sent, whether it bounced and with which `reason`, and what happened.
-  Joining those yields **the frontier: high-prior cells we have never once tried** — with no new
-  action issued. Dashboard tab; pairs naturally with the Codex.
-
-  **Why the frontier is large.** Across **4.3M actions sent we have only ever used 14 verbs**:
-  move, embark, attack, pickup, recruit, drop, sell, buy, equip, open, use, spend_xp, brew,
-  smelt. Never sent: `say`, `cast`, `forge`, `list`, `buy_listing`, `unequip`, `rest`, `refresh`.
-  And nouns like `safe`, `grave`, `portal`, `web`, `track` have almost certainly never been acted
-  on — the same blind spot as trees sitting in `nav.SOLID` as scenery. The frontier is not a few
-  odd corners of the cube; it is most of the verb axis.
-
-  **Scoring:** good_idea 0.85 (produces the map, not the discoveries — the discoveries are (B));
-  risk_to_bot **1.00** (pure analysis over stored data; it cannot touch the running bot).
-  Ceiling 0.6375; **clears 0.5 at tc=7**.
 
 - [ ] **Exploration matrix (B) — the experiment arm** *(OVERRIDE-ONLY; touches live play)* —
   exploring-role characters spend a budgeted fraction of idle ticks probing the top untried cells
@@ -553,3 +510,53 @@ and are kept as-is rather than rewritten.
   replay it AND the incumbent over the last N recorded frames and compare
   predicted KPIs. A "is this actually better?" check that would've caught the
   0.11.0 "fix that didn't fix."
+- [x] **Exploration matrix (A) — the cube + the frontier** — SHIPPED 2026-08-21
+  (`steemer/matrix.py` + `steemer/vocabulary.py`, 16 + 101 tests). Read-only, issues no
+  actions. Live over 9,100 cells it reports SIX frontier cells: `lumber x forge` at 0.95
+  (the item declares `uses:["forge"]` and `forge` is one of 12 protocol verbs we have never
+  sent) and `say` at chest/grave/portal/safe/wall at 0.70. It independently surfaced the M3a
+  blocker AND the operator's magic-word intuition from a standing rule. Two first-run flaws
+  fixed: the equip axis expanded for verbs it cannot affect (7x duplicate noise), and the
+  tested layer used a row window so `brew` (474 lifetime sends) read as never tried.
+  Original: *(READ-ONLY; no bot risk)* —
+  build the noun × verb × equipped cube, score its cells, and populate what we have already
+  tried. Ships an artifact, touches nothing the bot does. (operator request 2026-08-21; split
+  out of the original single item 2026-08-21 because bundling two very different risk profiles
+  under one score is the "bundled" dock the scoring rule warns about)
+
+  **The cube.** Columns = every noun we have ever encountered (the 23 observed tile kinds —
+  floor, wall, path, water, tall_grass, tree, bush, lily, rock, crop, herb, fence, vein, web,
+  track, chest, chest_open, portal, trap, cauldron, forge, safe, grave — plus item kinds from
+  frames/inventories/drops and mob kinds from the bestiary). Rows = every action verb
+  (`docs/03-actions` plus any inferred). Depth = every equippable item **including `none`**, so
+  `tree × attack × none` is a real cell beside `tree × attack × axe`.
+
+  **The score.** Each cell carries a `prior` in 0..1: *is there something one could plausibly do
+  here — a mechanic that exists in real life or in other games?* `tree × attack × axe` high;
+  `grass × consume × sword` low. Per-cell scoring does not scale to thousands of cells, so
+  priors derive from auditable **rule families** ("chopping verb × woody target × bladed tool =
+  high"), with per-cell overrides where a family gets it wrong. The families are the reasoning;
+  a noun the game invents tomorrow is scored the moment it appears.
+
+  **`say` gets a different depth axis.** Equipment barely varies the outcome of speaking — the
+  variable is the WORD. So `say` cells expand over a curated wordlist instead: folklore/game
+  conventions (open, sesame, friend, mellon, xyzzy, plugh) and, **ranked higher, words the world
+  itself hands us** — grave and sign text, item names, `docs/` strings, `tells`/flavour fields.
+  A word found in-world is a far better prior than one imported from Tolkien.
+
+  **The tested layer comes free and retroactive.** `actions_sent` × `action_errors` × `events`
+  already records what we sent, whether it bounced and with which `reason`, and what happened.
+  Joining those yields **the frontier: high-prior cells we have never once tried** — with no new
+  action issued. Dashboard tab; pairs naturally with the Codex.
+
+  **Why the frontier is large.** Across **4.3M actions sent we have only ever used 14 verbs**:
+  move, embark, attack, pickup, recruit, drop, sell, buy, equip, open, use, spend_xp, brew,
+  smelt. Never sent: `say`, `cast`, `forge`, `list`, `buy_listing`, `unequip`, `rest`, `refresh`.
+  And nouns like `safe`, `grave`, `portal`, `web`, `track` have almost certainly never been acted
+  on — the same blind spot as trees sitting in `nav.SOLID` as scenery. The frontier is not a few
+  odd corners of the cube; it is most of the verb axis.
+
+  **Scoring:** good_idea 0.85 (produces the map, not the discoveries — the discoveries are (B));
+  risk_to_bot **1.00** (pure analysis over stored data; it cannot touch the running bot).
+  Ceiling 0.6375; **clears 0.5 at tc=7**.
+

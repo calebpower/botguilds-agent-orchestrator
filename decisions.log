@@ -3097,3 +3097,42 @@ GATE: 435 local / 442 reaper; replay 2500 exit 0. DEPLOY: run 120, git 6244728.
 NEXT: measure #120 — duplicates back to 0 AND entombment still ~1/1k (the two must hold together; 0.50.1
 must not have re-entombed anyone). Then the top qualifying lever: M3a forging (0.573) is blocked on ORE, and
 exploration matrix (A) (0.506, read-only, zero bot risk) would map exactly that kind of unexplored mechanic.
+
+ITER 66 (2026-08-21) — EXPLORATION MATRIX (A) + the answer to "why do we keep shipping regressions after the
+tests". Operator asked for both; they turned out to be the same idea aimed in opposite directions.
+THE DIAGNOSIS. Every regression this session lived in an input nobody ENUMERATED:
+  0.46.0  input space (has lumber, has metal) — only the lumber axis tested; bug at metal=absent.
+  0.49.0  input space = 17 distinct `reason` values — two tested, one of those classified WRONG; bug at
+          `not_in_village`.
+Both suites were green AND fully mutation-killed at the time. That is NOT a gap mutation testing can close,
+and I had been leaning on it as if it were: mutation proves a test is SENSITIVE to code changes, not that the
+tests COVER the input space. A suite can kill every mutant and still exercise only what its author imagined.
+What actually caught all three regressions was LIVE DATA a run later — never the gate.
+COUNTERMEASURE (steemer/vocabulary.py + tests/test_vocabulary_coverage.py): harvest the REAL vocabularies from
+our own history (17 reasons, 23 tiles, 25 items, 26 protocol verbs of which we have sent 14) into a frozen
+reviewed fixture, then drive property tests over ALL of them. VERIFIED against history: restoring 0.49's
+clause is KILLED by the new test, so it would have caught that bug on day one.
+AND THE SECOND HALF, which a mutant taught me: enumeration alone is not enough. Asserting
+`freed == (reason in INTENT_RETRY_DIFFERS)` is DERIVED FROM THE CONSTANT IT CHECKS, so a WRONG classification
+(adding not_enough_gold) survived it. The 17 reasons are now ALSO partitioned BY HAND in the test file, one
+line of reasoning each. **Enumeration catches "the code ignores the rule"; deliberate duplication catches
+"the rule is wrong". Both are needed.**
+MATRIX (A) (steemer/matrix.py, read-only, issues no actions): cube of noun x verb x equipped; priors from
+auditable RULE FAMILIES (not per-cell guesses, so a noun the game invents tomorrow is scored on appearance);
+TESTED layer recovered retroactively from actions_sent x action_errors; frontier = high-plausibility cells
+never tried. LIVE over 9,100 cells it reports SIX:
+   0.95  lumber x forge   (the item declares uses:["forge"]; `forge` is one of 12 verbs never sent)
+   0.70  chest / grave / portal / safe / wall x say
+It INDEPENDENTLY surfaced the M3a forge blocker (wishlist top, 0.573) and the operator's own magic-word
+intuition — from a standing rule rather than either of us noticing. That is the tool working as intended.
+TWO FIRST-RUN FLAWS FIXED: the equip axis expanded for verbs it cannot affect (brewing does not care which
+sword you carry) burying the frontier under 7x duplicates; and the tested layer used a recent-rows window so
+`brew` (474 lifetime sends) fell outside it and read as never tried — now a DISTINCT query.
+GATE: 16 matrix tests + 101 vocabulary tests + harvester tests (the fixture tests guard the FIXTURE; a mutant
+gutting harvest() survived them all until the harvester got its own). 11 mutants all killed; three initially
+survived and each exposed a test reaching the WRONG CODE PATH (an empty ctx no predicate reads; an equip
+assertion simply wrong about clubs; a malformed-ctx case that short-circuited before touching the bad dict).
+554 local / 561 reaper. NO strategy change — the live bot is untouched.
+WISHLIST: matrix (A) ticked and moved to Done (15 open / 18 done; table 15 rows = 15 items). SEVEN qualify.
+NEXT: the frontier's own top cell IS the top wishlist item — `lumber x forge` at 0.95 / M3a forging at 0.573.
+We hold ingots now; the blocker is ORE. That is the lever.
