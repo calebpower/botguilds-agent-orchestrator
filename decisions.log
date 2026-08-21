@@ -3024,3 +3024,44 @@ NEXT: measure #118 — duplicate buys should be ~0 and gold should climb past 20
 buy fires for the first time and the armored fraction moves off 0%. Also still open: 0.48.1 cohesion needs a
 long window (do NOT judge it from the first minutes — that error is on record). M3a forging still tops the
 wishlist at 0.571 with ORE the remaining blocker.
+
+ITER 64 (2026-08-21) — 0.50.0 LEARNED-BLOCK ROOT FIX. Operator asked me to look at our last death; it turned
+out to be the same bug as the one before it, and the bug is the dominant death mode returning.
+BOTH DEATHS, IDENTICAL SIGNATURE: a hurt char at FULL stamina (56/56), walkable floor beside it, and `rest`
+(0.5) as the ONLY weighed option — retreat (8.5) and desperation (8.0) both silent. Recruit-15469 died in the
+VALE at tick 1413613 carrying 10 items; Recruit-15484 died in the MINES at 1417806 while burning from a drake
+(12 dmg x2 + burn DoT).
+CAUSE (bot.py): a tile was learn-blocked whenever a char's position merely LOOKED unchanged after a move.
+Frames are stale, so that is NOT evidence of a bounce — and three stale frames in a row seal every exit.
+Traced exactly: 15469 moved S at 1413599, E at 1413600, W at 1413601; each looked unlanded, blacklisting
+(7,35), (8,36), (6,36) for STUCK_BLOCK_TTL=150 while a crab_green held the fourth side. It then rested TEN
+consecutive ticks and bled out. There were ZERO move_failed events and ZERO action errors in either fatal
+window — nothing had actually bounced.
+This is the v0.42.0 stuck-death returning through the door v0.42.0 did not close: that fix excluded
+`not_enough_stamina` specifically, but the NO-ERROR-AT-ALL path still blacklisted.
+FIX: the server emits `move_failed` naming the char and the exact tile it could not enter
+({"kind":"move_failed","eid":280197,"pos":[5,35],"to":[5,34]}). Blocking is now driven by that event alone;
+the position-inference is gone along with the _last_pos/_last_move_dir/_last_move_err bookkeeping that
+existed only to qualify it. A stamina rejection emits no move_failed, so v0.42.0's case is handled BY
+CONSTRUCTION rather than by a special case.
+SECONDARY OBSERVATION: in the mines death the char's S exit was occupied by OUR OWN character (c15492) —
+cohesion bunching removing an escape route. Not the root cause (N and E were free-but-blacklisted) but it is
+the interaction flagged as a hazard when 0.48 was built. Watch it.
+TESTS: the existing stuck-block test ASSERTED THE OLD INFERENCE — it encoded the bug — and was rewritten to
+the new contract, not deleted. 5 new/rewritten: event teaches the tile; unchanged position ALONE does not
+(the regression, trace in the docstring); another entity's move_failed is ignored; blocks expire; and two
+asserting the lethal SYMPTOM directly (a hurt char with free floor is never left with only rest; desperation
+fires when retreat has nowhere known to go). The last exists because a mutant proved the first was answered
+by the RETREAT and never reached desperation. 7 mutants, all killed — two initially survived (no expiry test;
+and a selector still pointing at the older test). 432 local / 440 reaper; replay 2500 exit 0.
+DEPLOY: run 119, git 819db62, explorer/0.50.0.
+WISHLIST ADD (operator): expectation/reality mismatch detector — the bot declares "we expect <foo>", a
+separate mechanism follows the trail against later frames, mismatches raise an emergency alert, and it
+reports in the Decisions tab. It would have caught BOTH these deaths and the duplicate-spend bug, and it is
+the generalisation of 0.49's intent latch and this commit. Scored good_idea 0.90 x risk_to_bot 0.95 (verifier
+read-only, alarm advisory, only bot-side change is an optional `predict` on offers) = ceiling 0.641, clears
+0.5 at tc=7. DESIGN TRAP recorded in the entry: frames are stale, so "hasn't happened yet" must not read as
+"didn't happen" — the detector must not repeat the very bug it exists to catch.
+NEXT: measure #119 — our-char deaths should fall toward 0 and, specifically, the "only rest offered while
+hurt" signature should vanish. Also still pending measurement: 0.49 duplicate buys ~0 and gold past 200;
+0.48.1 cohesion on a long window.
