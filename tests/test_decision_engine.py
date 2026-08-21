@@ -1451,3 +1451,69 @@ def test_bare_char_does_not_seek_wildlife():
     acts = bot.on_frame(frame)
     assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts     # frontier north
     assert {"char_uid": "c1", "action": "move", "dir": "S"} not in acts
+
+
+# --- v0.42.0 DESPERATION ESCAPE: a hurt char boxed in by a predator pack (its strike-range
+# tiles all blocked) whose only clear neighbour is UNKNOWN terrain used to REST and bleed out
+# (is_walkable refuses unseen tiles). Now it takes the desperation step — strictly better than
+# resting to death. Traced from run #99's vale wolf-swarm cluster (3 foragers died this way). ---
+
+def _cornered_hurt_frame(south_terr=None):
+    # char at (2,2), hp 5/30 (hurt), no potion. Wolves at (2,4)/(4,2)/(0,2) put N/E/W in the
+    # predator strike-block; S=(2,1) is the only clear tile. south_terr=None leaves S UNKNOWN
+    # (the real death case); "wall" makes S a known solid (the guard case).
+    char = _field_char(pos=[2, 2], hp=5, max_hp=30, stamina=40, inventory=[])
+    tiles = [[2, 2, "floor"]]
+    if south_terr is not None:
+        tiles.append([2, 1, south_terr])
+    ents = [{"pos": p, "faction": "monster", "kind": "wolf", "hp_frac": 0.8}
+            for p in ([2, 4], [4, 2], [0, 2])]
+    return _field_frame(char, tiles, entities=ents)
+
+
+def test_hurt_cornered_char_takes_the_desperation_step_onto_a_clear_unknown_tile():
+    # N/E/W are predator-strike-blocked, S is clear but unseen -> step S instead of resting.
+    bot = _bot()
+    acts = bot.on_frame(_cornered_hurt_frame(south_terr=None))
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts
+
+
+def test_desperation_never_steps_onto_a_known_wall():
+    # SAME corner but the only clear tile S is a KNOWN wall -> no candidate -> the char rests
+    # (emits no move). Guard on the SOLID check: without it, desperation would step into a wall.
+    bot = _bot()
+    acts = bot.on_frame(_cornered_hurt_frame(south_terr="wall"))
+    assert all(a.get("action") != "move" for a in acts)
+
+
+def test_hurt_char_with_a_known_escape_still_retreats_normally():
+    # regression: a hurt char NOT boxed in (a known floor corridor home) still walks home via the
+    # normal retreat — the desperation block doesn't suppress or replace ordinary hurt-retreat.
+    bot = _bot()
+    char = _field_char(pos=[2, 2], hp=5, max_hp=30, stamina=40, inventory=[])
+    tiles = [[2, 0, "floor"], [2, 1, "floor"], [2, 2, "floor"]]
+    acts = bot.on_frame(_field_frame(char, tiles))
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts     # heading home
+
+
+def test_stamina_bounce_does_not_learn_block_a_walkable_tile():
+    # v0.42.0 ROOT FIX: a move that bounces with not_enough_stamina (transient — the
+    # frame-staleness margin, the tile is fine) must NOT blacklist the tile. Blacklisting
+    # it for STUCK_BLOCK_TTL walled hurt chars into dead-ends and killed them (run #99:
+    # 9687 stamina errors vs ~0 wall errors). The char still sees (0,1) as usable.
+    bot = _bot()
+    tiles = [[0, 0, "floor"], [0, 1, "floor"], [1, 0, "floor"]]
+
+    def frame(tick):
+        return {"world": "vale", "tick": tick,
+                "chars": [_field_char(pos=[0, 0], stamina=40)],
+                "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
+
+    a1 = bot.on_frame(frame(10))
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in a1          # pushes north to (0,1)
+    # the server rejected that move for stamina (mirrors the live error stream)
+    bot.on_action_error({"action": "move", "char_uid": "c1",
+                         "reason": "not_enough_stamina", "tick": 10})
+    a2 = bot.on_frame(frame(11))                                            # still at (0,0)
+    assert (0, 1) not in bot._learned_blocked.get("vale", {})              # NOT blacklisted
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in a2          # still free to use it

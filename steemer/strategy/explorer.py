@@ -597,7 +597,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.41.0"
+    version = "explorer/0.42.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -929,6 +929,31 @@ class Explorer:
                       9.0, "drinking a red potion to recover HP")
             self._retreat(uid, pos, ctx, blocked, offer, 8.5, "hurt — walking home to heal",
                           urgent=True)
+            # v0.42.0 DESPERATION ESCAPE: the retreat above only offers a KNOWN-walkable
+            # homeward step. A hurt char boxed in by a predator PACK (every strike-range tile
+            # is in `blocked`) or standing at the edge of explored ground frequently has its
+            # ONLY clear tile on UNKNOWN terrain — which is_walkable refuses — so the retreat
+            # offers nothing and the char RESTS and bleeds out. Traced live: run #99's vale
+            # wolf-swarm cluster, 3 foragers rested at FULL stamina (48-56) with a clear-but-
+            # unseen escape tile one step away and died (hp 13->9->5->1). When cornered like
+            # this, a step onto a clear non-solid (incl. unseen) tile is strictly better than
+            # resting: a wall just bounces the move (no worse than resting), floor lets the
+            # char escape. Candidates exclude `blocked` (enemies, bodies, AND predator strike-
+            # range) and known WALLS, so we never step INTO a strike tile — only out through a
+            # gap. Prefer the tile FARTHEST from every visible enemy (break out of the pack),
+            # tiebreak toward home (lower y). Scored 8.0 < the retreat (8.5) so a known homeward
+            # step always wins; this fires ONLY when the retreat found none. Urgent (no stamina
+            # margin) — a possibly-bounced step beats resting to death.
+            esc = [n for n in nav.neighbors(pos)
+                   if n not in blocked and ctx.known.get(n) not in nav.SOLID]
+            if esc:
+                def _enemy_dist(t: tuple[int, int]) -> int:
+                    return min((abs(t[0] - q[0]) + abs(t[1] - q[1]) for q in ctx.enemies),
+                               default=99)
+                best = max(esc, key=lambda t: (_enemy_dist(t), -t[1]))
+                offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, best)}, 8.0,
+                      "hurt & cornered — desperation step to a clear tile (beats resting to death)",
+                      urgent=True)
             return
 
         # --- DRASTIC undead-flee (v0.25.0): mood-driven. If a THREAT mob (poison
