@@ -2984,3 +2984,43 @@ the SAME frames the candidate replays over (which the CLI does). Comparing run A
 change with world variation and cheerfully reports "new branches" like `dodging an adjacent boar`.
 NEXT: the GOLD SINK (14-31 clubs/run at 15g for bare recruits, while gold peaks ~165 against the 200 armor
 floor) — that one sink starves both the armor buy and the forge. Use the shadow gate on it before deploying.
+
+ITER 63 (2026-08-21) — 0.49.0 IN-FLIGHT INTENT LATCH. Operator delegated the call ("if you advise moving
+forward with the gold sink, do so; if not, wait"). I checked the premise BEFORE advising, and it changed the
+lever twice over.
+PREMISE CHECK 1 — is gold actually stuck? Gold by fifths of each run: #115 [159.6,140.3,144.5,140.3,144.9]
+max 177; #116 [156.6,180.8,186.5,197.9,195.9] max 207; #117 [164.6,145.4,142.3,146.6,144.8] max 197. So it
+hovers ~145 and has NEVER sustained the 200 ARMOR_BUY_FLOOR: the armor buy shipped in 0.47 has literally
+never fired. Sink confirmed.
+PREMISE CHECK 2 — is the cause "too many clubs for bare recruits"? NO. Tracing the buyers: run #117 had 26
+buys across 17 distinct chars, with repeat buyers c15386 x6, c15398 x4, c15380 x2. One char bought SIX clubs
+at ticks 1397061/67/73/79/85/91 — exactly VILLAGE_ACTION_COOLDOWN (6) apart — and another bought four then
+re-equipped the SAME item_id five times. 11 of 31 buys were DUPLICATES within 60 ticks. ~165 gold/run.
+So the lever is a BUG FIX, not an economy policy change — much safer and much clearer.
+CAUSE: a TIMER is the wrong termination condition for "has my purchase landed?". When the frame is staler
+than the cooldown, the char still looks bare when it expires, so the buy re-fires. This is the v0.14.0
+re-send storm returning through the same door; bumping the cooldown would only have made it rarer.
+FIX: latch the INTENT, clear on OBSERVATION. buy keyed by kind, equip by item_id. Clears on confirmation
+(kind in inventory OR already equipped; an equipped item leaves the inventory) or on explicit REJECTION — an
+error is as good a termination as a confirmation. INTENT_TTL=60 is only a safety net. `sell` deliberately not
+latched (distinct item_ids can't double-spend). The EXISTING equip tests caught v1 immediately: a failed
+equip leaves the item in inventory, so the latch blocked the legitimate wrong_slot -> next-slot retry — which
+is exactly what the rejection clause is for.
+VERIFIED, not asserted: live 0.48.1 = 31 buys / 11 duplicates; candidate over the same frames = 3 buys /
+0 duplicates.
+SHADOW GATE'S FIRST REAL USE, and it found its own bug: the CLI replayed the OLDEST frames in the whole DB
+against the incumbent's NEWEST decisions — the exact misuse its docstring warns about — caught only because
+the output was obvious nonsense (rest 14179->7785, pushing-north 1359->9). Fixed with frames_of_run().
+And an honest limit is now recorded in the module: TRUST THE STRUCTURE, NOT THE COUNTS. Replay cannot
+reproduce live counts because the frames came from a DIFFERENT action sequence; `shifted` says something
+moved, never how much. For a change that REMOVES actions the generic diff is the wrong instrument entirely —
+count the specific thing, which is what settled this one.
+GATE: 13 new tests, 9 mutants ALL KILLED under the fixed harness. Two initially survived, both tests passing
+for the wrong reason: one reached the TTL branch via CONFIRMATION instead (its fixture had a club equipped,
+so the intent was already landed), and one checked a cleanup the next action overwrote anyway. 428 local /
+435 reaper. DEPLOY: run 118, git afd1891.
+REAPER: session expired mid-pass again; `reaper down --all && reaper up` recovered it, as documented.
+NEXT: measure #118 — duplicate buys should be ~0 and gold should climb past 200, at which point the ARMOR
+buy fires for the first time and the armored fraction moves off 0%. Also still open: 0.48.1 cohesion needs a
+long window (do NOT judge it from the first minutes — that error is on record). M3a forging still tops the
+wishlist at 0.571 with ORE the remaining blocker.
