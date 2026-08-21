@@ -529,6 +529,28 @@ FORGE_SHAFT_PREFIXES = ("lumber", "plank", "timber")
 # accumulating. Keep a few per character, sell the surplus -- enough to forge with, never
 # enough to clog a ~20-slot carry.
 FORGE_RESERVE_PER_CHAR = 4
+
+# --------------------------------------------------------------------------- #
+# v0.52.0 FORGING — the last step of the M3a chain, deferred since docs/07 because the
+# `product` name was unpublished and a blind guess storms `unknown_product`.
+#
+# It was never unpublished. It has been in our own event stream all along: 189 rival
+# `forged`/`forge_started` events name it outright —
+#   {"kind": "forge_started", "eid": 111263, "product": "shield_iron", "ticks": 14}
+# Observed products, with shop prices for comparison: shield_iron 64 (NOT SOLD), dagger 47
+# (20g), spear 25 (70g), sickle 19 (35g), hook_chain 11 (not sold), shortsword 10 (45g),
+# pickaxe 6 (40g), pike 5 (not sold), bow 2 (85g).
+#
+# `shield_iron` leads the ladder deliberately: it is ARMOUR, the shop does not sell it at
+# any price, and 100% of our characters have an empty offhand. It is the one product where
+# forging is not a cheaper route but the ONLY route.
+FORGE_PRODUCTS = ("shield_iron", "spear", "shortsword", "dagger")
+# Recipe quantities are NOT documented. Rather than guess once and give up, try a small
+# ordered ladder of (ingots, lumber) and let the server's rejection teach us — an
+# action_error here is INFORMATION, the same stance the exploration matrix takes. Cheapest
+# combinations first so a failure costs the least stamina.
+FORGE_RECIPES = ((1, 1), (2, 1), (1, 2), (2, 2), (3, 1))
+FORGE_STAMINA = 15          # docs/07: brew/forge cost 15, paid once up front
 # Medicinal drinks we keep rather than sell (potions, vials, elixirs, tonics). Raw
 # FOOD is also `uses:['drink']` but is NOT kept — the guild never eats it, so
 # hoarding it just fills the pack and strands chars homing (v0.19.0: the stuck-gold
@@ -706,7 +728,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.51.1"
+    version = "explorer/0.52.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -730,6 +752,12 @@ class Explorer:
         self._village_acted: dict[str, int] = {}
         # uid -> (intent_key, tick_issued); see INTENT_TTL.
         self._village_intent: dict[str, tuple[str, int]] = {}
+        # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
+        # failed recipe is tried once and never again. Mirrors slot_wrong/wont_fit.
+        self._forge_failed: set[tuple[str, int, int]] = set()
+        # uid -> the (product, n_ingot, n_lumber) most recently attempted, so
+        # on_action_error can attribute a rejection to the recipe that earned it.
+        self._forge_attempt: dict[str, tuple[str, int, int]] = {}
         # "Heading home to sell" latch (v0.16.0): uids that filled up and are now
         # walking home. While latched, looting is suppressed so a shed item is
         # never re-grabbed off the char's own tile (the 0.15.0 pickup<->drop
@@ -757,6 +785,13 @@ class Explorer:
         uid = message.get("char_uid")
         if uid is not None and message.get("reason") in INTENT_RETRY_DIFFERS:
             self._village_intent.pop(uid, None)
+        # v0.52.0: a REJECTED forge teaches us its recipe was wrong. Record the exact
+        # (product, ingots, lumber) so it is attempted once and never again — the recipe
+        # quantities are undocumented, so the server's rejection IS the documentation.
+        if message.get("action") == "forge" and uid is not None:
+            pend = self._forge_attempt.pop(uid, None)
+            if pend is not None:
+                self._forge_failed.add(pend)
         if message.get("action") != "equip":
             return
         pend = self.equipping.get(message.get("char_uid"))
@@ -891,6 +926,16 @@ class Explorer:
                     bot, uid, {"char_uid": uid, "action": "smelt",
                                "item_ids": [a["item_id"], b["item_id"]]},
                     f"smelting 2×{a['kind']} into an ingot (M3a forge feedstock)")]
+            # 4d) FORGE (v0.52.0) — ingots + lumber into gear the shop will not sell.
+            #     Placed after smelting so ore becomes an ingot first, and before the XP
+            #     spend so a forge-ready character does not idle its materials.
+            forge = self._choose_forge(inv, eqp, char.get("stamina", 0))
+            if forge is not None:
+                recipe, item_ids, why = forge
+                self._forge_attempt[uid] = recipe        # (product, n_ingot, n_lumber)
+                return [self._village_act(
+                    bot, uid, {"char_uid": uid, "action": "forge",
+                               "product": recipe[0], "item_ids": item_ids}, why)]
             # 5) spend banked XP on durability (safe in the village).
             stat = self._pick_xp_stat(char)
             if stat is not None:
@@ -1710,6 +1755,39 @@ class Explorer:
             if len(g) >= 2:
                 keep.update(it["item_id"] for it in g)
         return keep
+
+    def _choose_forge(self, inv: list[dict[str, Any]], eqp: dict[str, Any],
+                      stamina: int) -> tuple[tuple[str, int, int], list[Any], str] | None:
+        """Pick a forge to attempt: ``((product, n_ingot, n_lumber), item_ids, why)``.
+
+        The RECIPE is returned alongside the ids because an ``item_id`` is opaque — it
+        cannot tell us afterwards whether it was an ingot or a plank, and the recipe is
+        exactly what a rejection has to blacklist.
+
+        Prefers a product whose slot is still EMPTY — forging a shield for a character
+        already holding one banks nothing. Skips combinations the server has already
+        rejected, and refuses below FORGE_STAMINA so the cost is not paid for a bounce.
+        """
+        if stamina < FORGE_STAMINA:
+            return None
+        ingots = [i for i in inv if str(i.get("kind", "")).startswith("ingot")]
+        lumber = [i for i in inv if str(i.get("kind", "")).startswith("lumber")]
+        if not ingots or not lumber:
+            return None
+        worn = {v.get("kind") if isinstance(v, dict) else v for v in eqp.values()}
+        for product in FORGE_PRODUCTS:
+            if product in worn or product in self.wont_fit:
+                continue
+            for n_ing, n_lum in FORGE_RECIPES:
+                if (product, n_ing, n_lum) in self._forge_failed:
+                    continue
+                if len(ingots) < n_ing or len(lumber) < n_lum:
+                    continue
+                ids = [i["item_id"] for i in ingots[:n_ing] + lumber[:n_lum]]
+                return ((product, n_ing, n_lum), ids,
+                        f"forging {product} from {n_ing}x ingot + {n_lum}x lumber "
+                        f"(M3a: the shop does not sell this at any price)")
+        return None
 
     @staticmethod
     def _feedstock_keep_ids(inv: list[dict[str, Any]]) -> set[str]:
