@@ -1517,3 +1517,50 @@ def test_stamina_bounce_does_not_learn_block_a_walkable_tile():
     a2 = bot.on_frame(frame(11))                                            # still at (0,0)
     assert (0, 1) not in bot._learned_blocked.get("vale", {})              # NOT blacklisted
     assert {"char_uid": "c1", "action": "move", "dir": "N"} in a2          # still free to use it
+
+
+# --- v0.43.0 recruit-burst fix: a post-deploy roster-count lag (the public spectate endpoint
+# froze at 9 for ~176 ticks on run #100 while the real roster was ~30) made the gate recruit
+# every cooldown, overshooting the fieldable cap into a ~20-char bare bench. Fix: max(auth,
+# fresh snapshot) + count our own in-flight recruits so a lagging count can't drive a burst. ---
+
+def _village_frame(tick, n_here, gold=5, by_world=None):
+    return {"world": "village", "tick": tick,
+            "guild": {"gold": gold, "chars_here": [f"h{i}" for i in range(n_here)],
+                      "chars_by_world": by_world or {}},
+            "chars": []}
+
+
+def test_recruit_burst_is_capped_when_the_roster_count_lags():
+    # target = min(world_cap 10, roster_cap 10, 5*3+2) = 10. The count reads 9 and STAYS 9 (the
+    # just-recruited char hasn't checked in — the run #100 lag). The in-flight counter must cap
+    # recruiting at ONE until the count rises or RECRUIT_INFLIGHT_TTL elapses — not a burst.
+    bot = _bot()
+    assert any(a.get("action") == "recruit" for a in bot.on_frame(_village_frame(10, 9)))  # 9<10
+    for t in (20, 30, 40, 50, 60):
+        acts = bot.on_frame(_village_frame(t, 9))     # count still 9, recruit in-flight
+        assert all(a.get("action") != "recruit" for a in acts), f"burst not capped at t={t}"
+
+
+def test_recruit_resumes_after_the_inflight_recruit_lands():
+    # once the recruited char shows in the count (9 -> 10) OR the in-flight entry ages out, the
+    # gate is free to act on the true count again — it must NOT be permanently frozen.
+    bot = _bot()
+    bot.on_frame(_village_frame(10, 9))               # recruit -> inflight
+    # count now genuinely reflects 10 (== target): no recruit, correctly at cap
+    assert all(a.get("action") != "recruit" for a in bot.on_frame(_village_frame(20, 10)))
+
+
+class _StaleSpectate:
+    def counts(self):
+        return (9, {}, 0)                              # frozen-low authoritative total
+
+
+def test_recruit_uses_the_fresh_snapshot_when_the_spectate_count_is_stale():
+    # the authoritative spectate total lagged our post-deploy roster (frozen at 9). The gate must
+    # take the MAX with the fresh frame snapshot, so a stale-low auth can't drive over-recruiting
+    # when the snapshot already shows we're over the cap. Mutation guard on the max().
+    bot = _bot()
+    bot.spectate = _StaleSpectate()
+    frame = _village_frame(10, 0, by_world={"vale": [f"v{i}" for i in range(12)]})  # 12 fielded
+    assert all(a.get("action") != "recruit" for a in bot.on_frame(frame))   # max(9,12)=12 > 10

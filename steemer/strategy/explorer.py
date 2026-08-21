@@ -576,6 +576,12 @@ RECRUIT_BENCH = 2     # v0.27.0: recruit only up to (party_cap * maps) + this sm
 #   rotation bench — the practical number we can field — instead of the server's much
 #   higher roster/world cap. Over-recruiting grew an undeployable bench and armed each
 #   new bare char with a 15g club, draining all income; capping it lets gold stockpile.
+RECRUIT_INFLIGHT_TTL = 100   # v0.43.0: how long a just-issued recruit counts toward the
+#   roster estimate before it's assumed to have landed (and shown up in the counts). Bridges
+#   the post-deploy window where the public spectate endpoint AND the frame snapshot both lag
+#   our real roster, which let the recruit gate fire a ~21-char burst on run #100. Sized well
+#   above the observed recruit-appearance lag (~a few tens of ticks) so the burst is capped at
+#   ~1 recruit until the counts catch up; deaths are ~0 so the slow back-fill this implies is fine.
 VILLAGE_ACTION_COOLDOWN = 6   # v0.14.0: after a char issues a per-char village
 #   action (buy/sell/equip/brew/smelt/spend_xp), don't issue it another for this
 #   many ticks — the frame is a few ticks stale, so re-issuing the same buy/sell
@@ -597,7 +603,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.42.0"
+    version = "explorer/0.43.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -611,6 +617,9 @@ class Explorer:
         # duplicate-send storm). Pruned once the char leaves `chars_here`.
         self._embark_at: dict[str, int] = {}
         self._recruit_at: int | None = None
+        # v0.43.0: ticks of recruits we've issued that may not yet show in the roster counts,
+        # so a post-deploy count lag can't drive a recruit burst (see the recruit gate).
+        self._recruit_inflight: list[int] = []
         # In-flight guard for per-char VILLAGE actions (v0.14.0): the tick each
         # char last issued a village action, so a stale frame doesn't make it
         # re-send the same buy/sell/equip every tick (run #38: 250 buy + 148 sell
@@ -776,7 +785,15 @@ class Explorer:
         by_world = {k: len(v) for k, v in (guild.get("chars_by_world", {}) or {}).items()}
         fielded = sum(by_world.values())
         auth = bot.spectate.counts() if getattr(bot, "spectate", None) else None
-        roster = auth[0] if auth is not None else len(here) + fielded
+        # v0.43.0: take the MAX of the authoritative spectate total and the fresh frame
+        # snapshot, not auth-when-present. On run #100 the public spectate endpoint lagged
+        # our post-deploy roster — it reported 9 for ~176 ticks while the real roster climbed
+        # to 30 — so the gate below recruited every cooldown against a phantom-low count and
+        # overshot the fieldable cap to ~30 (a bare bench of ~20). The roster essentially only
+        # grows (deaths ~0), so a low read from either source is the stale one; the max is the
+        # truer floor. The startup window where BOTH read low is covered by the in-flight
+        # recruit count added in the gate below.
+        roster_seen = max((auth[0] if auth is not None else 0), len(here) + fielded)
 
         # In-flight guard (v0.10.0): drop embark records for chars that have left
         # the village (their embark landed), then treat the rest as still pending
@@ -798,9 +815,20 @@ class Explorer:
         maps = [m["id"] for m in cfg.get("maps", [])] or list(DEFAULT_MAPS)
         party_cap = cfg.get("party_cap", 5)
         recruit_target = min(world_cap, roster_cap, party_cap * len(maps) + RECRUIT_BENCH)
+        # v0.43.0: count recruits WE'VE just issued that may not show in either count yet, so a
+        # startup burst can't overshoot before the counts catch up. Without this, at t+0 both
+        # counts read the not-yet-checked-in roster (9) and the gate fires every RECRUIT_COOLDOWN
+        # for ~170 ticks (21 recruits) before the snapshot reflects reality. Each issued recruit
+        # lifts the estimate immediately, so recruiting stops within ~1 of the target and resumes
+        # only as recruits land (drop out of in-flight after RECRUIT_INFLIGHT_TTL) or the counts
+        # rise. Mirrors the embark in-flight guard above.
+        self._recruit_inflight = [t for t in self._recruit_inflight
+                                  if tick - t < RECRUIT_INFLIGHT_TTL]
+        roster = roster_seen + len(self._recruit_inflight)
         if roster < recruit_target and (
                 self._recruit_at is None or tick - self._recruit_at >= RECRUIT_COOLDOWN):
             self._recruit_at = tick
+            self._recruit_inflight.append(tick)
             return [self._village_act(bot, None, {"action": "recruit"},
                                       f"recruiting (roster {roster} < {recruit_target})")]
 
