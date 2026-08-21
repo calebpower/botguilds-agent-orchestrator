@@ -2237,3 +2237,24 @@ Read-only dashboard, zero bot risk. Gate: local 272/3; codex HTTP smoke (all 4 s
 278/2 (Playwright test seeds wolf/land/egg + asserts all panes). Committed 75e7e74, pushed. Dash
 restarted (pid 73215); live on :8800. Bot untouched (still 0.39.0 run #96). The scheduled 19:36
 loop (verify Phase 2 -> build Phase 3 if decent) is unaffected.
+
+CODEX PERF FIX + TESTING-GAP POST-MORTEM (operator asked how the tests missed the ~17s load).
+FIX: api_codex now returns instantly (~0.13s) — serves cached codex or a `computing` placeholder
+(mechanics pre-filled); the heavy 1200-frame decode runs in a BACKGROUND thread once per run_id
+(cache + lock + inflight); client re-fetches on `computing`. Measured live: 1st 0.137s (was ~17s
+at 1200 / ~55s at the shipped 4000), cached 0.11s. Committed 1e3a366, pushed, dash restarted.
+WHY THE TESTS MISSED IT (3 compounding reasons):
+  1. FIXTURES ARE TINY. Every codex test/smoke used a 1-FRAME seeded SQLite DB. api_codex cost is
+     O(frames decoded via LIMIT sample); with 1 frame that's ~0ms. So the tests proved CORRECTNESS
+     (sections populate) but by construction could NEVER see the SCALE cost. Seeded-DB frontend
+     tests are BLIND to performance.
+  2. BUMPED THE COST PARAM AFTER THE ONLY LIVE RUN. My one live api_codex run was at sample=1500 and
+     I checked the OUTPUT, not the TIME. I then raised the default 1500->4000 (for monster behaviour)
+     and re-validated only on the seeded DB + reaper (both 1-frame). The parameter that sets the cost
+     changed after the last real-data run.
+  3. NO LATENCY ORACLE. Nothing asserted/measured response time; correctness tests pass at any speed.
+LESSON (durable): for ANY endpoint whose cost scales with data volume, TIME it against the LIVE DB
+before shipping — especially after changing a sample/limit/window param — because the seeded fixtures
+make it look instant. A correctness oracle is not a performance oracle. (Also: prefer off-thread +
+cache for heavy dashboard endpoints from the start; the codebase already had that pattern for
+/api/snapshot and I should have mirrored it up front.)
