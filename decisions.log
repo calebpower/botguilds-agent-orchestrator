@@ -2710,3 +2710,35 @@ matrix(B) -0.1540 > matrix(A) -0.2125 (both just-added, tc=1).
 Note (A) scores BELOW (B) right now purely because the -0.25 just-added factor multiplies a larger
 good_idea x risk product. That inversion is an artefact of tc=1 and disappears at tc=2; do not read it as a
 ranking. NEXT PASS remains forge-to-arm slice 2 per the operator's decision.
+
+SCORING RECALIBRATION (operator-directed, 2026-08-21) — the operator asked why THEIR ideas kept scoring low.
+The honest answer was that the fault was mine, in three parts, all evidenced:
+ (1) STRUCTURAL: the age factor saturates at 0.75, so ceiling = good x risk x 0.75. At a typical risk of 0.97
+     an item must score ABOVE 0.687 on good_idea to EVER qualify. My scores put 7 of 10 items inside a
+     0.07-wide band (0.65-0.72) straddling exactly that line — a coin flip with a decimal point.
+ (2) MISREPORTING: three items had ceilings under 0.5 (move-pred 0.473, band-refresh 0.495, log-scale 0.327)
+     and I had been reporting them pass after pass as "just under 0.5", which implies they are coming. They
+     were not. Ineligible-by-ceiling is now called out as such in wishlist.md.
+ (3) BIAS: everything I scored >=0.85 was framed as engineering/analysis (kpi_watch, codex, the matrix);
+     everything parked at the bottom was something the operator would SEE or ENJOY (how-nav, rival-awareness,
+     trash-talk, log-scale). That is precisely the dock the rule forbids — and memory records an earlier
+     operator correction on this same point that I had drifted back from. Anchoring compounded it: how-nav
+     appears 18x in this log creeping 0.496 -> 0.502 while only tc ever moved; good_idea was frozen at 0.72
+     by a snap judgement never revisited.
+FIX (not inflation — 6 up, 2 down in the preview; mean +0.026, spread 1.25x): explicit good_idea ANCHORS,
+written into wishlist.md so the band cannot quietly re-compress. 0.90-1.00 unlocks a whole mechanic/capability
+or serves the stated direction directly; 0.70-0.89 real evidenced value but narrower; 0.50-0.69 speculative or
+redundant; <0.50 cosmetic or superseded.
+RESULT — SEVEN items now qualify, having been starved by the scale rather than by the formula:
+  M3a forging 0.570 · shadow-eval gate 0.561 · magic/cast 0.551 · rival-recon tab 0.547 ·
+  band-refresh 0.523 · trash-talk 0.512 · player market 0.505.
+  Near: move-pred(b) 0.494 (tc=25), campaign layer 0.489, matrix(A) clears at tc=5.
+  Now honestly INELIGIBLE (ceiling<0.5) rather than perpetually "almost": impassable-analysis 0.432
+  (superseded by matrix A), rival-awareness 0.432 (superseded by rival-recon tab), storage-mirror 0.342,
+  log-scale 0.308, predator-memory 0.297 (survival is SOLVED — deaths ~0 since 0.42), matrix(B) -0.161
+  (override-only by design).
+NOTE the top item is **M3a forging (0.570)** — which is exactly where the in-flight forge-to-arm probe is
+headed. The operator's directed work and the formula now agree, which they did not before.
+ALSO marked two items done that were already shipped but never ticked: the how-nav explainer (this pass) and
+rival tracking via /events/spectate (2026-08-20, spectate_track.py).
+NEXT PASS unchanged: forge-to-arm slice 2 (which is the top-scoring item's own path).

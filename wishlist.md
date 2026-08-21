@@ -8,6 +8,62 @@ during the improvement loop, but nothing here is obligatory.
 Format: `- [ ]` open · `- [x]` done (with where it shipped). Newest ideas at the
 top of **Open**.
 
+## Scoring
+
+`final = good_idea × risk_to_bot × (0.75 − 1/tc)`, where `tc` = **deploys** since the item was
+added (a pass that ships no deploy does not advance it; the first deploy after an add still
+leaves `tc=1`, so a new item scores negative twice).
+
+**The age factor saturates at 0.75, so `ceiling = good_idea × risk_to_bot × 0.75`.** An item
+whose ceiling is under 0.5 can *never* qualify at any age — it is INELIGIBLE, not "almost". Say
+so plainly rather than reporting it as "just under 0.5" pass after pass. At a typical
+`risk_to_bot` of 0.97 this means **`good_idea` must exceed 0.687** for an item to ever be built.
+
+**`good_idea` anchors** (added 2026-08-21 after the operator asked why their ideas kept scoring
+low — the honest answer was that 7 of 10 items sat inside a 0.07-wide band straddling the
+eligibility line, which is a coin flip with a decimal point, and that visibility/enjoyment items
+were being parked at the bottom of it despite the rule below):
+
+| band | meaning |
+|---|---|
+| **0.90–1.00** | unlocks a whole mechanic or capability we do not have, or serves the operator's stated direction directly |
+| **0.70–0.89** | real, evidenced value on a known bottleneck — but narrower: one subsystem, or visibility that materially changes decisions |
+| **0.50–0.69** | speculative, or substantially redundant with something we already have |
+| **below 0.50** | cosmetic, or superseded |
+
+`good_idea` **CREDITS operator enjoyment and visibility** — the operator plays this too. Do NOT
+dock for "aesthetic, doesn't help the bot"; `risk_to_bot` is what handles harm. DO dock for
+genuine quality limits: stale data, fragility, speculation, or **bundling slices of different
+risk under one score** (that lets the risky half hold the safe half hostage — split instead).
+Do not inflate to clear the bar; recalibration should move items DOWN as often as up.
+
+`risk_to_bot` is risk to **the bot**, not to the platform or the verification effort.
+
+## Current scores
+
+Recalculated fresh each pass. `tc` at deploy-minor 45 (`explorer/0.45.0`).
+
+| item | good | risk | tc | final | ceiling | status |
+|---|---|---|---|---|---|---|
+| M3a forging | 0.90 | 0.88 | 33 | **0.570** | 0.594 | qualifies |
+| Shadow-evaluation deploy gate | 0.78 | 1.00 | 33 | **0.561** | 0.585 | qualifies |
+| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 33 | **0.551** | 0.574 | qualifies |
+| Rival-recon dashboard tab | 0.80 | 0.97 | 22 | **0.547** | 0.582 | qualifies |
+| Band-refresh timing awareness | 0.80 | 0.92 | 25 | **0.523** | 0.552 | qualifies |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 32 | **0.512** | 0.534 | qualifies |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 33 | **0.505** | 0.527 | qualifies |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 20 | 0.494 | 0.529 | clears at tc=25 |
+| Campaign layer / chars as A-B testbeds | 0.85 | 0.80 | 32 | 0.489 | 0.510 | clears at tc=68 |
+| Exploration matrix (A) cube + frontier | 0.92 | 1.00 | 1 | −0.230 | 0.690 | clears at tc=5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 33 | 0.432 | 0.450 | INELIGIBLE — superseded by matrix (A) |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 31 | 0.432 | 0.451 | INELIGIBLE — superseded by rival-recon |
+| Storage mirror off hot path | 0.50 | 0.95 | 33 | 0.342 | 0.356 | INELIGIBLE — "low value alone (measured small)" |
+| Log-scale overview bars | 0.45 | 1.00 | 15 | 0.308 | 0.338 | INELIGIBLE — cosmetic |
+| Short-TTL predator memory | 0.60 | 0.90 | 5 | 0.297 | 0.405 | INELIGIBLE — survival is solved (deaths ~0 since 0.42) |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 1 | −0.161 | 0.483 | INELIGIBLE by design — override-only |
+
+**Seven items qualify.** They had been starved by a compressed scale, not by the formula.
+
 ## Open
 
 - [ ] **Exploration matrix (A) — the cube + the frontier** *(READ-ONLY; no bot risk)* —
@@ -307,7 +363,10 @@ top of **Open**.
   known to be breakable, and surface "maybe break this?" candidates. Could drive
   active game discovery (attack-the-obstacle probes) rather than just routing
   around. (operator request)
-- [ ] **Dashboard "how navigation works" explainer** — a tab (or a section of the
+- [x] **Dashboard "how navigation works" explainer** — SHIPPED 2026-08-21 (`ui/server.py`
+  `api_nav` + `/api/nav` + the "How nav works" tab; unit + Playwright tested). Derived, not
+  written down: rules from `steemer/nav.py` via inspect at request time, priority ladder from
+  the bot's own recorded decision traces. Original: — a tab (or a section of the
   Decisions tab) that explains the character navigation algorithm in plain terms:
   why a char rests / retreats / pushes a frontier / routes around a learned-blocked
   tile. Ideally *dynamic* — derived from or versioned with the actual nav/strategy
@@ -319,7 +378,9 @@ top of **Open**.
 - [ ] **M3a forging** — armor is unbuyable; forging is the only route. Blocked on
   learning a per-world `product` name (blind-forge storms `unknown_product`).
   Path: harvest a `forged` event from a rival via `/events/spectate`, or the shop.
-- [ ] **Rival tracking via `/events/spectate`** — live enemy positions/gear per
+- [x] **Rival tracking via `/events/spectate`** — SHIPPED 2026-08-20
+  (`steemer/spectate_track.py`; SSE -> `intel` table kind='track', tick-keyed, portal-resilient).
+  Original: — live enemy positions/gear per
   map (currently we only poll the periodic roster). Would enable avoidance/PvP.
 - [ ] **Rival-awareness dashboard panel** — surface the spectate `intel` (us vs
   rivals: size, levels, gear) on the web UI.
