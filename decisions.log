@@ -2933,3 +2933,16 @@ tick-in-place with a SHIPPED note), and Done had been unmaintained since 2026-08
 to Done with full text, Open now holds only the 17 genuinely open items, and the rule is recorded in
 wishlist.md — plus "the table must have exactly one row per open item", which is the mechanical version of
 the check that would have caught the Campaign Layer's absence from 16 of 20 tables. Verified 17 open / 17 rows.
+POST-DEPLOY OBSERVATION (#117, minutes in) — cohesion offers = 0, and the reason MATTERS: mines currently
+show max_mobs_in_view=0 across 266 frames while VALE shows 2+ mobs in 260/267. My "mines = raid target"
+framing came from HISTORICAL kill data over 400k ticks; bands refresh, and right now the mobs are in vale.
+A static world->danger map would have been wrong — the data-driven gate is right, for a reason I had not
+actually articulated. And the gate correctly stays SHUT in vale because its mobs are benign wildlife
+(skunk/chicken/frog/sheep), which _is_melee_predator excludes: we do not form up against chickens.
+So 0.48.1 is deployed and correct but UNPROVEN — it has not yet had a dangerous band to react to. NEXT PASS
+MUST DISTINGUISH "dormant because nothing dangerous appeared" from "gate never opens": log whether
+_world_danger was ever populated above threshold, over a long window. If it never opens, revisit
+COHESION_PRED_DENSE=2 (possibly too high) — or note that spire, which is all undead and would open it
+instantly, is a world we spend only 8% as much time in. Do NOT declare success on a quiet window.
+Also note a redeploy RESETS _world_danger (fresh strategy object), so every deploy has a warm-up period
+before cohesion can fire. Account for that when reading the first minutes of any run.
