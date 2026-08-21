@@ -2258,3 +2258,30 @@ before shipping — especially after changing a sample/limit/window param — be
 make it look instant. A correctness oracle is not a performance oracle. (Also: prefer off-thread +
 cache for heavy dashboard endpoints from the start; the codebase already had that pattern for
 /api/snapshot and I should have mirrored it up front.)
+
+ITER 46 (2026-08-20) — VERIFY Phase 2 (0.39 per-char roles) on #96 => HEADS UP (not decent),
+HOLDING Phase 3 per the operator conditional. Health: watchdog alive, 3 services up.
+ROLE MECHANISM WORKS DIRECTIONALLY: #96 our-deaths 29, split forager 16 / guardian 13; roster
+4 forager / 7 guardian (~36% forager). Foragers = 36% of roster but 55% of deaths (die ABOVE
+their share); guardians 64% roster / 45% deaths (BELOW). So guardians disengage-safer, foragers
+riskier — as designed.
+BUT NEGATIVE OVERALL SIGNALS vs #95: our-death/1k 0.386->0.500 (up), move_failed/1k 23.63->45.65
+(nearly DOUBLED), recruit/1k 1.11->2.34 (up). AND #96 is coin-DEPLETED (0.000 gold-tiles/frame,
+same as #95) => the income payoff that justifies forager BOLDNESS is UNMEASURABLE. So bold foragers
+are taking predator risk in a band with NOTHING to gather, dying, and being replaced — re-introducing
+the death->recruit drain the survival arc fixed. Per the operator's 'decent' criteria (foragers not
+dying wildly more WITH NO INCOME PAYOFF; overall deaths not worse than #95) Phase 2 FAILS both now.
+CONFOUNDS (honest): coin-dry band (income unjudgeable), and the roster has leveled up to 64% guardian
+so the composition/exposure shifted; the death rise also tracks the 0.37->0.38->0.39 boldness trend
+(0.305->0.386->0.500) — a coherent but not proven causal story. move_failed doubling is the strongest
+independent red flag (bolder foragers not spacing -> more time in contested/blocked tiles -> bounces).
+DECISION: HOLD Phase 3 (per the conditional greenlight 'if not decent -> heads up'). Did NOT ship a
+fix unilaterally (operator wants to weigh in). PROPOSED FIXES for operator: (a) ELEGANT — gate forager
+boldness on there being reachable loot/gold (the `productive` flag): a forager should only work the
+edges when there's actually something to gather; in a coin-dry band even a forager plays safe (no
+upside to the risk). (b) tone forager thresholds back toward the 0.38 baseline (0.15/3). Or (c) wait
+for a coin-RICH band to see if income vindicates the foragers before deciding.
+WISHLIST (tc=39-add_minor): how-nav 0.72*0.97*0.713=0.497, rival-awareness 0.483, trash-talk 0.481 —
+all <0.5. Codex/heatmap/story shipped. Nothing qualifies; none implemented.
+NEXT: re-measure on a coin-RICH band (income payoff is the missing axis) + await operator direction on
+the forager-boldness fix.
