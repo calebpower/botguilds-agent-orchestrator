@@ -3276,3 +3276,58 @@ The ladder now closes: forge or loot something better -> displace the worse item
 Gear sales on #130 are clubs ONLY (x5), against #129 which sold spear, dagger AND shield_iron. And c15829
 wears a FORGED shield_iron in its offhand — armour the shop sells at no price, so we could not otherwise
 own it. That was the entire point of leading the product ladder with it.
+
+================================================================================
+iter 69 — 2026-08-21 — ORE: a lever that shipped INERT, then two regressions, then a win
+================================================================================
+Runs #131-#134. Four deploys, and the first three were wrong. Worth recording in that order
+because the lesson is in the sequence, not the destination.
+
+MEASUREMENT: run #130 put the M3a bottleneck beyond doubt — 120 trees destroyed against 5
+veins, lumber piling up while ore trickled. NOT scarcity: the accumulated map knows 85 vein
+tiles in the mines and HALF our char-frames are already in the mines. DENSITY. Slice 1
+(v0.45.0) harvests only what a char is already ADJACENT to; vale's 357 trees are thick
+enough to brush past constantly, 85 veins among ~4,900 mine floor tiles are not.
+
+0.54.0 SEEK ORE — and it SHIPPED INERT. Zero firings in 7,714 frames, against 1,024
+adjacent-harvest offers in the same window. Not outscored; never OFFERED. I had validated it
+against the accumulated map read from the tiles_seen TABLE (72% of random floor tiles have a
+vein in reach) — but `bot.known` starts EMPTY every run and tiles_seen was written on every
+frame and NEVER READ BACK. I validated against an input the running system does not have.
+Same shape as the 0.51.0 segfault, where the missing input was a caller.
+
+0.55.0 HYDRATE the map at startup — correct, and it REGRESSED the bot 4x. Move failures
+5.2% -> 19.4% of moves. `ctx.containers` is derived from `known`, so hydrating `known`
+silently promoted chest-beelining (4.5) from a local errand to a map-wide one: chars set off
+across the whole remembered map toward chests from earlier runs. Attributed properly by
+joining each move_failed to the SAME char's own decision that tick — the first attempt,
+joined on tick alone, was too noisy and blamed gold-beelining.
+
+0.56.0 scoped WHICH chests count (contents are not durable; terrain is) — RIGHT DISTINCTION,
+WRONG SIZE. Only 19.4% -> 21.0%. The surviving chests were ones seen THIS run, and a
+complete terrain map makes those reachable from anywhere too.
+
+0.57.0 BOUND field errands to FIELD_GOAL_RANGE=20. Every field goal search was unbounded,
+harmless only by accident: pre-hydration a char knew a few hundred tiles, so "nearest chest"
+was necessarily near and usually had no known corridor anyway. RESULT on #134, a clean win:
+  move failures 21.0% -> 1.5% (BELOW the 5.2% pre-hydration baseline)
+  chest-beelines 0.980 -> 0.046 per frame (pre-hydration was 0.047 — restored exactly)
+  vein-seek still live at 0.120/frame; trees destroyed 129 in 6,239 frames vs 131 in 40,167
+  on #130 — roughly SEVEN TIMES the harvest rate.
+
+THE NEAR-MISS THAT MATTERS MOST: `_retreat` walks HOME through the same helper (goal y==0),
+and chars range to y=126 in mines, y=199 in vale. Bounding it would leave a hurt char unable
+to find a route home and offering `rest` — the exact stuck-death v0.42.0 and v0.50.0 were
+both spent on. THE FULL SUITE PASSED WITH THAT BUG IN. Nothing pinned the retreat's
+long-range requirement, so re-opening the project's worst failure mode looked green. There
+is now a test that walks a char home from 100 tiles out.
+
+ALSO FOUND, NOT FIXED: 201 failures on #132 were moves OUT OF BOUNDS in vale. nav.frontier
+counts a neighbour absent from `known` as unexplored, and beyond the map edge nothing ever
+will be — so every edge tile is a permanent false frontier. Harmless while genuine interior
+remained; vale is now ~100% mapped. Needs the frame's `bounds` plumbed into nav.
+STILL OPEN: 0 veins destroyed yet on #134 (129 trees). Vein-seek fires but has not converted.
+INFRA: `reaper up` now HANGS INDEFINITELY AFTER printing its success line (~45 min lost
+across two occurrences). `reaper test` against the already-up session is fine. Logged in
+/home/cal/reaper_bugs.md with the workaround and a warning that killing `up` also kills the
+heartbeat child.

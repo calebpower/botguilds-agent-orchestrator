@@ -6,10 +6,9 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.53.0` on **run #130**, repo HEAD `34e314b`, branch `main` (pushed).
+- **Live:** `explorer/0.57.0` on **run #134**, repo HEAD `6c49e36`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
-  `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`), which
-  restarts a dead service and repairs a broken venv. Start it with `./svc.sh up watch`.
+  `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
   playing the BotGuilds multiplayer game (`bot.willmorrison.net`, ZeroMQ wire + HTTPS API).
   The strategy is `steemer/strategy/explorer.py`. Each loop pass: measure → diagnose → ship
@@ -19,26 +18,37 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 - **Current focus (operator direction, late Aug 2026):** *master every game mechanic + LEVEL
   characters while the map-progression window is open.* Gold is a FLOOR (gather only when low),
   not the goal. Also: reverse-engineer rivals.
-- **The M3a CRAFTING CHAIN IS CLOSED** (0.52.0 forge + 0.53.0 equip-upgrade, runs #129/#130):
-  harvest trees/veins → smelt ore → **forge**. Recipes were learned from the server's own
-  `wrong_materials` rejections: **spear = 1 ingot + 1 lumber, dagger = 1 + 1, shield_iron =
-  3 ingots + 1 lumber**. All five `forged` events on #129 were ours.
-  **The cautionary half:** #129 also SOLD every item it forged, because equipping only ever
-  filled EMPTY slots and the sell rule drops gear once no slot remains. 0.53.0 lets gear
-  displace strictly dearer **same-class** gear, ranked on the shop's own `buy_price` (the only
-  ranking the game exposes — `tier` is not ordered).
-- **NEW MECHANIC CONFIRMED (run #130):** the server **accepts equipping into an OCCUPIED slot** —
-  frame 4559057 shows `c15829`'s hand changing in place club → dagger. This was unknown when
-  0.53.0 shipped and was hedged with a 3-refusal kill-switch that never armed. The gear ladder
-  now closes: forge/loot something better → displace the worse item → sell the displacement.
-  Gear sales on #130 are clubs ONLY, and `c15829` wears a forged `shield_iron`.
-- **Open gaps, in priority order:** (1) `shield_iron` is sold at no price, so it
-  cannot be ranked and only fits an offhand that is still empty — **valuing the unbuyable** is
-  the next slice; (2) **ORE is the bottleneck** — 491 trees destroyed vs 6 veins on #128;
-  (3) the slot search still offers a dagger to an `outfit` slot — seed it from gear class.
+- **The M3a CRAFTING CHAIN IS CLOSED** (0.52.0 forge + 0.53.0 equip-upgrade): harvest → smelt →
+  forge → wear. Recipes learned from the server's own rejections: **spear = 1 ingot + 1 lumber,
+  dagger = 1 + 1, shield_iron = 3 ingots + 1 lumber**. The server ACCEPTS equipping into an
+  OCCUPIED slot (confirmed live, run #130, club → dagger in place), so gear displaces worse gear
+  ranked on the shop's own `buy_price`.
+- **THE MAP IS NOW PERSISTENT** (0.55.0): `bot.known` is hydrated from `tiles_seen` at startup
+  (26,467 tiles, 0.55s). Before this the bot started map-blind every run and `tiles_seen` had no
+  reader at all. **This broke things and the repairs matter more than the feature** — read the
+  two entries below before touching navigation.
+- **⚠ TWO RULES THE HYDRATION REGRESSION BOUGHT (iter 69, runs #131–#134):**
+  1. **Field errands are BOUNDED** to `FIELD_GOAL_RANGE=20` (0.57.0). Every goal search used to
+     be unbounded, which was safe only because the old map was small. With a full map,
+     chest-beelining became a cross-map pilgrimage and move failures went 5.2% → 19.4%.
+     Bounding took them to **1.5%**, below the original baseline.
+  2. **`_retreat` is EXPLICITLY UNBOUNDED and must stay so.** It walks home via the same helper
+     (goal `y == 0`) and characters range to y=199. Bounding it strands hurt characters on
+     `rest` — the stuck-death of 0.42/0.50. The full suite passed with that bug in; a test now
+     walks a character home from 100 tiles out.
+  3. **Remembered TERRAIN is durable; remembered CONTENTS are not** (0.56.0). Chests are scoped
+     to tiles seen THIS run, because a chest gets opened and refills on the band's schedule.
+- **Open gaps, in priority order:** (1) vein-seek fires (0.12/frame) but **has not converted** —
+  0 veins destroyed on #134 against 129 trees; (2) `nav.frontier` treats OUT-OF-BOUNDS as
+  unexplored, so every map-edge tile is a permanent false frontier (201 off-map moves on #132) —
+  needs the frame's `bounds` plumbed into nav; (3) `shield_iron` has no shop price so it cannot
+  be ranked for a swap, only worn into an empty offhand.
+- **⚠ INFRA: `reaper up` HANGS INDEFINITELY after printing its success line.** Cost ~45 min this
+  session. `reaper test` against the already-up session works fine (~2 min). Once `reaper list`
+  shows the session up, stop waiting on `up` and run `reaper test` directly. Killing `up` also
+  kills its `heartbeat` child and marks the session DEAD — see `/home/cal/reaper_bugs.md`.
 - **Do NOT rebuild the async storage mirror.** 0.51.0 tried and segfaulted the live bot; 0.51.1's
-  reorder alone gave run #128 **0 gaps and 0.0% frame loss** over 85,319 frames. Closed by
-  measurement; a test pins `run()` against constructing one.
+  reorder alone gave run #128 **0 gaps and 0.0% frame loss** over 85,319 frames.
 - **Resuming:** just run a loop pass. Start with `uv run python tools/healthcheck.py`.
 
 ## How to operate
