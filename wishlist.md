@@ -50,30 +50,29 @@ with `## Done` unmaintained since 2026-08-20):
   20 score tables — an omission is worse than a wrong number and far harder to notice.
 
 
-Recalculated fresh each pass. `tc` at deploy-minor **47** (`explorer/0.47.0`), counting
+Recalculated fresh each pass. `tc` at deploy-minor **50** (`explorer/0.50.1`), counting
 DEPLOYS since an item was added — a pass that ships no deploy does not advance it.
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| M3a forging | 0.90 | 0.88 | 35 | **0.571** | 0.594 | **qualifies** |
-| Shadow-evaluation deploy gate | 0.78 | 1.00 | 35 | **0.563** | 0.585 | **qualifies** |
-| Magic / spellweaving (cast) | 0.90 | 0.85 | 35 | **0.552** | 0.574 | **qualifies** |
-| Rival-recon dashboard tab | 0.80 | 0.97 | 24 | **0.550** | 0.582 | **qualifies** |
-| Adaptive cohesion / raids | 0.88 | 0.85 | 34 | **0.539** | 0.561 | **qualifies** |
-| Band-refresh timing awareness | 0.80 | 0.92 | 27 | **0.525** | 0.552 | **qualifies** |
-| In-world trash talk (say) | 0.75 | 0.95 | 34 | **0.513** | 0.534 | **qualifies** |
-| Player market (list/buy_listing) | 0.78 | 0.90 | 35 | **0.506** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 22 | 0.497 | 0.529 | clears at tc=25 |
-| Impassable-tile analysis | 0.60 | 1.00 | 35 | 0.433 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness panel | 0.62 | 0.97 | 33 | 0.433 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Storage mirror off hot path | 0.50 | 0.95 | 35 | 0.343 | 0.356 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 7 | 0.328 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 34 | 0.317 | 0.330 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 17 | 0.311 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Exploration matrix (A) cube | 0.92 | 1.00 | 2 | 0.230 | 0.690 | clears at tc=5 |
-| Exploration matrix (B) arm | 0.92 | 0.70 | 2 | 0.161 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| M3a forging | 0.90 | 0.88 | 38 | **0.573** | 0.594 | **qualifies** |
+| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 38 | **0.554** | 0.574 | **qualifies** |
+| Rival-recon dashboard tab | 0.80 | 0.97 | 27 | **0.553** | 0.582 | **qualifies** |
+| Band-refresh timing awareness | 0.80 | 0.92 | 30 | **0.527** | 0.552 | **qualifies** |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 37 | **0.515** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 38 | **0.508** | 0.527 | **qualifies** |
+| Exploration matrix (A) cube + frontier | 0.92 | 1.00 | 5 | **0.506** | 0.690 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 25 | **0.501** | 0.529 | **qualifies** |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 36 | 0.434 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 38 | 0.434 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 5 | 0.354 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 10 | 0.351 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Storage mirror off hot path | 0.50 | 0.95 | 38 | 0.344 | 0.356 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 37 | 0.318 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 20 | 0.315 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Expectation/reality mismatch detector | 0.90 | 0.95 | 1 | -0.214 | 0.641 | clears at tc=7 |
 
-**Eight items qualify.** `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
+**Ten items qualify** — including exploration matrix (A), which crossed at tc=5 exactly as projected when it was split out. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
 
 ## Open
@@ -244,74 +243,6 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   keeping the true value in the label/tooltip) so cross-metric comparisons are
   actually useful. Guard log(0) (use log1p or a floor). (operator request)
 
-- [ ] **Adaptive cohesion / raids** — characters draw TOGETHER where it pays and spread
-  where it doesn't, gated on how dangerous the world/band is. **Split out of the Campaign
-  Layer 2026-08-21** (it was step 4 there, "occasional group raids"), because the campaign
-  layer's `risk_to_bot` 0.50 — earned by its per-character A/B harness — had been pricing
-  this too, and it is a far cheaper change. Inherits the campaign layer's `add_minor` (13):
-  splitting must not reset the clock on an idea that has genuinely been waiting since then.
-  **This was the operator's idea from the original entry, down to "the boss guarding the
-  great forge".**
-
-  **The mechanism, MEASURED (2026-08-21)** — unusually for this list, this is not a guess:
-  | participants | DPS on the mob | party dmg taken/tick | per-MEMBER dmg taken/tick |
-  |---|---|---|---|
-  | 1 | 2.36 | 0.51 | 0.51 |
-  | 2 | 4.80 | 0.49 | 0.24 |
-  Damage output roughly doubles (holds within mob kind: rat_grey 1.86→6.07, wolf
-  3.78→10.42, skunk 2.59→5.97, mole 0.99→2.23). The party's total intake per tick is FLAT
-  because a mob can only swing at one target per tick — so per-member intake halves. That
-  second row is pure geometry and cannot be confounded by rivals' better gear, unlike the
-  DPS column. Net: **~2x kill speed at ~half the personal damage — roughly 4x less damage
-  taken per member per kill.**
-
-  **XP is SPLIT, and that is fine.** Measured the same day, two oracles agreeing: total XP
-  per kill is flat in participant count (5.70 at 1p, 5.87 at 2p, where per-participant
-  would predict 11.40), and a within-character control gives a shared/solo ratio of 0.545
-  against a split prediction of 0.47. So grouping does not MULTIPLY xp — but with kill
-  speed roughly doubling, XP per character per unit time is ~unchanged. The case for
-  cohesion was never XP; it is survivability, and survivability is what buys access to
-  content worth more XP. (Nuance: there is a floor of ~1 xp per participant, so on
-  near-worthless mobs — chicken, turtle, sheep — grouping pays slightly MORE in total.)
-
-  **The constraint that kills the naive version: REACTIVE COHESION CANNOT WORK.** Median
-  solo time-to-kill is **6 ticks**; our mean pairwise distance is **22-25 steps** and
-  movement is a tile per tick. "Gang up, a mob is near" arrives ~16 ticks after the fight
-  ended. The coming-together must be **STANDING** — a leash held *while in* a dangerous
-  world or band, so the second attacker is already a step or two away when anything starts.
-  The spreading-out half works fine reactively; only the gathering cannot.
-
-  **Where to apply it** — per-world threat over 400k ticks:
-  | world | frames | char deaths/1k | dmg/swing | contents |
-  |---|---|---|---|---|
-  | vale | 46,493 | 4.93 | 3.91 | skunk/chicken/wolf/frog — wildlife: SPREAD, gather |
-  | mines | 46,489 | 5.06 | 4.00 | bat/rat/mole + delver/lava_ant: RAID — and it holds the veins |
-  | spire | **3,917** | **6.64** | **5.25** | vampire_bat/ghoul/cultist/zombie — all undead |
-  (Char deaths include rivals; read comparatively.) Spire is the real frontier: 35% deadlier
-  per frame, the hardest hitters, and we spend 8% as much time there as in the other two —
-  yet it is the northern content docs/04 says we must reach to keep levelling. We flee it.
-  **A mines raid is simultaneously the ore run and the levelling run**, which is the same
-  place the M3a forge chain is currently stuck.
-
-  **We already own every piece:** v0.38 gates behaviour on band severity (the switch);
-  v0.37/0.38 spacing pushes AWAY from predators (cohesion is its mirror term on the same
-  ladder); v0.39 per-char roles already separate guardian from forager; and the danger
-  heatmap already computes per-tile deaths/time, survivor-bias corrected. This is a
-  cohesion score, not a new subsystem.
-
-  **Known hazard:** cohesion-toward-allies and spacing-from-predators can fight each other
-  and oscillate a character between them. The scores must be ordered deliberately rather
-  than left to tie — the v0.37 anti-stuck work is the precedent for how that goes wrong.
-
-  **Cost:** coverage. Five characters in one place gather about one character's worth of
-  tiles, and dispersal is our whole gathering/frontier economy. That is the real trade, and
-  it is what the per-band gate exists to manage.
-
-  **Scoring:** good_idea 0.88 (one of the few MEASURED items, and it unlocks content we
-  currently cannot touch at all); risk_to_bot 0.85 (a movement/scoring change to the core
-  loop, bounded and reversible, but it can conflict with spacing and it costs coverage).
-  **0.539 at tc=34 — QUALIFIES.**
-
 - [ ] **The Campaign Layer (remainder: narrative + the per-char A/B harness)** ⭐⭐
   (operator idea). **NOTE: step 4 "coordinated raids" was SPLIT OUT 2026-08-21 as its own
   item, "Adaptive cohesion / raids" (0.539, qualifies) — see above.** What remains scores
@@ -357,10 +288,6 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
     per-char KPIs → (4) coordinated raids. Guardrail: an experimental per-char
     policy risks that one char underperforming — bounded (one char, not the guild),
     and that's the point (measure, keep winners).
-- [ ] **Shadow-evaluation deploy gate** — before shipping a candidate strategy,
-  replay it AND the incumbent over the last N recorded frames and compare
-  predicted KPIs. A "is this actually better?" check that would've caught the
-  0.11.0 "fix that didn't fix."
 - [ ] **In-world trash talk via `say`** — the bot posts contextual chat using the
   unused `say` verb: taunt a rival parking its roster, celebrate a big haul, mourn
   a death. Free personality (and doubles as campaign-layer eulogies).
@@ -544,3 +471,85 @@ and are kept as-is rather than rewritten.
   (`steemer/spectate_track.py`; SSE -> `intel` table kind='track', tick-keyed, portal-resilient).
   Original: — live enemy positions/gear per
   map (currently we only poll the periodic roster). Would enable avoidance/PvP.
+- [x] **Adaptive cohesion / raids** — SHIPPED 2026-08-21 as explorer 0.48.0/0.48.1. A
+  STANDING leash in dangerous worlds (score 2.8, above frontier, strictly below spacing),
+  gated on a max-over-TTL per-world danger reading. 0.48.0 competed with gathering and lost
+  every tick, so 0.48.1 BIASES it instead: out of position, prefer loot near an ally — same
+  action, same score, same income, formation closes while we work. Verified on real frames
+  (loot-near-ally 220 offered/84 chosen; standalone 238/43). Original: — characters draw TOGETHER where it pays and spread
+  where it doesn't, gated on how dangerous the world/band is. **Split out of the Campaign
+  Layer 2026-08-21** (it was step 4 there, "occasional group raids"), because the campaign
+  layer's `risk_to_bot` 0.50 — earned by its per-character A/B harness — had been pricing
+  this too, and it is a far cheaper change. Inherits the campaign layer's `add_minor` (13):
+  splitting must not reset the clock on an idea that has genuinely been waiting since then.
+  **This was the operator's idea from the original entry, down to "the boss guarding the
+  great forge".**
+
+  **The mechanism, MEASURED (2026-08-21)** — unusually for this list, this is not a guess:
+  | participants | DPS on the mob | party dmg taken/tick | per-MEMBER dmg taken/tick |
+  |---|---|---|---|
+  | 1 | 2.36 | 0.51 | 0.51 |
+  | 2 | 4.80 | 0.49 | 0.24 |
+  Damage output roughly doubles (holds within mob kind: rat_grey 1.86→6.07, wolf
+  3.78→10.42, skunk 2.59→5.97, mole 0.99→2.23). The party's total intake per tick is FLAT
+  because a mob can only swing at one target per tick — so per-member intake halves. That
+  second row is pure geometry and cannot be confounded by rivals' better gear, unlike the
+  DPS column. Net: **~2x kill speed at ~half the personal damage — roughly 4x less damage
+  taken per member per kill.**
+
+  **XP is SPLIT, and that is fine.** Measured the same day, two oracles agreeing: total XP
+  per kill is flat in participant count (5.70 at 1p, 5.87 at 2p, where per-participant
+  would predict 11.40), and a within-character control gives a shared/solo ratio of 0.545
+  against a split prediction of 0.47. So grouping does not MULTIPLY xp — but with kill
+  speed roughly doubling, XP per character per unit time is ~unchanged. The case for
+  cohesion was never XP; it is survivability, and survivability is what buys access to
+  content worth more XP. (Nuance: there is a floor of ~1 xp per participant, so on
+  near-worthless mobs — chicken, turtle, sheep — grouping pays slightly MORE in total.)
+
+  **The constraint that kills the naive version: REACTIVE COHESION CANNOT WORK.** Median
+  solo time-to-kill is **6 ticks**; our mean pairwise distance is **22-25 steps** and
+  movement is a tile per tick. "Gang up, a mob is near" arrives ~16 ticks after the fight
+  ended. The coming-together must be **STANDING** — a leash held *while in* a dangerous
+  world or band, so the second attacker is already a step or two away when anything starts.
+  The spreading-out half works fine reactively; only the gathering cannot.
+
+  **Where to apply it** — per-world threat over 400k ticks:
+  | world | frames | char deaths/1k | dmg/swing | contents |
+  |---|---|---|---|---|
+  | vale | 46,493 | 4.93 | 3.91 | skunk/chicken/wolf/frog — wildlife: SPREAD, gather |
+  | mines | 46,489 | 5.06 | 4.00 | bat/rat/mole + delver/lava_ant: RAID — and it holds the veins |
+  | spire | **3,917** | **6.64** | **5.25** | vampire_bat/ghoul/cultist/zombie — all undead |
+  (Char deaths include rivals; read comparatively.) Spire is the real frontier: 35% deadlier
+  per frame, the hardest hitters, and we spend 8% as much time there as in the other two —
+  yet it is the northern content docs/04 says we must reach to keep levelling. We flee it.
+  **A mines raid is simultaneously the ore run and the levelling run**, which is the same
+  place the M3a forge chain is currently stuck.
+
+  **We already own every piece:** v0.38 gates behaviour on band severity (the switch);
+  v0.37/0.38 spacing pushes AWAY from predators (cohesion is its mirror term on the same
+  ladder); v0.39 per-char roles already separate guardian from forager; and the danger
+  heatmap already computes per-tile deaths/time, survivor-bias corrected. This is a
+  cohesion score, not a new subsystem.
+
+  **Known hazard:** cohesion-toward-allies and spacing-from-predators can fight each other
+  and oscillate a character between them. The scores must be ordered deliberately rather
+  than left to tie — the v0.37 anti-stuck work is the precedent for how that goes wrong.
+
+  **Cost:** coverage. Five characters in one place gather about one character's worth of
+  tiles, and dispersal is our whole gathering/frontier economy. That is the real trade, and
+  it is what the per-band gate exists to manage.
+
+  **Scoring:** good_idea 0.88 (one of the few MEASURED items, and it unlocks content we
+  currently cannot touch at all); risk_to_bot 0.85 (a movement/scoring change to the core
+  loop, bounded and reversible, but it can conflict with spacing and it costs coverage).
+  **0.539 at tc=34 — QUALIFIES.**
+
+- [x] **Shadow-evaluation deploy gate** — SHIPPED 2026-08-21 (`steemer/shadow.py`, 13 tests).
+  Replays the working tree's strategy over recorded frames and diffs it against what the
+  incumbent ACTUALLY chose (from the `decisions` table — no git gymnastics). Headline output
+  is the INERT list. Refuses to rule below MIN_DECISIONS, because v0.48.0 was wrongly called
+  inert from a sample taken inside a warm-up. Honest limit recorded in the module: TRUST THE
+  STRUCTURE, NOT THE COUNTS — replay cannot reproduce live counts. Original: — before shipping a candidate strategy,
+  replay it AND the incumbent over the last N recorded frames and compare
+  predicted KPIs. A "is this actually better?" check that would've caught the
+  0.11.0 "fix that didn't fix."

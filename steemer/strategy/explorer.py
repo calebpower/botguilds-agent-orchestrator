@@ -674,6 +674,17 @@ RECRUIT_INFLIGHT_TTL = 100   # v0.43.0: how long a just-issued recruit counts to
 # safety net so a genuinely failed action cannot block a character forever. This is the
 # v0.14.0 re-send storm returning through the same door; the fix closes it properly.
 INTENT_TTL = 60               # ticks before an unconfirmed intent is abandoned as failed
+# v0.50.1 — which REJECTIONS may free an in-flight intent early. v0.49.0 freed it on ANY
+# error for the character, and run #119 showed why that is wrong: 15 of 15 duplicate buys
+# were preceded by a `not_in_village` rejection. The character had actually left the
+# village; the stale frame still showed it there, so clearing the latch just re-issued an
+# identical buy that failed identically — a retry storm on a PERSISTENT condition. (It
+# only surfaced now because v0.50.0 unblocked movement, taking `not_in_village` from 8.6
+# to 47.6 per 1k frames.)
+# So free the latch only when the next attempt would DIFFER: a wrong_slot rejection makes
+# us try another slot, and a stat_requirement rejection makes us stop trying that kind.
+# Everything else re-issues the same doomed action, and waits out INTENT_TTL instead.
+INTENT_RETRY_DIFFERS = frozenset({"wrong_slot", "stat_requirement"})
 VILLAGE_ACTION_COOLDOWN = 6   # v0.14.0: after a char issues a per-char village
 #   action (buy/sell/equip/brew/smelt/spend_xp), don't issue it another for this
 #   many ticks — the frame is a few ticks stale, so re-issuing the same buy/sell
@@ -695,7 +706,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.50.0"
+    version = "explorer/0.50.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -740,13 +751,11 @@ class Explorer:
     def on_action_error(self, bot: "Any", message: dict[str, Any]) -> None:
         """Learn equip slots from the server's rejections. We send at most one
         equip per character per frame, so the pending (kind, slot) identifies it."""
-        # v0.49.0: an explicit REJECTION terminates an in-flight intent just as a
-        # confirmation does — we know it did not land, so the character must be free to
-        # act again immediately. Only SILENCE should wait out INTENT_TTL. Without this the
-        # latch blocks the legitimate wrong_slot -> try-the-next-slot retry for 60 ticks,
-        # which the existing equip-learning tests caught the moment the latch went in.
+        # v0.49.0/v0.50.1: a rejection frees the in-flight intent ONLY when the next
+        # attempt would differ — otherwise we simply re-issue the same doomed action. See
+        # INTENT_RETRY_DIFFERS. Silence, and every other rejection, waits out INTENT_TTL.
         uid = message.get("char_uid")
-        if uid is not None:
+        if uid is not None and message.get("reason") in INTENT_RETRY_DIFFERS:
             self._village_intent.pop(uid, None)
         if message.get("action") != "equip":
             return

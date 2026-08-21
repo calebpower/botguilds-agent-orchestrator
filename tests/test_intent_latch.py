@@ -108,17 +108,46 @@ def test_it_buys_again_once_the_TTL_gives_up_AND_forgets_the_abandoned_intent():
     assert issued == 3 + INTENT_TTL + 1, "the abandoned intent was never cleared"
 
 
-def test_a_REJECTION_frees_the_character_immediately():
-    """An explicit error is as good a termination as a confirmation — we know it did not
-    land. Only silence should wait out the TTL. Without this the latch blocks the
-    wrong_slot -> next-slot retry for a full TTL."""
+def test_a_rejection_whose_RETRY_WOULD_DIFFER_frees_the_character_immediately():
+    """`wrong_slot` changes what we do next — we try another slot — so holding the latch
+    would block a legitimate, DIFFERENT attempt for a full TTL."""
+    bot = _bot()
+    char = _char()
+    bot.on_frame(_vframe(char, tick=3))
+    bot.strategy.on_action_error(bot, {"action": "equip", "char_uid": "c1",
+                                       "reason": "wrong_slot"})
+    assert "c1" not in bot.strategy._village_intent
+    again = bot.on_frame(_vframe(char, tick=12))
+    assert any(a.get("action") == "buy" for a in again), again
+
+
+def test_a_rejection_whose_RETRY_IS_IDENTICAL_does_NOT_free_the_character():
+    """v0.50.1, and the reason it exists: on run #119, 15 of 15 duplicate buys were
+    preceded by `not_in_village`. The character had actually left the village while the
+    stale frame still showed it there, so freeing the latch just re-issued an identical
+    buy that failed identically — a retry storm on a PERSISTENT condition. Only surfaced
+    once v0.50.0 unblocked movement and took `not_in_village` from 8.6 to 47.6 per 1k."""
+    bot = _bot()
+    char = _char()
+    first = bot.on_frame(_vframe(char, tick=3))
+    assert any(a.get("action") == "buy" for a in first)
+    bot.strategy.on_action_error(bot, {"action": "buy", "char_uid": "c1",
+                                       "reason": "not_in_village"})
+    assert "c1" in bot.strategy._village_intent, "a persistent rejection freed the latch"
+    again = bot.on_frame(_vframe(char, tick=12))
+    assert not any(a.get("action") == "buy" for a in again), (
+        f"re-issued the identical buy that just failed: {again}")
+
+
+def test_not_enough_gold_also_waits_it_out():
+    """The same shape: gold does not appear between two ticks, so an immediate retry is
+    the same doomed action."""
     bot = _bot()
     char = _char()
     bot.on_frame(_vframe(char, tick=3))
     bot.strategy.on_action_error(bot, {"action": "buy", "char_uid": "c1",
                                        "reason": "not_enough_gold"})
-    again = bot.on_frame(_vframe(char, tick=12))
-    assert any(a.get("action") == "buy" for a in again), again
+    assert "c1" in bot.strategy._village_intent
 
 
 def test_a_CONFIRMED_purchase_frees_the_character_without_waiting():
