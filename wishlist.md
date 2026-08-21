@@ -55,26 +55,24 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| Band-refresh timing awareness | 0.88 | 0.92 | 38 | **0.586** | 0.607 | **qualifies** |
-| Rival-recon dashboard tab | 0.80 | 0.97 | 35 | **0.560** | 0.582 | **qualifies** |
-| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 46 | **0.557** | 0.574 | **qualifies** |
-| Expectation/reality mismatch detector | 0.90 | 0.95 | 9 | **0.546** | 0.641 | **qualifies** |
-| In-world trash talk (`say`) | 0.75 | 0.95 | 45 | **0.519** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 46 | **0.511** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 33 | **0.508** | 0.529 | **qualifies** |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 44 | 0.437 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 46 | 0.437 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 13 | 0.433 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 18 | 0.375 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 28 | 0.321 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 45 | 0.320 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Rival-recon dashboard tab | 0.80 | 0.97 | 36 | **0.560** | 0.582 | **qualifies** |
+| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 47 | **0.557** | 0.574 | **qualifies** |
+| Expectation/reality mismatch detector | 0.90 | 0.95 | 10 | **0.556** | 0.641 | **qualifies** |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 46 | **0.519** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 47 | **0.512** | 0.527 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 34 | **0.508** | 0.529 | **qualifies** |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 45 | 0.438 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 47 | 0.437 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 14 | 0.437 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 19 | 0.377 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 29 | 0.322 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 46 | 0.320 | 0.330 | INELIGIBLE — ceiling<0.5 |
 
-_Scored 2026-08-21 (iter 71). `tc` +1 (0.59.0 deployed). **Band-refresh timing awareness raised
-good_idea 0.80 -> 0.88 and now leads at 0.559** — not to justify building it, but because iter 71
-produced the evidence the old score lacked: a refresh collapsed ground loot 18x, idled the whole
-economy, cost this pass its measurement and nearly caused a false rollback of a good change. A
-starving band is currently indistinguishable from a broken bot, which is squarely the 0.90-1.00
-band's 'unlocks a capability we do not have'._
+_Scored 2026-08-21 (iter 72). `tc` +1 (0.60.0 deployed). **Band-refresh timing awareness SHIPPED**
+as 0.60.0 and leaves the table — see Done. Note its slice-1 value was OVERSTATED in the commit
+message: 22 distinct emptied chests, not the thousands the sighting-count implied (see
+decisions.log iter 72). Remaining band work — timing gathering to the cycle — is not queued as a
+separate item yet; raise it if it proves worth more than the leaders below._
 
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
@@ -253,9 +251,7 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
 - [ ] **In-world trash talk via `say`** — the bot posts contextual chat using the
   unused `say` verb: taunt a rival parking its roster, celebrate a big haul, mourn
   a death. Free personality (and doubles as campaign-layer eulogies).
-- [ ] **Band-refresh timing awareness** — the game has periodically-refreshing
-  "bands" (we log `band_refresh` events and ignore them); time embarks/retreats
-  around them instead of getting caught out.
+
 - [ ] **Analyze *why* a tile was impassable → hidden-opportunity discovery** — the
   0.12.0 nav fix now records per-world "learned-blocked" tiles (things chars
   bounced off). Feed those into the analysis loop with a two-layer read: a
@@ -282,6 +278,19 @@ is misleading to scan, and the every-pass check that the score table covers ever
 item is only checkable when the two are separated. Entries below keep their full
 original text; the short `-> module (date, @ run)` lines are the older ledger format
 and are kept as-is rather than rewritten.
+
+- [x] **Band-refresh timing awareness** — SHIPPED `explorer/0.60.0`, 2026-08-21, run #137.
+  Each field frame carries `next_refresh: {band, in_ticks}` and we had ignored it entirely.
+  Detection uses two independent tells (the band NUMBER changes, or `in_ticks` JUMPS UP — a
+  countdown only falls, so a rise is a new cycle); per world, ten boundaries in ~14,000 ticks.
+  First use: a refresh REFILLS chests, so emptied ones become targets again, with the
+  hypothesis kept OUT of the observed map. 13 tests, 12 mutants killed.
+  **Value stated honestly:** the commit message oversold it by quoting SIGHTINGS
+  (2,500–4,600/bucket) as if they were distinct chests. There are **22** distinct emptied
+  chests in the whole map. Correct and cheap, but a modest lever — see decisions.log iter 72.
+  **The bigger half is unbuilt:** timing GATHERING to the cycle. Loot swings ~900x within a
+  single run (0.052 → 1.839 → 0.002 items/frame), and we still spend the trough hunting loot
+  that is not there. Re-add as its own item if it outranks the leaders.
 
 - [x] **M3a forging** — SHIPPED `explorer/0.52.0` (forge) + `0.53.0` (equip-upgrade),
   2026-08-21, runs #129/#130. The blocker was never real: the `product` name was in our own

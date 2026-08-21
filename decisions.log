@@ -3424,3 +3424,39 @@ THIS IS THE ARGUMENT FOR THE BAND-REFRESH WISHLIST ITEM (0.532): the frame carri
 `next_refresh: {band, in_ticks}` and we ignore it completely, so a band that starves the
 economy is indistinguishable to us from a bot that has broken — which is exactly the
 confusion that cost this pass its measurement.
+
+================================================================================
+iter 72 — 2026-08-21 — band-refresh awareness (0.60.0, run #137); 0.59.0 VERIFIED
+================================================================================
+0.59.0 VERIFIED on run #136 (43,991 frames): `bone` sold 0 and ore sold 0, against 245 other
+sales — the scarce-input guard holds without blocking ordinary selling.
+
+AND THE BAND SETTLED ITER 71'S DIAGNOSIS BEYOND ARGUMENT. Within the SAME run, visible items
+per frame ran 0.052 -> 0.175 -> 1.839 -> 0.002 across four buckets — a ~900x swing — with
+attack/pickup/sell/forge/brew all returning in the rich window. Nothing had been broken; the
+band was simply starved, exactly as the A/B control implied.
+
+0.60.0 makes the cycle VISIBLE to the bot. Each field frame carries
+`next_refresh: {band, in_ticks}` and we had ignored it entirely. Detection uses two
+independent tells because either alone misses cases: the BAND NUMBER changes, or `in_ticks`
+JUMPS UP (a countdown only ever falls, so a rise is a new cycle — run #136 showed 1 -> 2760).
+Per world; ten boundaries in ~14,000 ticks. The first sighting for a world is never a refresh
+or it would fire on every deploy.
+FIRST USE: a refresh REFILLS chests, but our map still says `chest_open` for every one we
+emptied and an opened chest is not a container — so we never went back. Emptied chests now
+become targets again on a refresh. The hypothesis is kept OUT of `known` (which records what
+we OBSERVED) so no fabrication enters the structure nav/frontier/vein-seek all read; a test
+pins that. Looking at the tile settles it either way.
+GATE 680 reaper / 672 local; 13 tests, 12 mutants killed.
+
+*** CORRECTION TO THE 0.60.0 COMMIT MESSAGE (1f9d220, already pushed, so not rewritten) ***
+That message says "2,500-4,600 `chest_open` sightings per bucket sitting unexamined" and
+frames it as the size of the blind spot. The figure is real but it counts SIGHTINGS — the
+same few tiles seen over and over — and I presented it as though it implied thousands of
+chests. The true number of DISTINCT emptied chests in the whole accumulated map is 22:
+mines 11, vale 10, spire 1. A 20,000-frame replay through 0.60.0 detected 12 chest-reviving
+refreshes but a peak of only TWO simultaneous recheck targets.
+So the change is correct, cheap and worth keeping — 22 chests refilling on a fast cycle is
+real income we were leaving — but it is a modest lever, not the large one I described. The
+error was reporting a rate as a population; distinct-count and sighting-count are different
+questions and I answered the easier one.
