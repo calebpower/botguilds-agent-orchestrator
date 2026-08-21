@@ -97,6 +97,12 @@ def _db_ready(db_cfg) -> bool:
 _LIST_TTL = 15.0
 _list_lock = threading.Lock()
 _list_cache: dict[str, tuple[float, list]] = {}
+# The codex is a heavy decode (a bounded frame sample -> bestiary) that only changes
+# meaningfully between runs, so cache it per run_id: compute once, serve instantly after,
+# recompute when a new run starts (which is exactly "kept up to date after each run").
+_codex_cache: dict = {"run": None, "data": None}
+_codex_lock = threading.Lock()
+_codex_inflight: set = set()   # run_ids whose codex is being built in a background thread
 
 
 def _cached_list(key: str, fn) -> list:
@@ -480,19 +486,8 @@ def _item_type(kind: str) -> str:
     return "misc"
 
 
-def api_codex(db_path: str, sample: int = 4000) -> dict:
-    """The Codex: an auto-populated wiki of what we've learned, regenerated from current
-    data every load. Four sections:
-      * monsters  — the learned bestiary (behaviour/aggro/damage/class) over recent frames
-      * lands     — per world: terrain vocabulary, size, mobs seen, total deaths
-      * items     — item kinds seen (visible items + inventories) with an inferred type
-      * mechanics — the game-rule docs (docs/*.md) + our confirmed discoveries (findings)
-    Monsters/items share ONE bounded frame decode (positions/kinds live only in frame JSON)."""
-    from steemer import bestiary as _best
-    from steemer.strategy.explorer import WILDLIFE_SAFE, THREAT_KINDS
-    out = {"monsters": [], "lands": [], "items": [], "mechanics": [],
-           "frames_sampled": 0, "generated_run": None}
-    # --- mechanics: docs + confirmed learnings (no DB needed) ---
+def _codex_mechanics() -> dict:
+    """The cheap (no-DB) codex section: game-rule docs + our confirmed learnings."""
     docs = []
     docs_dir = os.path.join(REPO_ROOT, "docs")
     try:
@@ -520,14 +515,28 @@ def api_codex(db_path: str, sample: int = 4000) -> dict:
                 learnings.append({"title": f.get("title"), "tags": f.get("tags") or []})
     except OSError:
         pass
-    out["mechanics"] = {"docs": docs, "learnings": learnings[:40]}
+    return {"docs": docs, "learnings": learnings[:40]}
 
+
+def _codex_build(db_path: str, sample: int = 1200) -> dict:
+    """The Codex: an auto-populated wiki of what we've learned, regenerated from current
+    data every load. Four sections:
+      * monsters  — the learned bestiary (behaviour/aggro/damage/class) over recent frames
+      * lands     — per world: terrain vocabulary, size, mobs seen, total deaths
+      * items     — item kinds seen (visible items + inventories) with an inferred type
+      * mechanics — the game-rule docs (docs/*.md) + our confirmed discoveries (findings)
+    Monsters/items share ONE bounded frame decode (positions/kinds live only in frame JSON)."""
+    from steemer import bestiary as _best
+    from steemer.strategy.explorer import WILDLIFE_SAFE, THREAT_KINDS
+    out = {"monsters": [], "lands": [], "items": [], "mechanics": _codex_mechanics(),
+           "frames_sampled": 0, "generated_run": None}
     if not _db_ready(db_path):
         return out
     conn = _ro(db_path)
     try:
         run = conn.execute("SELECT MAX(run_id) m FROM frames").fetchone()
-        out["generated_run"] = run["m"] if run else None
+        run_id = run["m"] if run else None
+        out["generated_run"] = run_id
 
         # --- lands: cheap SQL over tiles_seen + events ---
         worlds = [r["world"] for r in conn.execute(
@@ -598,6 +607,57 @@ def api_codex(db_path: str, sample: int = 4000) -> dict:
         return out
     finally:
         conn.close()
+
+
+def _codex_latest_run(db_path: str):
+    if not _db_ready(db_path):
+        return None
+    try:
+        conn = _ro(db_path)
+        try:
+            r = conn.execute("SELECT MAX(run_id) m FROM frames").fetchone()
+            return r["m"] if r else None
+        finally:
+            conn.close()
+    except _db.Error:
+        return None
+
+
+def api_codex(db_path: str) -> dict:
+    """Serve the codex WITHOUT blocking the request thread. The heavy frame decode in
+    _codex_build (~15s over MariaDB) runs at most once per run in a background thread;
+    this returns the cached codex instantly, or a lightweight ``computing`` placeholder
+    (with the cheap mechanics section already filled) while the first build for a run runs.
+    The client re-fetches on ``computing``. Regenerating once per run IS "kept up to date
+    after each run"."""
+    run_id = _codex_latest_run(db_path)
+    with _codex_lock:
+        if _codex_cache["run"] == run_id and _codex_cache["data"]:
+            return _codex_cache["data"]
+        stale = _codex_cache["data"]
+        launch = run_id is not None and run_id not in _codex_inflight
+        if launch:
+            _codex_inflight.add(run_id)
+    if launch:
+        threading.Thread(target=_codex_worker, args=(db_path, run_id), daemon=True).start()
+    # while it builds, hand back the previous run's codex (flagged) or a mechanics-only stub
+    if stale:
+        return {**stale, "computing": True}
+    return {"computing": True, "generated_run": run_id, "frames_sampled": 0,
+            "monsters": [], "lands": [], "items": [], "mechanics": _codex_mechanics()}
+
+
+def _codex_worker(db_path: str, run_id) -> None:
+    try:
+        data = _codex_build(db_path)
+        data["generated_run"] = run_id
+        with _codex_lock:
+            _codex_cache["run"], _codex_cache["data"] = run_id, data
+    except Exception:
+        pass
+    finally:
+        with _codex_lock:
+            _codex_inflight.discard(run_id)
 
 
 def api_log(name: str) -> tuple[str, str, int]:
@@ -2333,14 +2393,18 @@ async function loadCodex(){
       };
     });
   }
-  const mon=$("#cx-monsters"); if(mon && !codexData) mon.innerHTML='<div class="small">building the codex from recent data…</div>';
-  codexData=await getJSON("/api/codex");
-  renderCodex(codexData);
+  const mon=$("#cx-monsters"); if(mon && !codexData) mon.innerHTML='<div class="small">building the codex from recent data… (first load of a run takes a few seconds)</div>';
+  const d=await getJSON("/api/codex");
+  codexData=d;
+  renderCodex(d);
+  // the codex builds off-thread (once per run); re-fetch until it's ready.
+  if(d && d.computing && active==="codex") setTimeout(()=>{ if(active==="codex") loadCodex(); }, 1500);
 }
 function renderCodex(d){
   if(!d) return;
   const info=$("#cx-info");
-  if(info) info.textContent = d.generated_run!=null ? ("from run #"+d.generated_run+" · "+(d.frames_sampled||0)+" frames") : "";
+  if(info) info.textContent = d.computing ? "building the codex… (updates when ready)"
+    : (d.generated_run!=null ? ("from run #"+d.generated_run+" · "+(d.frames_sampled||0)+" frames") : "");
   const mon=$("#cx-monsters");
   if(mon){ mon.innerHTML="";
     if(!(d.monsters||[]).length){ mon.appendChild(el("div","empty","No monsters observed yet.")); }
