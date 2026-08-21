@@ -532,7 +532,13 @@ WEAPON_KINDS = frozenset({"club", "dagger", "shortsword", "spear", "bow"})
 # longer auto-arm. That case isn't live (12 chars, fielding 10, income healthy),
 # and the operator's governing directive is "extraordinarily drastic" hoarding;
 # flip this back to False to restore arming if the guild ever re-collapses.
-FREEZE_WEAPON_BUY = True
+# v0.40.0 DIRECTION CHANGE (operator): master the game + LEVEL chars while the progression
+# window is open; gold is now a FLOOR, not the objective. The rival scan showed the hoard's
+# cost (us level 3-5 with ZERO gear vs WillMorr's level 29, armed). So the weapon-buy is
+# UNFROZEN and re-gated on a gold floor: arm a bare char whenever the treasury is above
+# WEAPON_BUY_FLOOR (~15g/club; we sit at ~600). Gear is the prerequisite for combat/XP; the
+# combat-SEEK that earns the XP is the next lever (0.41). spend_xp already converts XP live.
+WEAPON_BUY_FLOOR = 150
 
 
 MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina before
@@ -573,7 +579,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.39.1"
+    version = "explorer/0.40.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -669,7 +675,7 @@ class Explorer:
             #    prices + stat reqs; a club at 15 lowers the bootstrap escape from
             #    45 gold to 15, so the guild can arm a char the moment it scrapes
             #    a little loot, and that char can then survive → loot → recover.
-            if eqp.get("hand") is None and not FREEZE_WEAPON_BUY:
+            if eqp.get("hand") is None and gold > WEAPON_BUY_FLOOR:   # v0.40.0: arm above the floor
                 buy = self._afford_weapon(char, frame, gold)
                 if buy is not None:
                     kind, price = buy

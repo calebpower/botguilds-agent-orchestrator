@@ -450,18 +450,32 @@ def test_village_does_not_buy_a_second_potion():
 _SHOP_CLUB = {"stock": [{"kind": "club", "buy_price": 15, "sell_price": 3}]}
 
 
-def test_village_pure_hoard_does_not_arm_even_with_gold_to_spare():
-    # v0.28.0 PURE HOARD: the club-buy was the SOLE remaining treasury drain
-    # (run #83: every -15 gold drop was a club, 390g/run, gold never stockpiled),
-    # and clubs are near-dead weight since chars flee combat (attacks ~21/1k). So
-    # even a bare char with 100g on hand buys NOTHING — every coin is hoarded.
-    bot = _bot()
-    char = {"char_uid": "c1", "inventory": [], "equipment": {}, "stats": {"str": 2},
+def _bare_village_char():
+    return {"char_uid": "c1", "inventory": [], "equipment": {}, "stats": {"str": 2},
             "hp": 30, "max_hp": 30}
-    frame = {"world": "village", "tick": 3,
-             "guild": {"gold": 100, "chars_here": ["c1"], "chars_by_world": {"vale": ["e1"]}},
-             "chars": [char], "shop": _SHOP_CLUB}
-    assert all(a.get("action") != "buy" for a in bot.on_frame(frame))
+
+
+def _village_shop_frame(gold):
+    return {"world": "village", "tick": 3,
+            "guild": {"gold": gold, "chars_here": ["c1"], "chars_by_world": {"vale": ["e1"]}},
+            "chars": [_bare_village_char()], "shop": _SHOP_CLUB}
+
+
+def test_village_arms_a_bare_char_when_gold_is_above_the_floor():
+    # v0.40.0 DIRECTION CHANGE: gold is now a floor, not the objective — the goal is to level
+    # and master the game, and the rival scan showed us bare-handed vs armed rivals. So a bare
+    # char buys the cheapest weapon whenever the treasury is above WEAPON_BUY_FLOOR.
+    from steemer.strategy.explorer import WEAPON_BUY_FLOOR
+    acts = _bot().on_frame(_village_shop_frame(WEAPON_BUY_FLOOR + 200))
+    assert {"char_uid": "c1", "action": "buy", "kind": "club"} in acts
+
+
+def test_village_does_not_arm_below_the_gold_floor():
+    # below the floor we protect the working reserve and harvest instead — the "gather when
+    # low on funds" half of the operator's direction.
+    from steemer.strategy.explorer import WEAPON_BUY_FLOOR
+    acts = _bot().on_frame(_village_shop_frame(WEAPON_BUY_FLOOR - 50))
+    assert all(a.get("action") != "buy" for a in acts)
 
 
 def _world_field_frame(world, tiles, entities=()):
@@ -1251,10 +1265,14 @@ _SHOP = {"stock": [
     {"kind": "potion_red", "buy_price": 20, "sell_price": 4}]}
 
 
-def _barehand_frame(gold, str_=1, potions=0):
+def _barehand_frame(gold, str_=1, potions=0, armed=False):
+    # v0.40.0: the weapon-buy is unfrozen, and a bare char above the gold floor arms BEFORE
+    # buying a potion (arm-first precedence). Potion-reserve tests pass armed=True to isolate
+    # the potion path from the new arm-up.
+    hand = {"kind": "club"} if armed else None
     char = {"char_uid": "c1", "hp": 30, "max_hp": 30,
             "inventory": [{"kind": "potion_red", "item_id": f"p{i}", "tier": 1} for i in range(potions)],
-            "equipment": {"hand": None, "offhand": None, "outfit": None, "trinket": None, "boots": None},
+            "equipment": {"hand": hand, "offhand": None, "outfit": None, "trinket": None, "boots": None},
             "stats": {"str": str_, "vit": 8, "end": 8}, "gifts": [], "xp": 0}
     return {"world": "village", "tick": 3, "shop": _SHOP,
             "guild": {"gold": gold, "chars_here": ["c1"], "chars_by_world": {}}, "chars": [char]}
@@ -1289,7 +1307,7 @@ def test_village_heals_a_potionless_char_only_above_the_reserve():
     # the only buy.
     from steemer.strategy.explorer import POTION_RESERVE
     bot = _bot()
-    acts = bot.on_frame(_barehand_frame(POTION_RESERVE + 20))
+    acts = bot.on_frame(_barehand_frame(POTION_RESERVE + 20, armed=True))
     assert acts == [{"char_uid": "c1", "action": "buy", "kind": "potion_red"}]
 
 
@@ -1301,14 +1319,14 @@ def test_village_holds_the_reserve_floor_and_skips_the_heal_below_it():
     # can climb past the 529 cap-test.
     from steemer.strategy.explorer import POTION_RESERVE
     bot = _bot()
-    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(POTION_RESERVE + 19)))
+    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(POTION_RESERVE + 19, armed=True)))
 
 
 def test_village_does_not_stockpile_a_second_potion():
     # v0.29.0 buys at most POTION_KEEP: a char already carrying its heal buys no more,
     # even with a huge surplus — the heal-buy is bounded, unlike the old club drain.
     bot = _bot()
-    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(500, potions=1)))
+    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(500, potions=1, armed=True)))
 
 
 def test_afford_potion_respects_the_reserve():
