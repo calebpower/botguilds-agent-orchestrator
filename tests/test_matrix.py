@@ -165,3 +165,64 @@ def test_a_rarely_sent_verb_still_counts_as_TRIED():
     assert ("*", "brew") in tested
     assert not any(c["verb"] == "brew"
                    for c in frontier(["moonbell"], ["brew"], ["none"], tested, CTX))
+
+
+# ---- the coverage grid -------------------------------------------------------
+
+from steemer.matrix import grid, noun_group, CELL_STATES
+
+VOC = {"tiles": ["tree", "portal", "floor"], "items": ["lumber", "club"], "mobs": ["wolf"],
+       "verbs_protocol": ["attack", "say", "forge", "move"], "equippable": ["club"],
+       "uses_by_kind": {"lumber": ["forge"], "club": ["equip", "attack"]},
+       "verbs_never_sent": ["say", "forge"]}
+
+
+def test_the_grid_is_nouns_by_verbs_with_the_equip_axis_COLLAPSED():
+    """The equip axis is not a third visual dimension — it varies only four verbs and a 3D
+    grid reads badly, so it lives in a cell's detail instead."""
+    g = grid(VOC, tested={})
+    assert len(g["rows"]) == 6 and g["verbs"] == VOC["verbs_protocol"]
+    assert all(len(r["cells"]) == 4 for r in g["rows"])
+    assert all("equipped" not in c for r in g["rows"] for c in r["cells"])
+
+
+def test_rows_are_banded_terrain_then_items_then_mobs():
+    """Terrain first: it is where the unexplored mechanics have actually been (trees sat in
+    nav.SOLID as scenery for the whole project)."""
+    groups = [r["group"] for r in grid(VOC, tested={})["rows"]]
+    assert groups == sorted(groups, key=lambda g: {"terrain": 0, "item": 1, "mob": 2}[g])
+    assert noun_group("tree", VOC) == "terrain" and noun_group("wolf", VOC) == "mob"
+    assert noun_group("lumber", VOC) == "item"
+
+
+def test_every_cell_carries_one_of_the_declared_states():
+    for r in grid(VOC, tested={"*": None} and {("*", "attack"): {"errors": None}})["rows"]:
+        for c in r["cells"]:
+            assert c["state"] in CELL_STATES
+
+
+def test_a_sent_verb_marks_its_whole_column_as_tried():
+    g = grid(VOC, tested={("*", "attack"): {"sent": 3, "errors": None}})
+    for r in g["rows"]:
+        by_verb = {c["verb"]: c["state"] for c in r["cells"]}
+        assert by_verb["attack"] == "tried"
+
+
+def test_the_counts_match_the_cells_they_claim_to_count():
+    """The legend prints these numbers. Asserting only that they SUM is not enough — a
+    mutant that put every cell in the wrong bucket still summed correctly and survived. So
+    recount the cells here, independently of the counter under test."""
+    from collections import Counter
+    g = grid(VOC, tested={("*", "attack"): {"sent": 1, "errors": None}})
+    actual = Counter(c["state"] for r in g["rows"] for c in r["cells"])
+    assert dict(g["counts"]) == {**{s: 0 for s in CELL_STATES}, **actual}
+    assert sum(g["counts"].values()) == len(g["rows"]) * len(g["verbs"])
+
+
+def test_error_breakdowns_ride_along_for_the_tooltip():
+    """An action_error is INFORMATION, not failure — `unknown_action` says the verb does not
+    exist, `out_of_range` says it does and we were too far away."""
+    from collections import Counter
+    g = grid(VOC, tested={("*", "attack"): {"errors": Counter({"out_of_range": 7})}})
+    cell = next(c for c in g["rows"][0]["cells"] if c["verb"] == "attack")
+    assert cell["errors"] == {"out_of_range": 7}

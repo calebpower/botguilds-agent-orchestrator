@@ -723,6 +723,68 @@ def api_nav(db_path: str, sample: int = 4000) -> dict:
             "sampled_chosen": chosen_total}
 
 
+# The frontier costs ~2-3s against the live DB (a DISTINCT over actions_sent plus a bounded
+# scan), so it is cached per run exactly like the codex — the request thread must never own
+# that cost. See the api_snapshot comment for why that rule exists.
+_matrix_cache: dict = {"run": None, "data": None}
+
+
+def api_matrix(db_path: str, min_prior: float = 0.5, limit: int = 20000) -> dict:
+    """The exploration matrix for the Codex's Frontier pane.
+
+    Returns the verb-coverage headline, the noun x verb grid, and the ranked frontier. The
+    frontier is only useful while it is SMALL — six cells is a work queue, three hundred is
+    another wall of data — so its size is reported prominently and the UI says so.
+    """
+    import json as _json
+    import os as _os
+
+    from steemer import matrix as _mx
+
+    run_id = _codex_latest_run(db_path)
+    if _matrix_cache["run"] == run_id and _matrix_cache["data"]:
+        return _matrix_cache["data"]
+
+    fixture = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                            "tests", "fixtures", "vocabulary.json")
+    try:
+        with open(fixture) as fh:
+            voc = _json.load(fh)
+    except OSError:
+        return {"ok": False, "reason": "no vocabulary fixture; run "
+                                       "`python -m steemer.vocabulary`"}
+    # No database is NOT an error here. The vocabulary fixture is committed, so the cube,
+    # its priors and the never-sent verb list are all computable without any history —
+    # only the TESTED layer needs the DB, and with no history everything is untried, which
+    # is exactly right for a fresh checkout. Degrading to an error message would hide the
+    # most useful view precisely when there is nothing else to look at.
+    tested: dict = {}
+    if _db_ready(db_path):
+        conn = _ro(db_path)
+        try:
+            tested = _mx.tested_cells(conn, limit=limit)
+        except _db.Error:
+            tested = {}
+        finally:
+            conn.close()
+
+    rep = _mx.build(voc, tested, min_prior=min_prior)
+    out = {
+        "ok": True,
+        "verbs_all": voc.get("verbs_protocol", []),
+        "verbs_sent": voc.get("verbs_sent", []),
+        "verbs_never": rep["verbs_never_sent"],
+        "cells_total": rep["cells_total"],
+        "frontier": rep["frontier"],
+        "frontier_size": rep["frontier_size"],
+        "min_prior": min_prior,
+        "say_words": rep["say_words"],
+        "grid": _mx.grid(voc, tested, min_prior=min_prior),
+    }
+    _matrix_cache["run"], _matrix_cache["data"] = run_id, out
+    return out
+
+
 def api_codex(db_path: str) -> dict:
     """Serve the codex WITHOUT blocking the request thread. The heavy frame decode in
     _codex_build (~15s over MariaDB) runs at most once per run in a background thread;
@@ -1438,6 +1500,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(api_codex(self.db_config))
             elif path == "/api/nav":
                 self._json(api_nav(self.db_config))
+            elif path == "/api/matrix":
+                self._json(api_matrix(self.db_config))
             elif path == "/api/log":
                 kind, text, size = api_log(one("name", "decisions"))
                 # ``size`` is the byte cursor the page subscribes with for the tail.
@@ -1624,6 +1688,38 @@ label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13
 .sv-title{color:var(--ink)}
 pre.doc{white-space:pre-wrap;background:#11161c;border:1px solid #223;border-radius:6px;padding:.6em .8em;font-size:12px;line-height:1.45;overflow-x:auto}
 #tab-nav h3{margin:1.2em 0 .3em}#tab-nav h4{margin:1em 0 .2em}
+/* Frontier pane. Colour is a TINT behind the cell; the GLYPH wears ink tokens and carries
+   the meaning, because the palette validator flagged the frontier amber at 1.79:1 against
+   the light surface — below 3:1, so it may not be the only cue. Legend + glyph + the
+   frontier table are the three redundant encodings. */
+.fr-bar{display:flex;gap:2px;margin:10px 0 4px}
+.fr-bar i{flex:1;height:14px;border-radius:2px;background:var(--grid);font-style:normal}
+.fr-bar i.sent{background:color-mix(in srgb,var(--s2) 55%,transparent)}
+.fr-legend{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;font-size:12px;color:var(--ink2)}
+.fr-legend span{display:inline-flex;align-items:center;gap:5px}
+.fr-key{width:16px;height:16px;border-radius:3px;display:inline-grid;place-items:center;
+  font-size:11px;line-height:1;color:var(--ink);border:1px solid var(--border)}
+.fr-key.frontier{background:color-mix(in srgb,var(--warn) 42%,transparent)}
+.fr-key.tried{background:color-mix(in srgb,var(--s2) 22%,transparent)}
+.fr-key.unlikely{background:var(--grid)}
+.fr-grid{overflow-x:auto;margin-top:6px}
+.fr-grid table{border-collapse:separate;border-spacing:2px;font-size:11px}
+.fr-grid th{font-weight:600;color:var(--muted);text-align:left;white-space:nowrap}
+.fr-grid th.v{writing-mode:vertical-rl;transform:rotate(180deg);padding:2px 0;font-weight:500}
+.fr-grid th.n{padding-right:6px;color:var(--ink2)}
+.fr-grid td{width:16px;height:16px;border-radius:3px;text-align:center;cursor:default;
+  color:var(--ink);background:var(--grid)}
+.fr-grid td.frontier{background:color-mix(in srgb,var(--warn) 42%,transparent);font-weight:700}
+.fr-grid td.tried{background:color-mix(in srgb,var(--s2) 22%,transparent)}
+.fr-grid tr.band td:first-child{border-top:1px solid var(--border)}
+.fr-group{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;
+  padding-top:8px}
+.fr-tbl{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
+.fr-tbl th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;
+  text-transform:uppercase;letter-spacing:.5px;padding:4px 8px 4px 0}
+.fr-tbl td{padding:6px 8px 6px 0;border-top:1px solid var(--border);vertical-align:top}
+.fr-tbl td.p{font-variant-numeric:tabular-nums;font-weight:600}
+.fr-cell{font-family:ui-monospace,Menlo,monospace}
 /* codex — the auto-populated wiki */
 .cx-nav{display:flex;gap:6px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .cx-btn{background:transparent;border:1px solid var(--border);color:var(--ink2);
@@ -1839,6 +1935,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
       <button class="cx-btn" data-cx="lands">Lands</button>
       <button class="cx-btn" data-cx="items">Items</button>
       <button class="cx-btn" data-cx="mechanics">Mechanics</button>
+      <button class="cx-btn" data-cx="frontier">Frontier</button>
       <span class="grow"></span>
       <span class="small" id="cx-info"></span>
     </div>
@@ -1846,6 +1943,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     <div id="cx-lands" class="cx-pane" hidden></div>
     <div id="cx-items" class="cx-pane" hidden></div>
     <div id="cx-mechanics" class="cx-pane" hidden></div>
+    <div id="cx-frontier" class="cx-pane" hidden></div>
   </section>
 
   <!-- TIMELINE -->
@@ -2541,14 +2639,92 @@ async function loadNav(){
   }
 }
 
+const FR_GLYPH = {frontier: "\u2605", tried: "\u00b7", unlikely: ""};   // star, middot, blank
+
+async function loadFrontier(){
+  const el = $("#cx-frontier"); if(!el) return;
+  el.innerHTML = '<div class="small">building the frontier…</div>';
+  const d = await getJSON("/api/matrix");
+  if(!d || d.ok === false){
+    el.innerHTML = `<div class="small">frontier unavailable: ${escHtml((d&&d.reason)||"error")}</div>`;
+    return;
+  }
+  const sent = new Set(d.verbs_sent || []);
+  const bar = (d.verbs_all||[]).map(v =>
+    `<i class="${sent.has(v)?"sent":""}" title="${escHtml(v)}${sent.has(v)?"":" — never sent"}"></i>`).join("");
+
+  // The frontier is only useful while it is SMALL: six cells is a work queue, three hundred
+  // is another wall of data. Say the number loudly so that degradation is visible.
+  const fr = d.frontier || [];
+  const rows = fr.map(c => `<tr>
+      <td class="p">${c.prior.toFixed(2)}</td>
+      <td class="fr-cell">${escHtml(c.noun)} &times; ${escHtml(c.verb)}${
+          c.equipped && c.equipped!=="any" ? " &times; "+escHtml(c.equipped) : ""}</td>
+      <td class="small">${escHtml(c.why)}</td></tr>`).join("");
+
+  const g = d.grid || {rows:[], verbs:[], counts:{}};
+  let lastGroup = null, body = "";
+  for(const r of g.rows){
+    if(r.group !== lastGroup){
+      lastGroup = r.group;
+      body += `<tr><th class="fr-group" colspan="${g.verbs.length+1}">${escHtml(r.group)}</th></tr>`;
+    }
+    body += `<tr><th class="n">${escHtml(r.noun)}</th>` + r.cells.map(c => {
+      const errs = Object.keys(c.errors||{}).length
+        ? " — errors: " + Object.entries(c.errors).map(([k,v])=>`${k} x${v}`).join(", ") : "";
+      return `<td class="${c.state}" title="${escHtml(r.noun+" × "+c.verb)} — ${c.state}, prior ${c.prior}\n${escHtml(c.why)}${escHtml(errs)}">${FR_GLYPH[c.state]}</td>`;
+    }).join("") + "</tr>";
+  }
+
+  el.innerHTML = `
+    <h3>What we have never tried</h3>
+    <p class="small">A cube of every noun &times; verb &times; equipped item we have observed —
+      ${(d.cells_total||0).toLocaleString()} cells — scored for plausibility and crossed against
+      everything we have actually sent. The equip axis is collapsed here: it varies only
+      <code>attack</code>, <code>charge</code>, <code>throw</code> and <code>cast</code>, and shows in a cell's tooltip.</p>
+    <p><b>${(d.verbs_never||[]).length} of ${(d.verbs_all||[]).length} protocol verbs have never been sent:</b>
+       ${(d.verbs_never||[]).map(v=>`<code>${escHtml(v)}</code>`).join(" ")}</p>
+    <div class="fr-bar">${bar}</div>
+    <div class="small">each segment is one protocol verb; filled = we have sent it</div>
+
+    <h3>The frontier — ${fr.length} untried cell${fr.length===1?"":"s"} at prior &ge; ${d.min_prior}</h3>
+    <p class="small">Ranked most plausible first. This list is only useful while it is SHORT;
+      if it grows into the hundreds the priors have gone loose and want re-tuning, not scrolling.</p>
+    ${fr.length ? `<table class="fr-tbl"><thead><tr><th>prior</th><th>cell</th><th>why</th></tr></thead>
+      <tbody>${rows}</tbody></table>`
+      : '<div class="small">nothing untried above the threshold — either we have been thorough or the priors are too strict.</div>'}
+
+    <h3>Coverage</h3>
+    <div class="fr-legend">
+      <span><i class="fr-key frontier">${FR_GLYPH.frontier}</i> never tried, plausible</span>
+      <span><i class="fr-key tried">${FR_GLYPH.tried}</i> verb has been sent</span>
+      <span><i class="fr-key unlikely"></i> never tried, implausible</span>
+      <span class="small">${g.counts.frontier||0} / ${g.counts.tried||0} / ${g.counts.unlikely||0}</span>
+    </div>
+    <p class="small">&ldquo;Sent&rdquo; means we have issued that verb somewhere — not that it worked.
+      There is no reliable per-cell success signal yet, so the grid does not claim one; a cell's
+      tooltip carries the error breakdown where we have it.</p>
+    <div class="fr-grid"><table><thead><tr><th></th>${
+      g.verbs.map(v=>`<th class="v">${escHtml(v)}</th>`).join("")}</tr></thead>
+      <tbody>${body}</tbody></table></div>`;
+}
+
 let codexData=null, codexWired=false;
 async function loadCodex(){
   if(!codexWired){ codexWired=true;
+    // The pane list is DERIVED from the buttons, not hardcoded. It used to be
+    // ["monsters","lands","items","mechanics"], so adding the Frontier pane left it
+    // permanently hidden — the button worked, the data loaded, and nothing appeared.
+    // A list that has to be kept in sync by hand is the same failure shape as the rest of
+    // today's regressions; the DOM already knows the answer.
+    const cxPanes = [...document.querySelectorAll("#tab-codex .cx-btn")].map(b=>b.dataset.cx);
+    const cxLoaders = {frontier: loadFrontier};
     document.querySelectorAll("#tab-codex .cx-btn").forEach(b=>{
       b.onclick=()=>{
         document.querySelectorAll("#tab-codex .cx-btn").forEach(x=>x.classList.toggle("active",x===b));
         const pane=b.dataset.cx;
-        ["monsters","lands","items","mechanics"].forEach(p=>{ const e=$("#cx-"+p); if(e) e.hidden=(p!==pane); });
+        cxPanes.forEach(p=>{ const e=$("#cx-"+p); if(e) e.hidden=(p!==pane); });
+        const load=cxLoaders[pane]; if(load) load();
       };
     });
   }

@@ -210,6 +210,28 @@ def test_nav_tab_explains_the_rules_and_the_recorded_ladder(dashboard, page: Pag
     assert crashes == [], f"uncaught JS errors: {crashes}"
 
 
+def test_codex_frontier_pane_shows_coverage_and_the_untried_cells(dashboard, page: Page):
+    """The Frontier pane renders off an EMPTY database: the vocabulary fixture is committed,
+    so the cube and the never-sent verb list exist even with no history — which is also the
+    state a fresh checkout is in.
+
+    Asserts the three redundant encodings the palette validator obliged: the legend, the
+    glyph, and the frontier table. The status tint alone may not carry meaning (frontier
+    amber measured 1.79:1 against the light surface, below 3:1).
+    """
+    crashes = []
+    page.on("pageerror", lambda e: crashes.append(str(e)))
+    page.goto(dashboard, wait_until="domcontentloaded")
+    page.locator("button[data-tab='codex']").click()
+    page.locator("#tab-codex .cx-btn[data-cx='frontier']").click()
+    expect(page.locator("#cx-frontier")).to_be_visible()
+    expect(page.locator("#cx-frontier")).to_contain_text("never been sent")
+    expect(page.locator("#cx-frontier")).to_contain_text("The frontier")
+    expect(page.locator("#cx-frontier .fr-legend")).to_contain_text("never tried, plausible")
+    expect(page.locator("#cx-frontier .fr-bar i").first).to_be_visible()
+    assert crashes == [], f"uncaught JS errors: {crashes}"
+
+
 def test_map_danger_overlay_is_survivor_bias_corrected(dashboard_with_heatmap, page: Page):
     # the heatmap is now a MAP OVERLAY. Selecting the Danger layer fetches /api/heatmap and
     # paints it over the map; #hm-info reports the corrected 'danger = deaths/time' metric

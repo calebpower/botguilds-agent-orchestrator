@@ -186,6 +186,53 @@ def say_wordlist(in_world: Iterable[str] = ()) -> list[str]:
     return out
 
 
+#: Cell states, in the order the legend shows them. Deliberately only THREE: we do not yet
+#: have a reliable per-cell "this mechanic is confirmed working" signal, and inventing one
+#: would put a claim on screen that the data does not support. `tried` therefore means
+#: "we have sent this verb", not "it worked" — the tooltip carries the error breakdown.
+CELL_STATES = ("frontier", "tried", "unlikely")
+
+
+def noun_group(noun: str, vocabulary: dict[str, Any]) -> str:
+    """Which band of the grid a noun belongs to. Terrain first — it is where the
+    unexplored mechanics have actually been."""
+    if noun in set(vocabulary.get("tiles", ())):
+        return "terrain"
+    if noun in set(vocabulary.get("mobs", ())):
+        return "mob"
+    return "item"
+
+
+def grid(vocabulary: dict[str, Any], tested: dict[tuple[str, str], dict[str, Any]],
+         min_prior: float = 0.5) -> dict[str, Any]:
+    """Per-cell states for the coverage grid: nouns x verbs, equip axis collapsed.
+
+    The equip axis is NOT a third visual dimension — it varies only four verbs, and a 3D
+    grid reads badly. It belongs in the detail for an equip-sensitive cell.
+    """
+    nouns = sorted(set(vocabulary.get("tiles", [])) | set(vocabulary.get("items", []))
+                   | set(vocabulary.get("mobs", [])))
+    verbs = list(vocabulary.get("verbs_protocol", []))
+    ctx = {"uses": vocabulary.get("uses_by_kind", {}),
+           "equippable": set(vocabulary.get("equippable", [])),
+           "tiles": set(vocabulary.get("tiles", []))}
+    rows = []
+    counts = {st: 0 for st in CELL_STATES}
+    for noun in nouns:
+        cells = []
+        for verb in verbs:
+            was_tried = (noun, verb) in tested or ("*", verb) in tested
+            p, why = prior_for(noun, verb, "none", ctx)
+            state = "tried" if was_tried else ("frontier" if p >= min_prior else "unlikely")
+            counts[state] += 1
+            errs = (tested.get((noun, verb)) or tested.get(("*", verb)) or {}).get("errors")
+            cells.append({"verb": verb, "state": state, "prior": round(p, 2), "why": why,
+                          "errors": dict(errs.most_common(3)) if errs else {}})
+        rows.append({"noun": noun, "group": noun_group(noun, vocabulary), "cells": cells})
+    rows.sort(key=lambda r: ({"terrain": 0, "item": 1, "mob": 2}[r["group"]], r["noun"]))
+    return {"verbs": verbs, "rows": rows, "counts": counts}
+
+
 def build(vocabulary: dict[str, Any], tested: dict[tuple[str, str], dict[str, Any]],
           min_prior: float = 0.5) -> dict[str, Any]:
     """Assemble the report: coverage, the frontier, and the untouched verbs."""

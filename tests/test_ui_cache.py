@@ -152,3 +152,49 @@ def test_snapshot_step_recomputes_when_data_advances(monkeypatch):
     assert computes["n"] == 1                        # published==None forces the first compute
     srv._snapshot_step("db1", carry)                 # sig now (100,201) != carry -> recompute
     assert computes["n"] == 2
+
+
+# ---- the exploration matrix endpoint -----------------------------------------
+
+def _reset_matrix_cache():
+    srv._matrix_cache.update(run=None, data=None)
+
+
+def test_the_matrix_renders_with_NO_DATABASE_at_all(monkeypatch):
+    """A fresh checkout has no history, and that must show the cube rather than an error.
+
+    The vocabulary fixture is committed, so nouns, verbs and priors are all computable
+    without a database; only the TESTED layer needs one, and with no history everything is
+    untried — which is exactly right. Returning "no database" hid the most useful view
+    precisely when there was nothing else to look at, and the Playwright test caught it.
+    """
+    _reset_matrix_cache()
+    monkeypatch.setattr(srv, "_db_ready", lambda cfg: False)
+    d = srv.api_matrix("db-that-does-not-exist")
+    assert d["ok"] is True
+    assert len(d["verbs_never"]) > 0 and d["cells_total"] > 0
+    assert d["grid"]["counts"]["tried"] == 0        # nothing has been tried yet
+    assert d["frontier_size"] > 0
+
+
+def test_the_matrix_is_cached_per_run(monkeypatch):
+    """It costs ~2-3s against the live DB (a DISTINCT plus a bounded scan). The request
+    thread must never own that cost twice — the same rule api_snapshot exists for."""
+    _reset_matrix_cache()
+    monkeypatch.setattr(srv, "_db_ready", lambda cfg: False)
+    monkeypatch.setattr(srv, "_codex_latest_run", lambda cfg: 42)
+    first = srv.api_matrix("db")
+    second = srv.api_matrix("db")
+    assert second is first, "a second call rebuilt the report instead of serving the cache"
+
+
+def test_a_NEW_RUN_invalidates_the_matrix_cache(monkeypatch):
+    """The other side: the frontier shrinks as we try things, so a stale cache would keep
+    showing cells we have since explored."""
+    _reset_matrix_cache()
+    monkeypatch.setattr(srv, "_db_ready", lambda cfg: False)
+    monkeypatch.setattr(srv, "_codex_latest_run", lambda cfg: 1)
+    first = srv.api_matrix("db")
+    monkeypatch.setattr(srv, "_codex_latest_run", lambda cfg: 2)
+    second = srv.api_matrix("db")
+    assert second is not first, "a new run served the previous run's frontier"
