@@ -3373,3 +3373,54 @@ with a bottle. NEXT PASS MEASURES EXACTLY THAT, in order: potion_red carried > 0
 depth p90 above 12 -> veins broken above 0. If it stalls, the next link is already named
 (prefer/keep embercap for vigor batches).
 GATE: 658 reaper / 650 local. 10 tests, 8 mutants killed. Live: 0.58.0, run #135, 1aeb9a6.
+
+================================================================================
+iter 71 — 2026-08-21 — scarce-input leak (0.59.0, run #136), and a band refresh that
+                        starved the economy mid-measurement
+================================================================================
+MEASURED FIRST — 0.58.0's bottles WORKED, and the chain moved a link. Run #135, 33,388
+frames: 8 bottles bought, 9 brews (ZERO in the previous 31,011 frames), potion_red carried
+0.0% -> 1.81%, and mines depth max jumped 7 -> 40. A healed character walked straight past
+the POISON_SAFE_DEPTH cap iter 70 traced. Mechanism confirmed end to end.
+
+Thin, though: only 1 of 9 brews was potion_red, because a vigor batch needs two vigor
+ingredients in one pack — and the same run SOLD the ingredients. 2 `bone` (a vigor herb, the
+only route to potion_red) and 5 `ore_copper` (raw forge feedstock) went over the counter
+under the stranded-singleton rule. That rule is right for abundant things and exactly wrong
+for a scarce input: a singleton is not clutter, it is HALF A PAIR, and selling it guarantees
+it stays half a pair forever. Note the ore case was a plain gap — FORGE_FEEDSTOCK_PREFIXES
+covers `ingot` but not the `ore` an ingot is smelted from.
+
+0.59.0 keeps both, bounded at SCARCE_LONE_KEEP=2 per KIND per char so it can never become
+the carry-clog the original rule prevents. Vigor membership is read from knowledge.ESSENCE,
+never duplicated here, so a newly decoded vigor herb is covered without a code edit. Four
+existing tests changed and none weakened: two used `bone` merely as a stand-in for "a
+sellable thing" while actually testing ordering and the re-send cooldown (now pure loot);
+the two ore tests were rewritten to the new policy with the anti-clog intent preserved as an
+explicit cap assertion. GATE 667 reaper / 659 local; 9 new tests, 12 mutants killed (plus a
+deliberate no-op control that correctly SURVIVED).
+
+THEN I MISDIAGNOSED, AND THE CORRECTION IS THE USEFUL PART. Run #136 sent ONLY `move` and
+`embark` — no attack, pickup, sell, buy, brew or forge, where a matched 8,000-tick window of
+#135 had all of them. I called it a 0.59.0 regression. It is not. The controlled test:
+replay the SAME 400 real frames through both versions —
+    explorer/0.59.0 -> {'move': 455, 'embark': 55}
+    explorer/0.58.0 -> {'move': 455, 'embark': 55}
+byte-identical. The offline probe never reproduced field opportunism at all, so it was never
+evidence about 0.59 in the first place; I had read a property of the PROBE as a property of
+the change. (And `_should_sell` is only reachable from village(), so the field actions it
+"broke" were never downstream of it — a moment's reading would have said so before the A/B.)
+
+THE ACTUAL CAUSE IS A BAND REFRESH. Ground loot collapsed 1.06 -> 0.06 visible items per
+frame, an 18x drop, right at the #135/#136 boundary (tick 1574878, `next_refresh` shows a
+fresh band-0 cycle). Deaths went 83 -> 0 over comparable windows. With nothing on the ground:
+nothing to pick up -> nothing carried -> nothing to sell -> gold frozen at 138-139, BELOW the
+150 arm floor, so no buys, no bottles, no brewing. The whole economy is idle by starvation,
+not by defect.
+CONSEQUENCE FOR THIS PASS: 0.59.0 is deployed and gated but its effect is UNMEASURABLE in
+this band — we cannot observe "we stopped selling ore" while we are selling nothing at all.
+Measure it when loot returns.
+THIS IS THE ARGUMENT FOR THE BAND-REFRESH WISHLIST ITEM (0.532): the frame carries
+`next_refresh: {band, in_ticks}` and we ignore it completely, so a band that starves the
+economy is indistinguishable to us from a bot that has broken — which is exactly the
+confusion that cost this pass its measurement.

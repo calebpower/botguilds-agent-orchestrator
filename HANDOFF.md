@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.58.0` on **run #135**, repo HEAD `1aeb9a6`, branch `main` (pushed).
+- **Live:** `explorer/0.59.0` on **run #136**, repo HEAD `b54d214`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -38,6 +38,16 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
      walks a character home from 100 tiles out.
   3. **Remembered TERRAIN is durable; remembered CONTENTS are not** (0.56.0). Chests are scoped
      to tiles seen THIS run, because a chest gets opened and refills on the band's schedule.
+- **⚠ BANDS REFRESH, AND WE ARE BLIND TO IT (iter 71).** The frame carries
+  `next_refresh: {band, in_ticks}` and we ignore it completely. At the #135/#136 boundary
+  (tick 1574878) a refresh collapsed ground loot **1.06 → 0.06 visible items per frame** —
+  18x — which idles the WHOLE economy by starvation: no loot → nothing carried → nothing
+  sold → gold frozen at 138, below the 150 arm floor → no buys, no bottles, no brewing.
+  Run #136 sent only `move` and `embark`. **A starving band is currently indistinguishable
+  from a broken bot**, and it cost iter 71 its measurement.
+  **NEVER attribute an economy metric across a refresh boundary.** Before concluding a
+  change regressed something, replay the SAME frames through BOTH versions — doing that
+  here gave byte-identical output (move 455, embark 55) and refuted my own diagnosis.
 - **⛓ THE ORE CHAIN, and why three passes of it did nothing (iter 70).** Vein-seek was never
   the problem. On run #134 it fired 751 times and NO CHARACTER WAS EVER ADJACENT TO A VEIN:
   characters sit at **median depth y=2** while the shallowest vein is y=26. `POISON_SAFE_DEPTH=12`

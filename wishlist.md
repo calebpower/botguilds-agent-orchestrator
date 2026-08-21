@@ -55,25 +55,26 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| Rival-recon dashboard tab | 0.80 | 0.97 | 34 | **0.559** | 0.582 | **qualifies** |
-| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 45 | **0.557** | 0.574 | **qualifies** |
-| Expectation/reality mismatch detector | 0.90 | 0.95 | 8 | **0.534** | 0.641 | **qualifies** |
-| Band-refresh timing awareness | 0.80 | 0.92 | 37 | **0.532** | 0.552 | **qualifies** |
-| In-world trash talk (`say`) | 0.75 | 0.95 | 44 | **0.518** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 45 | **0.511** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 32 | **0.507** | 0.529 | **qualifies** |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 43 | 0.437 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 45 | 0.437 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 12 | 0.429 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 17 | 0.373 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 27 | 0.321 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 44 | 0.320 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Band-refresh timing awareness | 0.88 | 0.92 | 38 | **0.586** | 0.607 | **qualifies** |
+| Rival-recon dashboard tab | 0.80 | 0.97 | 35 | **0.560** | 0.582 | **qualifies** |
+| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 46 | **0.557** | 0.574 | **qualifies** |
+| Expectation/reality mismatch detector | 0.90 | 0.95 | 9 | **0.546** | 0.641 | **qualifies** |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 45 | **0.519** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 46 | **0.511** | 0.527 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 33 | **0.508** | 0.529 | **qualifies** |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 44 | 0.437 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 46 | 0.437 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 13 | 0.433 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 18 | 0.375 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 28 | 0.321 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 45 | 0.320 | 0.330 | INELIGIBLE — ceiling<0.5 |
 
-_Scored 2026-08-21 (iter 70). `tc` +1 (0.58.0 deployed). This pass's lever came from
-measurement, not the list — the ore chase bottomed out in a 2-gold bottle. **Next pass takes the
-expectation/reality mismatch detector** (0.534): it has qualified for two passes now, and iters 69
-and 70 are both arguments for it — a lever that shipped inert, a regression that shipped green, and
-a premise that stopped being true with nothing watching._
+_Scored 2026-08-21 (iter 71). `tc` +1 (0.59.0 deployed). **Band-refresh timing awareness raised
+good_idea 0.80 -> 0.88 and now leads at 0.559** — not to justify building it, but because iter 71
+produced the evidence the old score lacked: a refresh collapsed ground loot 18x, idled the whole
+economy, cost this pass its measurement and nearly caused a false rollback of a good change. A
+starving band is currently indistinguishable from a broken bot, which is squarely the 0.90-1.00
+band's 'unlocks a capability we do not have'._
 
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
