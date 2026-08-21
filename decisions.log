@@ -2531,3 +2531,28 @@ a dropped/out-of-order delta could silently degrade our world view. Worth portin
 submodule check EVERY loop pass; flag the delta/refresh port + the forge-to-arm probe to the operator; did
 NOT advance the pin or port anything yet (await operator priority). NEXT candidates ranked: (a) port seq-gap
 +REFRESH handling (data integrity), (b) forge-to-arm probe (unblock leveling), (c) how-nav (>0.5 wishlist).
+
+ITER 56 (2026-08-21) — PORT the reference-kit delta-frame handling (operator: "do the port first then the
+probe; make sure you repair"). Submodule was 3 commits ahead (loop step-10 check had LAPSED — reinstated).
+Upstream changes are TRANSPORT-only (no new gameplay actions): zlib frames (our decode already handled it),
+delta tile frames + a REFRESH/seq-gap resync path. Verified live on #101 that ONLY the tile layer is delta'd
+(entities/items/gold stay FULL every frame — counts hold frame-to-frame while tiles/gone churn) -> our
+ctx.enemies/loot/gold were already correct; the exposure was the terrain layer going silently stale on a
+dropped frame. PORT (explorer/0.44.0, in steemer/protocol.py + client.py, hand-ported NOT merged):
+  (1) SEQ-GAP REPAIR: is_seq_gap(last_seq,seq) — a seq jump = dropped frames = lost cumulative deltas ->
+      client sends REFRESH for full frames, throttled 1/2s; seq/visible reset on hello_ok (new session).
+  (2) DELTA REASSEMBLY: reassemble_tiles() rebuilds a delta frame's visible.tiles to the full currently-
+      visible set (per-world ever-seen + currently-visible caches), BEFORE record_frame/on_frame, so logging/
+      replay/analyses see the pre-delta shape. Never raises on a malformed frame.
+GATE: 8 new tests (seq-gap predicate, full/delta reassembly, malformed safety, client REFRESH-on-gap +
+throttle), gap+reassembly each MUTATION-CHECKED. 307 local/313 reaper green; replay 2000 frames exit0.
+Verified on 300 REAL vale delta frames: ~20 raw tiles/frame -> full ~957-tile set, no crash.
+DEPLOY: run 102, git 959e37c, explorer/0.44.0 (killed svc.sh-down remnants 76369/76370 before confirming
+76862 sole). LIVE: healthy ~12 frames/s, frames now stored FULL (median 682 tiles/frame vs ~20 delta); 0
+refresh requests yet (no gaps observed — the resync is a safety net). Submodule pin advanced to reviewed
+upstream 588702a. Minor note: stored frames keep the delta:True flag though tiles are now full (harmless —
+nothing branches on it; flag it if a future analysis assumes delta=>sparse).
+NEXT: the FORGE-TO-ARM probe (operator-requested 2nd half) — the terrain-harvest blind spot (trees/veins in
+nav.SOLID + attack-only-monsters, iter55) is the target. Scope it: recon what's harvestable + the craft chain
+(chop tree->lumber, break vein->ore->smelt->ingot, forge ingot+lumber->hafted weapon; forge product name is
+undiscovered per docs/07). Build incrementally with gating (don't strand chars chopping in danger).
