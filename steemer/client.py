@@ -33,6 +33,8 @@ from .storage import Storage
 # and the new server has never seen our HELLO, so we must re-send it.
 SILENCE_TIMEOUT = 10.0
 _MAX_BACKOFF = 30.0
+REFRESH_THROTTLE = 2.0   # v0.44.0: at most one full-frame refresh request per this many
+#   seconds — a burst of dropped frames should trigger ONE resync, not a REFRESH storm.
 
 
 class Bot(Protocol):
@@ -113,6 +115,12 @@ class Client:
         self.config: dict[str, Any] = {}
         self.guild: dict[str, Any] = {}
         self.dropped_sends = 0
+        # v0.44.0 delta-frame handling: per-session seq to detect dropped frames, and
+        # per-world tile caches to rebuild a delta frame's full visible tile set.
+        self._last_seq: int | None = None
+        self._refresh_at = 0.0
+        self._tiles_mem: dict[Any, dict] = {}   # world -> {(x,y): tile row} ever seen
+        self._visible: dict[Any, set] = {}      # world -> {(x,y)} currently in view
         # let the bot reach back for config/tick if it wants
         setattr(self.bot, "client", self)
 
@@ -167,6 +175,23 @@ class Client:
             return
         self._mirror("record_actions", self.tick, clean)
 
+    def _maybe_refresh(self, frame: dict[str, Any]) -> None:
+        """v0.44.0: a jump in the per-session ``seq`` means frames were dropped, so
+        the cumulative tile deltas we missed are gone — ask the server for full frames
+        to resync. Throttled so a burst of drops triggers one REFRESH, not a storm. A
+        failed send is ignored: the read path notices a genuinely dead connection."""
+        seq = frame.get("seq")
+        if p.is_seq_gap(self._last_seq, seq) and \
+                time.monotonic() - self._refresh_at > REFRESH_THROTTLE:
+            self._refresh_at = time.monotonic()
+            try:
+                self.transport.send(p.msg(p.REFRESH))
+                self._say(f"seq gap ({self._last_seq}->{seq}) — requested full-frame refresh")
+            except (zmq.ZMQError, OSError):
+                pass
+        if seq is not None:
+            self._last_seq = seq
+
     # -- main loop ------------------------------------------------------------
 
     def run(self, max_ticks: int | None = None) -> None:
@@ -204,6 +229,12 @@ class Client:
                 self.config = message.get("config", {})
                 self.guild = message.get("guild", {})
                 self.tick = message.get("tick", 0)
+                # New server-side session: seq restarts from scratch and the first
+                # frame per world is full, so forget the old seq/visible state (else
+                # the seq restart looks like a giant gap and the stale visible set
+                # would leak into the first delta frame's reassembly).
+                self._last_seq = None
+                self._visible = {}
                 self._call(self.bot, "on_hello", message)
                 self._say(f"connected as {self.guild.get('name')} at tick {self.tick}")
             elif mtype == p.HELLO_ERR:
@@ -211,6 +242,11 @@ class Client:
                 self.running = False
             elif mtype == p.FRAME:
                 self.tick = message.get("tick", self.tick)
+                # v0.44.0: resync on a dropped-frame gap, then expand the delta tile
+                # layer back to the full visible set BEFORE logging or acting, so the
+                # stored frame and on_frame see the pre-delta shape.
+                self._maybe_refresh(message)
+                p.reassemble_tiles(message, self._tiles_mem, self._visible)
                 self._mirror("record_frame", message)
                 actions = self.bot.on_frame(message) or []
                 self.send_actions(actions)

@@ -21,6 +21,7 @@ from typing import Any
 HELLO = "hello"
 ACTIONS = "actions"
 BYE = "bye"
+REFRESH = "refresh"     # ask the server for full (non-delta) frames after a detected gap
 
 # server -> client
 HELLO_OK = "hello_ok"
@@ -137,6 +138,58 @@ def decode(raw: bytes) -> dict[str, Any]:
         except zlib.error:
             pass                      # not actually zlib — try as plain JSON
     return json.loads(raw)
+
+
+# --- delta frames (v0.44.0) -------------------------------------------------
+#
+# The server compresses the FRAME's terrain layer: a `delta` frame carries only
+# the tiles that CHANGED plus a `gone` list of tile positions that left vision,
+# rather than the whole visible tile set. (Entities, items and gold stay FULL in
+# every frame — verified live on run #101: their counts hold frame-to-frame while
+# `tiles`/`gone` churn.) Two consequences the client must handle:
+#   * a jump in the per-session `seq` means frames were DROPPED, so the deltas we
+#     missed are lost — ask for a full refresh to resync (is_seq_gap + REFRESH);
+#   * a delta frame's `visible.tiles` is incomplete on its own — rebuild it to the
+#     full currently-visible set so on_frame/logging/replay see the same shape they
+#     did before the server switched to deltas (reassemble_tiles).
+
+
+def is_seq_gap(last_seq: int | None, seq: int | None) -> bool:
+    """True when `seq` skips past `last_seq` — i.e. one or more frames were dropped
+    and their (cumulative) tile deltas are gone. A repeat or step-of-one is fine; a
+    missing/None seq is treated as no gap (nothing to resync against)."""
+    return last_seq is not None and seq is not None and seq > last_seq + 1
+
+
+def reassemble_tiles(frame: dict[str, Any],
+                     tiles_mem: dict[Any, dict[tuple[int, int], Any]],
+                     visible: dict[Any, set[tuple[int, int]]]) -> None:
+    """Expand a delta tile-frame IN PLACE so ``frame['visible']['tiles']`` is again
+    the full currently-visible tile set (the pre-delta shape everything downstream
+    was written against). Maintains two per-world caches passed in by the client:
+    ``tiles_mem`` (world -> {(x,y): tile row} — every tile ever seen) and ``visible``
+    (world -> {(x,y)} currently in view). Only the tile layer is delta-compressed;
+    entities/items/gold are left untouched (they are full every frame). Never raises
+    on a malformed frame — a garbled reassembly must not stop the bot playing."""
+    try:
+        vis = frame.get("visible")
+        if not isinstance(vis, dict):
+            return
+        world = frame.get("world")
+        mem = tiles_mem.setdefault(world, {})
+        for t in vis.get("tiles") or ():
+            mem[(t[0], t[1])] = t
+        if frame.get("delta"):
+            shown = visible.setdefault(world, set())
+            shown.difference_update((g[0], g[1]) for g in vis.pop("gone", ()) or ())
+            shown.update((t[0], t[1]) for t in vis.get("tiles") or ())
+            vis["tiles"] = [mem[pos] for pos in sorted(shown) if pos in mem]
+        else:
+            # a full frame reseeds the currently-visible set for this world
+            visible[world] = {(t[0], t[1]) for t in vis.get("tiles") or ()}
+            vis.pop("gone", None)
+    except (KeyError, TypeError, IndexError):
+        return
 
 
 # --- validation -------------------------------------------------------------
