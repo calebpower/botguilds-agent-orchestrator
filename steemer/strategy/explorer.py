@@ -468,6 +468,18 @@ THREAT_TTL = 1200          # v0.26.0: a world's observed undead level is trusted
 #   emptied out (everyone fled) gets re-checked once its band may have cycled back to
 #   wildlife — otherwise safe-world routing would avoid it forever.
 KEEP = frozenset({"potion_red", "bottle_empty"})   # field/craft supplies we never sell
+
+# v0.46.0 FORGE FEEDSTOCK. 0.45 taught chars to chop trees, and run #113 chopped 282 of
+# them -- then SOLD 189 lumber, 4 ore and even 2 INGOTS we had deliberately smelted. The
+# leak was `_should_sell`: lumber and ingots carry no `uses` we recognise, so they fell
+# through its "pure loot -> bank it" branch and the whole harvest went to the shop instead
+# of the forge. Seeking MORE material would have been pointless while that door was open.
+FORGE_FEEDSTOCK_PREFIXES = ("lumber", "ingot", "flux", "plank", "timber")
+# Bounded on purpose. An UNBOUNDED reserve is the v0.19.0 regression: an unsold-food pack
+# pinned chars `full` forever and drove the embark<->return thrash that stopped gold ever
+# accumulating. Keep a few per character, sell the surplus -- enough to forge with, never
+# enough to clog a ~20-slot carry.
+FORGE_RESERVE_PER_CHAR = 4
 # Medicinal drinks we keep rather than sell (potions, vials, elixirs, tonics). Raw
 # FOOD is also `uses:['drink']` but is NOT kept — the guild never eats it, so
 # hoarding it just fills the pack and strands chars homing (v0.19.0: the stuck-gold
@@ -612,7 +624,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.45.0"
+    version = "explorer/0.46.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -689,6 +701,9 @@ class Explorer:
             # singleton brewable, v0.8.0, so it never clogs carry).
             smeltables = [i for i in inv if "smelt" in (i.get("uses") or [])]
             smelt_keep = self._smelt_keep_ids(smeltables)
+            # Forge feedstock (lumber/ingots/flux) reserved up to a per-char cap, so
+            # 0.45's harvest actually reaches the forge instead of the shop counter.
+            feedstock_keep = self._feedstock_keep_ids(inv)
             # 1) EQUIP carried gear into empty slots — BEFORE selling, or we sell
             #    the weapons/armor we ought to be wearing (the original bug: 0
             #    equips ever, everyone bare-handed and unarmored).
@@ -698,7 +713,7 @@ class Explorer:
             # 2) sell what we can't use: loot, gear that won't fit, and brewables
             #    that can't form a batch (stranded singletons).
             for item in inv:
-                if self._should_sell(item, eqp, brew_keep, smelt_keep):
+                if self._should_sell(item, eqp, brew_keep, smelt_keep, feedstock_keep):
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "sell",
                                    "item_id": item["item_id"]},
@@ -1447,11 +1462,30 @@ class Explorer:
                 keep.update(it["item_id"] for it in g)
         return keep
 
+    @staticmethod
+    def _feedstock_keep_ids(inv: list[dict[str, Any]]) -> set[str]:
+        """Item_ids of forge feedstock to RESERVE -- up to ``FORGE_RESERVE_PER_CHAR`` of
+        each kind per character; the surplus above that still sells.
+
+        Deliberately a per-kind cap rather than "keep it all": the reserve exists to feed
+        the forge, and an unbounded one re-creates the v0.19.0 carry clog. Selection
+        follows the inventory's own order so the choice is deterministic and replayable."""
+        by_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for it in inv:
+            if str(it.get("kind", "")).startswith(FORGE_FEEDSTOCK_PREFIXES):
+                by_kind[it["kind"]].append(it)
+        keep: set[str] = set()
+        for g in by_kind.values():
+            keep.update(it["item_id"] for it in g[:FORGE_RESERVE_PER_CHAR])
+        return keep
+
     def _should_sell(self, item: dict[str, Any], eqp: dict[str, Any],
-                     brew_keep: set[str], smelt_keep: set[str]) -> bool:
+                     brew_keep: set[str], smelt_keep: set[str],
+                     feedstock_keep: set[str] | None = None) -> bool:
         """Sell only what we can't use. Keep: field supplies (KEEP), medicinal
         drinks (potions/vials/elixirs/tonics), brew ingredients that can still form
         a batch (`brew_keep`), ore that can still form a smelt pair (`smelt_keep`),
+        forge feedstock up to the per-char reserve (`feedstock_keep`, v0.46.0),
         and gear we might still equip. Everything else — pure loot, raw FOOD (which
         is `drink` but never eaten), AND stranded singleton brewables/ore
         (v0.8.0/v0.10.0) — is banked for gold, so food/herbs/ore don't hoard up and
@@ -1465,6 +1499,11 @@ class Explorer:
             return item["item_id"] not in brew_keep   # sell stranded brewables
         if "smelt" in uses:
             return item["item_id"] not in smelt_keep   # sell stranded (unpaired) ore
+        # Checked BEFORE the pure-loot branch below -- that branch is exactly where lumber
+        # and ingots were being lost, since they carry no recognised `uses`. Surplus above
+        # the per-char reserve still sells.
+        if kind.startswith(FORGE_FEEDSTOCK_PREFIXES):
+            return item["item_id"] not in (feedstock_keep or set())
         if "equip" not in uses:
             return True                     # pure loot -> bank it
         if kind in self.wont_fit:
