@@ -560,6 +560,28 @@ CONTAINERS = frozenset({"chest", "safe"})
 DEFAULT_MAPS = ("vale", "mines", "spire")
 REST_SCORE = 0.5           # the floor: rest wins only when nothing affordable beats it
 POTION_KEEP = 1            # potions to carry into the field per character
+
+# v0.58.0 BOTTLES. The heal supply had a hole in it that nothing was watching.
+#
+# v0.35.0 raised POTION_RESERVE 100 -> 600 on good evidence: heals were 99.6% FREE-BREWED
+# (4,511 drinks against 16 buys), and the potion-buy was pinning gold at ~100. Correct --
+# GIVEN that brewing keeps supplying heals. Nothing guaranteed that it would. Brewing needs
+# a `bottle_empty`, and there has never been a path to ACQUIRE one: the kind appears in
+# exactly two places, KEEP (never sell it) and the brew gate (count them). We could only
+# ever find bottles as loot.
+#
+# The bottles ran out, and the premise failed silently. Measured on run #134, 31,011 frames:
+# 0 brews, 0 potion_red carried by ANY character, and the buy fallback frozen because
+# `gold - 20 >= 600` cannot pass at 183 gold. The consequences run all the way down the
+# chain this project has spent three passes on -- an un-healed char is capped at
+# POISON_SAFE_DEPTH=12 (v0.23.0), the shallowest vein is at y=26, our characters sat at a
+# MEDIAN DEPTH OF 2, and so v0.54.0's vein-seek walked toward ore it could never reach:
+# 751 seek decisions, 0 char-frames ever adjacent to a vein, 0 veins broken.
+#
+# A bottle costs 2 gold. This is the cheapest unlock in the entire chain, and it restores
+# the free-brew pipeline the 600 reserve was explicitly premised on rather than arguing
+# with that reserve.
+BOTTLE_KEEP = 1            # empty bottles to carry per character (one brew's worth)
 # v0.29.0: heal from SURPLUS. The 0.24.0 hoard froze the potion-buy to stockpile;
 # 0.28.0 froze the last spend (clubs) and the treasury finally climbed (run #84
 # gold mean 5.7 -> 68, median 2 -> 92, climbing past 155 with ZERO drops). But the
@@ -769,7 +791,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.57.0"
+    version = "explorer/0.58.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -973,6 +995,19 @@ class Explorer:
             #     from foraged herbs still help protect a char's carried loot.
             bottles = sum(1 for i in inv if i["kind"] == "bottle_empty")
             picks, ess, healing = self._choose_brew(brewables)
+            # 4a-bis) BUY A BOTTLE (v0.58.0) -- but only for a character that could brew
+            # RIGHT NOW if it had one. Gating on `picks` is what makes this provably
+            # useful rather than a standing 2g tax: it means the herbs are already in the
+            # pack and a bottle is the only missing part. Ordered AFTER arming and
+            # armouring, so a bare character is never left bare for a bottle, and floored
+            # at WEAPON_BUY_FLOOR so the 2g can never eat into arming money.
+            if picks and bottles < BOTTLE_KEEP and gold > WEAPON_BUY_FLOOR:
+                price = self._shop_price(frame, "bottle_empty")
+                if price is not None:
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "buy", "kind": "bottle_empty"},
+                        f"buying a bottle_empty ({price}g) — we hold {len(picks)} brewable "
+                        f"ingredients and no bottle, and brewing is where our heals come from")]
             if picks and bottles >= 1:
                 label = (f"{ess} (-> potion_red heal)" if healing
                          else f"{ess}-essence" if ess else "undecoded (learning batch)")
@@ -1860,6 +1895,16 @@ class Explorer:
         dangerous, so a brand-new band mob is dodged on sight, not after the first
         death."""
         return bool(kind) and kind not in WILDLIFE_SAFE and kind not in THREAT_KINDS
+
+    @staticmethod
+    def _shop_price(frame: dict[str, Any], kind: str) -> int | None:
+        """The live shop price of a kind, or None if it is not stocked. Read from the
+        frame like every other price in this file -- the economy shuffles per world, so a
+        hardcoded price is a bug waiting for a band refresh."""
+        for s in (frame.get("shop", {}) or {}).get("stock", []) or []:
+            if s.get("kind") == kind and isinstance(s.get("buy_price"), int):
+                return s["buy_price"]
+        return None
 
     @staticmethod
     def _afford_potion(frame: dict[str, Any], gold: int) -> tuple[str, int] | None:
