@@ -2481,3 +2481,30 @@ FLAG: rival-recon (operator's reverse-engineering priority, near-boundary) + the
 watchdog CLI still not scheduled) + the RECRUIT-BURST issue above.
 NEXT: let #100 mature (confirm deaths stay 0, move_failed stays ~10); decide the recruit-burst fix and/or
 next leveling refinement (predictor-wired seek / push-north) — pending operator input on priorities.
+
+ITER 54 (2026-08-21) — BUILD + DEPLOY 0.43.0 recruit-burst fix (operator greenlit "do the recruit-burst").
+ROOT (confirmed from the recruit-decision reasoning): the gate logged "roster 9 < 10" at t+0, t+80 AND
+t+176 on #100 — the count was FROZEN at 9 for ~176 ticks while the real roster was ~30. Cause: the gate
+trusts bot.spectate.counts() (public /api/spectate/guilds total), and that SERVER endpoint lagged our
+post-deploy roster (reported us as 9 for ~176 ticks then jumped to 30). The client freshness check can't
+catch server-side staleness (the fetch succeeded). So it recruited every cooldown -> 21-char bare bench.
+FIX (robust to either count lagging; roster only grows since deaths ~0): roster_seen = max(auth total,
+fresh frame snapshot here+fielded) — a low read from either is the stale one, the max is the truer floor;
++ count our own in-flight recruits (RECRUIT_INFLIGHT_TTL=100) so the startup window where BOTH read the
+not-yet-checked-in roster can't fire a burst (each issued recruit lifts the estimate immediately, capping
+it at ~1 until the counts catch up). Mirrors the embark in-flight guard.
+GATE: 4 new tests (burst capped when count lags / resumes after a recruit lands / uses fresh snapshot when
+auth stale), burst-cap + max each MUTATION-CHECKED; existing recruit-cap tests pass. 299 local / 305
+reaper green; replay 4000 frames exit0.
+DEPLOY: run 101, git eb4af1e, explorer/0.43.0 (killed the svc.sh-down remnants 75909/75910 explicitly
+before confirming the new 76366 sole). VERIFIED LIVE: run 101 at 235 ticks has recruited 0 (vs 21 by t+176
+on #100); gate correctly sees roster=24 (here 14 + fielded 10) via the fresh snapshot, not the stale
+auth(9). Bare-bench bloat won't recur on deploy. (Existing 14-char bench is sunk but no longer grows.)
+WISHLIST (minor=43): how-nav 0.72*0.97*(0.75-1/30)=0.501 (nudged just over 0.5 — flag for next loop pass);
+rival-recon 0.489 (docked stale-spectate); rival-awareness 0.486; move-pred(b) 0.443; watchdog->sidecar
+0.34. This was a DIRECT operator request (not a formal loop pass) so I built the requested fix only.
+NEXT (loop): measure 0.43 on a matured #101 — recruit/1k should crater (burst gone), armed-fraction of
+the fielded core should rise (fewer bare mouths), avg-level dilution should ease; confirm 0.42 deaths
+still ~0 + move_failed still ~10. Then how-nav (now >0.5) or the forge-to-arm probe (operator's Phase-3
+slice) or rival-recon (operator priority). Phase 3 recommendation to operator: do recruit-burst (DONE) ->
+forge-to-arm -> broad Prospector last.
