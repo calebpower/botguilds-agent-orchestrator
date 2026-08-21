@@ -475,6 +475,15 @@ KEEP = frozenset({"potion_red", "bottle_empty"})   # field/craft supplies we nev
 # through its "pure loot -> bank it" branch and the whole harvest went to the shop instead
 # of the forge. Seeking MORE material would have been pointless while that door was open.
 FORGE_FEEDSTOCK_PREFIXES = ("lumber", "ingot", "flux", "plank", "timber")
+# v0.47.0 — 0.46 reserved lumber UNCONDITIONALLY and that was wrong within one run: a
+# forge needs ingots AND lumber, we had no ore and no ingots, so the reserve stockpiled a
+# shaft with nothing to put on the end of it while cutting real income (189 lumber sales
+# on #113). Gold fell to 139, under the 150 WEAPON_BUY_FLOOR, so nothing could be armed
+# either. Lumber is therefore reserved only when the character actually holds METAL --
+# an ingot, or an ore pair that can still smelt into one. Ingots and flux stay reserved
+# unconditionally: they are scarce, directly forgeable, and worth almost nothing sold.
+FORGE_METAL_PREFIXES = ("ingot", "ore")
+FORGE_SHAFT_PREFIXES = ("lumber", "plank", "timber")
 # Bounded on purpose. An UNBOUNDED reserve is the v0.19.0 regression: an unsold-food pack
 # pinned chars `full` forever and drove the embark<->return thrash that stopped gold ever
 # accumulating. Keep a few per character, sell the surplus -- enough to forge with, never
@@ -527,6 +536,17 @@ BREW_MIN_GOLD = 10         # keep a little gold buffer before buying bottles
 # sickle, and consumables are excluded). Used to buy the cheapest affordable one
 # to arm a bare-handed char — v0.13.0's poverty-bootstrap unlock.
 WEAPON_KINDS = frozenset({"club", "dagger", "shortsword", "spear", "bow"})
+# v0.47.0 ARMOR. Every character has five slots (EQUIP_SLOTS) and in 114 runs we bought
+# for exactly one of them: the buy was gated on WEAPON_KINDS and on `hand` being empty, so
+# we have NEVER bought a shield, trinket or boots -- 0% of our characters wear armor while
+# rival g_63837f fields ~60% spear+smith_apron. `shield_wood` is 25g with NO stat
+# requirement and every one of our characters has an empty offhand. The gap was
+# self-inflicted. Kinds are checked against the LIVE shop stock, never assumed present.
+ARMOR_KINDS = frozenset({"shield_wood", "shield_iron", "striders", "fickle_pearl",
+                         "smith_apron"})
+# Armor is bought only above this, ABOVE the weapon floor: a weapon is what makes a
+# character able to fight at all, so it must never lose a coin race to a shield.
+ARMOR_BUY_FLOOR = 200
 
 # v0.28.0 PURE HOARD: freeze the weapon-buy entirely. Measurement of run #83
 # (0.27.0) proved the club-buy is the SOLE remaining drain on the treasury —
@@ -624,7 +644,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.46.0"
+    version = "explorer/0.47.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -733,6 +753,17 @@ class Explorer:
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "buy", "kind": kind},
                         f"buying a {kind} ({price}g; bare-handed — arming to break the poverty trap)")]
+            # 3b) ARMORED, not just armed (v0.47.0). Only once the hand is filled, and
+            #     only above ARMOR_BUY_FLOOR (> the weapon floor), so arming a bare char
+            #     always outranks armoring an equipped one.
+            if eqp.get("hand") is not None and gold > ARMOR_BUY_FLOOR:
+                buy = self._afford_armor(char, eqp, frame, gold)
+                if buy is not None:
+                    kind, price = buy
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "buy", "kind": kind},
+                        f"buying {kind} ({price}g; armouring an empty slot -- we have "
+                        f"never bought armor and rivals field ~60% armored)")]
             # 4) HEAL FROM SURPLUS (v0.29.0): the 0.24.0 hoard froze potion-buying;
             #    now that a stockpile exists (0.28.0), spend its SURPLUS on the one
             #    thing that outruns poison's DoT — a field heal for a potion-less
@@ -1356,6 +1387,39 @@ class Explorer:
         best = min(affordable, key=lambda s: s["buy_price"])
         return best["kind"], best["buy_price"]
 
+    def _afford_armor(self, char: dict[str, Any], eqp: dict[str, Any],
+                      frame: dict[str, Any], gold: int) -> tuple[str, int] | None:
+        """The cheapest shop ARMOR the char can afford, qualifies for, and has a slot for.
+
+        "Has a slot for" is the important guard: the shop does not tell us which slot a
+        kind occupies (every `slot` field is null), so we reuse what equipping has already
+        LEARNED -- `slot_wrong` and `wont_fit` -- and refuse to buy a kind that has no
+        empty slot left it could still go into. Without that we would re-buy a shield for
+        a character already holding one, forever."""
+        stock = (frame.get("shop", {}) or {}).get("stock", []) or []
+        stats = char.get("stats", {}) or {}
+        held = {i.get("kind") for i in (char.get("inventory") or [])}
+        worn = {v.get("kind") if isinstance(v, dict) else v for v in eqp.values()}
+        affordable = []
+        for sitem in stock:
+            kind = sitem.get("kind")
+            if kind not in ARMOR_KINDS or not isinstance(sitem.get("buy_price"), int):
+                continue
+            if gold < sitem["buy_price"] or kind in self.wont_fit:
+                continue
+            if kind in held or kind in worn:
+                continue                    # already carrying/wearing one
+            if not all(stats.get(k, 0) >= v for k, v in (sitem.get("req") or {}).items()):
+                continue
+            # at least one EMPTY slot this kind is not already known to be wrong for
+            if any(eqp.get(slot) is None and slot not in self.slot_wrong[kind]
+                   for slot in EQUIP_SLOTS):
+                affordable.append(sitem)
+        if not affordable:
+            return None
+        best = min(affordable, key=lambda s: s["buy_price"])
+        return best["kind"], best["buy_price"]
+
     @staticmethod
     def _is_melee_predator(kind: str | None) -> bool:
         """v0.32.0: a hostile monster (ctx.enemies is faction==monster only) is a
@@ -1470,10 +1534,26 @@ class Explorer:
         Deliberately a per-kind cap rather than "keep it all": the reserve exists to feed
         the forge, and an unbounded one re-creates the v0.19.0 carry clog. Selection
         follows the inventory's own order so the choice is deterministic and replayable."""
+        # Is there metal to forge WITH? An ingot, or >=2 of one ore kind (which smelts
+        # into one). Without it a reserved shaft is dead weight and lost income.
+        ore_counts: dict[str, int] = defaultdict(int)
+        has_ingot = False
+        for it in inv:
+            k = str(it.get("kind", ""))
+            if k.startswith("ingot"):
+                has_ingot = True
+            elif k.startswith("ore"):
+                ore_counts[k] += 1
+        has_metal = has_ingot or any(v >= 2 for v in ore_counts.values())
+
         by_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for it in inv:
-            if str(it.get("kind", "")).startswith(FORGE_FEEDSTOCK_PREFIXES):
-                by_kind[it["kind"]].append(it)
+            kind = str(it.get("kind", ""))
+            if not kind.startswith(FORGE_FEEDSTOCK_PREFIXES):
+                continue
+            if kind.startswith(FORGE_SHAFT_PREFIXES) and not has_metal:
+                continue                    # shaft with no metal -> sell it, bank the gold
+            by_kind[it["kind"]].append(it)
         keep: set[str] = set()
         for g in by_kind.values():
             keep.update(it["item_id"] for it in g[:FORGE_RESERVE_PER_CHAR])
