@@ -23,6 +23,19 @@ diffs the two — what the new code would choose against what the old code actua
 Read the INERT list first. A branch offered many times and chosen zero times is a change
 that will not do anything, however green its tests are.
 
+**TRUST THE STRUCTURE, NOT THE COUNTS.** `new_branches`, `dropped_branches` and `inert` are
+meaningful; the `shifted` numbers are NOT a prediction of live behaviour. Replay cannot
+reproduce live counts, because the recorded frames were produced by a DIFFERENT action
+sequence than the candidate would produce — the replayed bot accumulates a different map,
+its characters are never actually moved by its own decisions, and the divergence compounds.
+Expect swings of thousands in `rest` and the explore branches that have nothing to do with
+the change under test. Use `shifted` to notice that something moved, never to size it.
+
+And for a change that REMOVES actions rather than adding a branch, this diff is the wrong
+instrument entirely: count the specific thing. v0.49.0 (the duplicate-purchase latch) was
+verified by counting repeated `buy {same kind}` per character within INTENT_TTL — 11 of 31
+live buys were duplicates, 0 under the candidate.
+
 TWO WAYS TO GET A CONFIDENT WRONG ANSWER OUT OF THIS, both learned the hard way:
 
 1. **WARM-UP.** A branch gated on LEARNED state does not fire until that state exists.
@@ -156,10 +169,41 @@ def recorded(conn: Any, run_id: int | None = None, world: str | None = None,
     return tally(_alts(r) for r in rows)
 
 
+def frames_of_run(conn: Any, run_id: int, world: str | None = None,
+                  limit: int = 2000) -> list[dict[str, Any]]:
+    """The newest ``limit`` frames OF ONE RUN, oldest-first.
+
+    Deliberately not ``storage.read_frames``: that has no run filter and returns the oldest
+    frames in the entire database, so the candidate would replay ancient history against the
+    incumbent's most recent decisions — different frames, which is precisely the misuse
+    warned about above. It produced obvious nonsense the first time this CLI was run
+    (`rest` 14179 -> 7785, `pushing north` 1359 -> 9), which is the only reason it was
+    caught immediately.
+    """
+    import json as _json
+    import zlib as _zlib
+    sql = "SELECT json FROM frames WHERE run_id=?"
+    params: list[Any] = [run_id]
+    if world:
+        sql += " AND world=?"
+        params.append(world)
+    sql += f" ORDER BY seq DESC LIMIT {int(limit)}"
+    out = []
+    for row in conn.execute(sql, tuple(params)).fetchall():
+        raw = row["json"] if hasattr(row, "keys") else row[0]
+        if isinstance(raw, str):
+            raw = raw.encode("latin-1")
+        try:
+            out.append(_json.loads(_zlib.decompress(raw)))
+        except Exception:
+            continue
+    return out[::-1]
+
+
 def main(argv: list[str] | None = None) -> int:      # pragma: no cover - thin CLI
     from . import db as _db
     from .bot import GuildBot
-    from .storage import Storage, read_frames
+    from .storage import Storage
 
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--run", type=int, default=None, help="incumbent run_id (default: newest)")
@@ -176,14 +220,21 @@ def main(argv: list[str] | None = None) -> int:      # pragma: no cover - thin C
         row = ro.execute("SELECT MAX(run_id) AS r FROM runs").fetchone()
         run_id = (row["r"] if hasattr(row, "keys") else row[0])
 
-    inc = recorded(ro, run_id=run_id, world=args.world, limit=args.limit * 5)
+    frames = frames_of_run(ro, run_id, world=args.world, limit=args.limit)
+    if not frames:
+        print(f"no frames for run {run_id}"
+              + (f" world={args.world}" if args.world else ""))
+        return 2
+    # Incumbent decisions from the SAME run. Several characters decide per frame, so allow
+    # generously more decisions than frames — but they are the same window either way.
+    inc = recorded(ro, run_id=run_id, world=args.world, limit=args.limit * 8)
 
     mem = Storage(":memory:", commit_every=1)
     bot = GuildBot(strategy=args.strategy, storage=mem)
     bot.config = {"party_cap": 5, "world_cap": 10, "roster_cap": 30,
                   "maps": [{"id": "vale"}, {"id": "mines"}, {"id": "spire"}]}
     n = 0
-    for frame in read_frames(src, world=args.world, limit=args.limit):
+    for frame in frames:
         bot.tick = frame.get("tick", bot.tick)
         try:
             bot.on_frame(frame)

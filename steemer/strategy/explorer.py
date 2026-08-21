@@ -663,6 +663,17 @@ RECRUIT_INFLIGHT_TTL = 100   # v0.43.0: how long a just-issued recruit counts to
 #   our real roster, which let the recruit gate fire a ~21-char burst on run #100. Sized well
 #   above the observed recruit-appearance lag (~a few tens of ticks) so the burst is capped at
 #   ~1 recruit until the counts catch up; deaths are ~0 so the slow back-fill this implies is fine.
+# v0.49.0 IN-FLIGHT INTENT LATCH. The cooldown below is a TIMER, and a timer is the wrong
+# termination condition for "has my purchase landed yet?": when the frame is staler than the
+# cooldown, the character still looks bare after it expires, so the buy is issued again.
+# Measured on run #117 — one character bought SIX clubs at ticks 1397061/67/73/79/85/91,
+# exactly VILLAGE_ACTION_COOLDOWN apart, and another bought four then re-equipped the SAME
+# item_id five times. That is ~135 gold wasted in one run, against a treasury that hovers
+# at ~145 and has never sustained the 200 armor floor.
+# So latch on the INTENT and clear it when the frame CONFIRMS it, with a TTL only as a
+# safety net so a genuinely failed action cannot block a character forever. This is the
+# v0.14.0 re-send storm returning through the same door; the fix closes it properly.
+INTENT_TTL = 60               # ticks before an unconfirmed intent is abandoned as failed
 VILLAGE_ACTION_COOLDOWN = 6   # v0.14.0: after a char issues a per-char village
 #   action (buy/sell/equip/brew/smelt/spend_xp), don't issue it another for this
 #   many ticks — the frame is a few ticks stale, so re-issuing the same buy/sell
@@ -684,7 +695,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.48.1"
+    version = "explorer/0.49.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -706,6 +717,8 @@ class Explorer:
         # re-send the same buy/sell/equip every tick (run #38: 250 buy + 148 sell
         # actions for ~1 sale — the same duplicate-send storm as embark).
         self._village_acted: dict[str, int] = {}
+        # uid -> (intent_key, tick_issued); see INTENT_TTL.
+        self._village_intent: dict[str, tuple[str, int]] = {}
         # "Heading home to sell" latch (v0.16.0): uids that filled up and are now
         # walking home. While latched, looting is suppressed so a shed item is
         # never re-grabbed off the char's own tile (the 0.15.0 pickup<->drop
@@ -727,6 +740,14 @@ class Explorer:
     def on_action_error(self, bot: "Any", message: dict[str, Any]) -> None:
         """Learn equip slots from the server's rejections. We send at most one
         equip per character per frame, so the pending (kind, slot) identifies it."""
+        # v0.49.0: an explicit REJECTION terminates an in-flight intent just as a
+        # confirmation does — we know it did not land, so the character must be free to
+        # act again immediately. Only SILENCE should wait out INTENT_TTL. Without this the
+        # latch blocks the legitimate wrong_slot -> try-the-next-slot retry for 60 ticks,
+        # which the existing equip-learning tests caught the moment the latch went in.
+        uid = message.get("char_uid")
+        if uid is not None:
+            self._village_intent.pop(uid, None)
         if message.get("action") != "equip":
             return
         pend = self.equipping.get(message.get("char_uid"))
@@ -756,6 +777,17 @@ class Explorer:
             # (v0.14.0 — kills the run-#38 buy/sell re-send storm).
             if bot.tick - self._village_acted.get(uid, -10**9) < VILLAGE_ACTION_COOLDOWN:
                 continue
+            # v0.49.0: a gold-spending intent already in flight blocks this char until the
+            # frame CONFIRMS it (or the TTL gives up), so a stale frame cannot buy twice.
+            pending = self._village_intent.get(uid)
+            if pending is not None:
+                key, issued = pending
+                if self._intent_landed(key, char):
+                    del self._village_intent[uid]
+                elif bot.tick - issued < INTENT_TTL:
+                    continue                      # still in flight — do not re-issue
+                else:
+                    del self._village_intent[uid]  # gave up; let the char try again
             inv = char.get("inventory", [])
             eqp = char.get("equipment", {}) or {}
             # Brewables we can actually make a no-curdle batch from — the rest are
@@ -1810,11 +1842,42 @@ class Explorer:
     def _step(pos, is_goal, ctx: FieldContext, blocked):
         return nav.bfs_step(pos, is_goal, ctx.known, blocked)
 
+    @staticmethod
+    def _intent_key(action: dict[str, Any]) -> str | None:
+        """The identity of a village action worth latching — the ones that SPEND or that we
+        watched storm. Selling is deliberately excluded: each sale names a distinct
+        ``item_id``, so a repeat cannot double-spend the way a repeated ``buy {kind}`` can.
+        """
+        name = action.get("action")
+        if name == "buy" and action.get("kind"):
+            return f"buy:{action['kind']}"
+        if name == "equip" and action.get("item_id") is not None:
+            return f"equip:{action['item_id']}"
+        return None
+
+    @staticmethod
+    def _intent_landed(key: str, char: dict[str, Any]) -> bool:
+        """Has the frame caught up with this intent? Observation, not elapsed time."""
+        what = key.split(":", 1)[1]
+        inv = char.get("inventory") or []
+        if key.startswith("buy:"):
+            if any(i.get("kind") == what for i in inv):
+                return True
+            eqp = (char.get("equipment") or {}).values()
+            return any(isinstance(v, dict) and v.get("kind") == what for v in eqp)
+        if key.startswith("equip:"):
+            # an equipped item leaves the inventory, so its absence IS the confirmation
+            return not any(str(i.get("item_id")) == what for i in inv)
+        return True
+
     def _village_act(self, bot, uid, action, why):
         # Record per-char village actions for the in-flight re-send guard (v0.14.0).
         # Guild-level actions (recruit/embark, uid=None) have their own guards.
         if uid is not None:
             self._village_acted[uid] = bot.tick
+            key = self._intent_key(action)
+            if key is not None:
+                self._village_intent[uid] = (key, bot.tick)
         self._trace(bot, uid, "village", [why], action, 5.0, why)
         return action
 
