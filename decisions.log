@@ -2782,3 +2782,48 @@ predator-memory 0.3150, log-scale 0.3094, matrix(B) -0.1610.
 NEXT: measure 0.46 on a matured #114 (sale events for lumber/ingot -> ~0? stock floor? carry/full NOT worse?).
 Then forge-to-arm SLICE 3 = the top wishlist item's remaining blocker: discover the forge `product` name.
 Now that feedstock survives, that is the last thing between us and crafting weapons without gold.
+
+ITER 60 (2026-08-21) — 0.47.0 ARMOR BUY + conditional feedstock reserve. Prompted by the operator's
+observation that Will's characters stick together, and their frustration at how far behind we are.
+MEASURED THE CLUSTERING CLAIM (rival track feed, 4000 samples): rival guild g_63837f holds a mean pairwise
+Chebyshev distance of 4.06 (median 3.60, min 1.0) at 4.3 chars/map; WE hold 25.47 (#113) / 22.47 (#114) at
+4.7 chars/map. Same roster size, ~6x tighter — a real policy difference on both sides, not drift. Our min
+was 7.0 across 370 samples: our frontier-seeking actively disperses.
+BUT THE GEAR GAP IS THE ONE THAT MATTERS FIRST: rival gear observations are ~60% spear|smith_apron; ours are
+68% None|None (BARE) with 0% armor. Chasing formation before gear would be treating a symptom.
+DISCOVERY (the big one) — the forge PRODUCT NAME, deferred since docs/07 as "unpublished", was in our own
+database the whole time. events kind='forged'/'forge_started' (189 of each, all from rival eid 111263) carry
+it explicitly: forge_started {"product": "shield_iron", "ticks": 14}. Observed products: shield_iron 64,
+dagger 47, spear 25, sickle 19, hook_chain 11, shortsword 10, pickaxe 6, pike 5, bow 2. Cross-referencing the
+live shop stock: shield_iron, hook_chain and pike are NOT SOLD AT ALL — forging is the only route to them,
+which is exactly what docs/07 said about armor. THE M3a BLOCKER IS NOW ORE, NOT THE PRODUCT NAME.
+SELF-CORRECTION: 0.46 (shipped ~1h earlier) was hurting. It reserved lumber UNCONDITIONALLY, but a forge
+needs ingots AND lumber and we hold neither ore nor ingots — so it stockpiled a shaft with nothing to put on
+the end of it while cutting real income (lumber was 189 of #113's sales). Gold measured 139, UNDER the 150
+WEAPON_BUY_FLOOR: we could neither forge nor arm. 0.47 makes the reserve CONDITIONAL — lumber/plank/timber
+kept only when the char holds METAL (an ingot, or an ore PAIR that can still smelt; a lone ore cannot, so it
+does not count). Ingots and flux stay unconditional: scarce, directly forgeable, near-worthless sold.
+LEVER: WE NOW BUY ARMOR. Chars have five slots and in 114 runs we had bought for exactly one — the shop buy
+was gated on WEAPON_KINDS and on `hand` being empty. Our own module docstring flagged "0 with armor" long
+ago and never fixed it. shield_wood is 25g with NO stat requirement and every char has an empty offhand.
+The shop does not report slots (every `slot` field is null), so the buy reuses what EQUIPPING has learned
+(slot_wrong / wont_fit) and refuses a kind with no empty slot left it could go into — that guard is what
+stops a forever re-buy. ARMOR_BUY_FLOOR=200 sits ABOVE the weapon floor so arming a bare char always outranks
+armoring an equipped one.
+GATE: 13 feedstock tests UPDATED to the conditional rule (not weakened — the old ones correctly failed and
+were rewritten to assert the new rule plus a new "lumber with no metal SELLS" case) + 11 new armor tests.
+7 mutants, all killed; one initially SURVIVED and exposed a dead test of mine — the stat-requirement case
+used `tome_bolt`, which ARMOR_KINDS excludes anyway, so the requirement check was never exercised. Rewritten
+so the gated piece is the only armor on offer. Local 376/3; replay 2500 frames exit 0; reaper 383/2.
+REAPER INCIDENT: the gate was blocked — the session had EXPIRED (51h, heartbeat DEAD) and `reaper down`
+forgot it WITHOUT reclaiming the VM, so `reaper up` failed with "unable to create VM 9000: config file
+already exists". I wrongly concluded it needed a manual `qm destroy` on the operator's node; the operator
+corrected me (it was only ever our own session) and `reaper down --all && reaper up` recovered it cleanly.
+The real bug — `down` treats "cannot SSH to the guest" as "already gone" and skips the hypervisor-side
+destroy — is logged in /home/cal/reaper_bugs.md, with the wrong remedy corrected.
+DEPLOY: run 115, git 77e07f8, explorer/0.47.0; one clean process tree (8317/8322/8323, pgid 8315), 0 orphans.
+NEXT: measure 0.47 on a matured #115 — armor buys > 0 and armored-fraction climbing (the headline), gold
+recovering above 150 now that shaftless lumber sells again, and lumber/ingot sales NOT back to 0.45 levels.
+Then the ore problem: HARVEST_KINDS already includes `vein` but adjacency-only means we break one only by
+luck. Seeking veins is now the whole M3a chain's bottleneck — and M3a forging is the top wishlist item
+(0.5707) with its product-name blocker now GONE.
