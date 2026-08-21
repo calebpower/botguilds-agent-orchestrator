@@ -10,77 +10,83 @@ top of **Open**.
 
 ## Open
 
-- [ ] **Cross-referencing exploration matrix** — a 3D cube of *noun × verb × equipped*, scored
-  by plausibility, used to drive deliberate mechanic discovery with exploring characters.
-  (operator request 2026-08-21)
+- [ ] **Exploration matrix (A) — the cube + the frontier** *(READ-ONLY; no bot risk)* —
+  build the noun × verb × equipped cube, score its cells, and populate what we have already
+  tried. Ships an artifact, touches nothing the bot does. (operator request 2026-08-21; split
+  out of the original single item 2026-08-21 because bundling two very different risk profiles
+  under one score is the "bundled" dock the scoring rule warns about)
 
-  **The cube.** Columns = every noun we have ever encountered (tile kinds from `tiles_seen`:
-  tree, fence, rock, vein, cauldron, forge, crop, herb…; item kinds from frames/inventories/
-  drops; mob kinds from the bestiary). Rows = every action verb (`docs/03-actions` plus any
-  we have inferred: move, attack, pickup, drop, use, equip, unequip, sell, buy, brew, smelt,
-  forge, recruit, embark, cast, list, buy_listing, rest, refresh). Depth = every equippable
-  item **including `none`**, so `tree × attack × none` is a real cell alongside
-  `tree × attack × axe`.
+  **The cube.** Columns = every noun we have ever encountered (the 23 observed tile kinds —
+  floor, wall, path, water, tall_grass, tree, bush, lily, rock, crop, herb, fence, vein, web,
+  track, chest, chest_open, portal, trap, cauldron, forge, safe, grave — plus item kinds from
+  frames/inventories/drops and mob kinds from the bestiary). Rows = every action verb
+  (`docs/03-actions` plus any inferred). Depth = every equippable item **including `none`**, so
+  `tree × attack × none` is a real cell beside `tree × attack × axe`.
 
-  **The score.** Each cell carries a `prior` in 0..1: *is there something one could plausibly
-  do here — a mechanic that exists in real life or in other games?* `tree × attack × axe`
-  scores high; `grass × consume × sword` scores low. Scoring every cell individually does not
-  scale (thousands of cells), so the priors come from auditable **rule families** — e.g.
-  "chopping verb × woody target × bladed tool = high", "consume verb × non-food = low" — with
-  per-cell overrides where a family gets it wrong. The families are the reasoning; the numbers
-  are derived from them, so a new noun the game invents is scored the moment it appears.
+  **The score.** Each cell carries a `prior` in 0..1: *is there something one could plausibly do
+  here — a mechanic that exists in real life or in other games?* `tree × attack × axe` high;
+  `grass × consume × sword` low. Per-cell scoring does not scale to thousands of cells, so
+  priors derive from auditable **rule families** ("chopping verb × woody target × bladed tool =
+  high"), with per-cell overrides where a family gets it wrong. The families are the reasoning;
+  a noun the game invents tomorrow is scored the moment it appears.
 
-  **Why this is not speculation for its own sake:** the 0.45 harvest discovery *was* one cell
-  of this cube (`tree × attack × none`), found by hand. Trees/veins had sat in `nav.SOLID` as
-  scenery for the whole project. The cube is the systematic version of that, and the game is an
-  evolving target (Will's AI adds content without notice), so a standing discovery process
-  beats another lucky read of the docs.
+  **`say` gets a different depth axis.** Equipment barely varies the outcome of speaking — the
+  variable is the WORD. So `say` cells expand over a curated wordlist instead: folklore/game
+  conventions (open, sesame, friend, mellon, xyzzy, plugh) and, **ranked higher, words the world
+  itself hands us** — grave and sign text, item names, `docs/` strings, `tells`/flavour fields.
+  A word found in-world is a far better prior than one imported from Tolkien.
 
-  **Slices** (the first two are read-only and carry zero bot risk; only slice 3 touches play):
-  1. **Build the cube + the TESTED layer, retroactively.** Axes from data we already store, and
-     the "what have we already tried?" layer joined for free out of `actions_sent` ×
-     `action_errors` × `events`: what we sent, whether it bounced and with which `reason`, and
-     what happened. This alone produces the artifact worth having — **the frontier: cells with
-     a high prior that we have never once tried.** Dashboard tab; pairs naturally with the Codex.
-  2. **Priors.** The rule families above, stored and regenerated as new kinds appear.
-  3. **The experiment arm** (the risky half — build last, gate hard). Exploring-role characters
-     spend a *budgeted* fraction of idle ticks probing the top untried cells. Gates: healthy,
-     no predator within the spacing radius, not carrying anything scarce, one experiment per
-     character per N ticks with a per-run global budget, and a strict verb allowlist that grows
-     only as each verb proves harmless. An `action_error` is **information, not failure** —
-     `unknown_action` vs `out_of_range` vs `wrong_slot` tells us whether the verb exists at all,
-     which is most of what we want to learn. Every experiment logs as a first-class record so
-     the cube updates itself.
-  4. **Feedback.** A confirmed mechanic graduates into the strategy, exactly as harvest did.
+  **The tested layer comes free and retroactive.** `actions_sent` × `action_errors` × `events`
+  already records what we sent, whether it bounced and with which `reason`, and what happened.
+  Joining those yields **the frontier: high-prior cells we have never once tried** — with no new
+  action issued. Dashboard tab; pairs naturally with the Codex.
 
-  **`say` IS in scope** (operator, 2026-08-21: *"you never know if there's a door with a magic
-  word"*). The evidence backs it: across **4.3M actions sent we have never once used `say`** —
-  the verbs we have ever sent are only move, embark, attack, pickup, recruit, drop, sell, buy,
-  equip, open, use, spend_xp, brew, smelt. Meanwhile the tile vocabulary we have observed
-  contains `safe`, `grave`, `portal`, `chest`, `web` and `track` — a safe has a *combination*, a
-  grave is a thing you *speak at*, a portal is the canonical speak-friend-and-enter. `open`
-  already exists as a verb (2,948 sends) and `nothing_to_open` is a real error reason, so the
-  game clearly models openable things; whether a word opens one is exactly an unknown cell.
+  **Why the frontier is large.** Across **4.3M actions sent we have only ever used 14 verbs**:
+  move, embark, attack, pickup, recruit, drop, sell, buy, equip, open, use, spend_xp, brew,
+  smelt. Never sent: `say`, `cast`, `forge`, `list`, `buy_listing`, `unequip`, `rest`, `refresh`.
+  And nouns like `safe`, `grave`, `portal`, `web`, `track` have almost certainly never been acted
+  on — the same blind spot as trees sitting in `nav.SOLID` as scenery. The frontier is not a few
+  odd corners of the cube; it is most of the verb axis.
 
-  **`say` needs a different third axis.** Equipment barely varies the outcome of speaking; the
-  interesting variable is the WORD. So `say` cells expand over a curated wordlist rather than
-  over the equipment axis — game/folklore conventions (open, sesame, friend, mellon, xyzzy,
-  plugh, please, hello), plus any word the world itself hands us: text on graves, signs, item
-  names, `docs/` strings, and anything a `tells`/flavour field emits. Words found in-world rank
-  above words imported from folklore.
+  **Scoring:** good_idea 0.85 (produces the map, not the discoveries — the discoveries are (B));
+  risk_to_bot **1.00** (pure analysis over stored data; it cannot touch the running bot).
+  Ceiling 0.6375; **clears 0.5 at tc=7**.
 
-  **The boundary that remains** is not the verb, it is the intent. In scope: in-world utterances
-  aimed at discovering a game mechanic. Out of scope and staying in `scratchpad/` as a separate,
-  separately-authorised security probe: anything crafted to manipulate another *agent* or a
-  parser — prompt-injection payloads, impersonating the server or the dev, instructions aimed at
-  rival bots. Also: chat is public and social, so experiments are hard rate-limited and kept
-  short and obviously in-world — a bot chanting XYZZY at 12 ticks a second is antisocial and
-  invites a throttle. `say` looks cheap (likely no turn cost), which makes it an unusually good
-  experiment surface: low cost per trial, high information per success.
+- [ ] **Exploration matrix (B) — the experiment arm** *(OVERRIDE-ONLY; touches live play)* —
+  exploring-role characters spend a budgeted fraction of idle ticks probing the top untried cells
+  from (A), turning the frontier into confirmed mechanics. **Depends on (A).** (operator request
+  2026-08-21)
 
-  **Still excluded:** no experiment may sell, drop or consume an item that is not junk.
+  **Gates, all of them required:** healthy character in an exploring role; no predator within the
+  spacing radius; not carrying anything scarce; one experiment per character per N ticks with a
+  per-run global budget; and a strict verb allowlist that grows only as each verb proves harmless.
+
+  **An `action_error` is information, not failure.** `unknown_action` vs `out_of_range` vs
+  `wrong_slot` vs `nothing_to_open` tells us whether the verb exists at all, which is most of what
+  we want to learn. (`open` is already live at 2,948 sends and `nothing_to_open` is a real error
+  reason, so the game clearly models openable things — whether a *word* opens one is exactly an
+  unknown cell.) Every experiment logs as a first-class record so the cube updates itself.
+
+  **`say` is in scope** (operator: *"you never know if there's a door with a magic word"*). A
+  `safe` has a combination, a `grave` is a thing you speak at, a `portal` is the canonical
+  speak-friend-and-enter. `say` also looks cheap — likely no turn cost — which makes it the best
+  value experiment surface in the cube. **The boundary is intent, not the verb:** in-world
+  utterances aimed at discovering a mechanic are in scope; anything crafted to manipulate another
+  *agent* or a parser — prompt-injection payloads, impersonating the server or the dev,
+  instructions aimed at rival bots — stays in `scratchpad/` as a separately-authorised security
+  probe. Chat is public and social, so utterances are hard rate-limited and kept short and
+  obviously in-world; a bot chanting XYZZY at 12 ticks a second invites a throttle.
+
+  **Excluded outright:** no experiment may sell, drop or consume an item that is not junk.
   Destructive-to-us verbs are the one place a wrong prior costs real progress rather than one
   wasted tick.
+
+  **Scoring:** good_idea 0.88; risk_to_bot **0.70** (issues novel actions on live characters —
+  wasted turns, possible item loss, possible aggro). Ceiling 0.462 — **it never clears 0.5 at any
+  age, by design.** That is the formula stating the right thing: an arm that puts untried actions
+  on live characters should always need an explicit operator override, not age its way in.
+
+  **Graduation:** a confirmed mechanic feeds the strategy, exactly as harvest did in 0.45.
 
 - [ ] **Move-prediction model — mobs AND rival players** — (a) MOBS: SHIPPED 2026-08-20
   (steemer/mob_predict.py — rule-based predict()/evaluate(), validated live #97: exact 0.81,

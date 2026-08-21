@@ -2687,3 +2687,26 @@ DESIGN NOTE: `say` needs a different third axis. Equipment barely varies the out
 expand over a curated WORDLIST instead: folklore/game conventions (open, sesame, friend, mellon, xyzzy, plugh)
 plus — ranked higher — words the world hands us (grave/sign text, item names, docs strings, `tells` flavour).
 Hard rate-limit: chat is public and social; short, obviously in-world utterances only.
+WISHLIST SPLIT (operator-directed, same day): the exploration matrix is now TWO items, because bundling two
+very different risk profiles under one score is exactly the "bundled" dock the scoring rule warns about.
+ (A) **cube + frontier** — READ-ONLY: axes from data we already store, priors from auditable rule families,
+     and the TESTED layer joined retroactively from actions_sent x action_errors x events. good_idea 0.85 x
+     risk_to_bot 1.00 (pure analysis; cannot touch the running bot). Ceiling 0.6375, CLEARS 0.5 AT tc=7.
+ (B) **experiment arm** — touches live play: exploring-role chars probe top untried cells behind health/
+     predator/carry/budget/allowlist gates. good_idea 0.88 x risk_to_bot 0.70. Ceiling 0.462 — it NEVER
+     clears 0.5 at any age, and that is the formula saying the right thing: an arm that puts untried actions
+     on live characters should always require an explicit operator override rather than ageing its way in.
+     Depends on (A). `say` is in scope here (intent is the boundary, not the verb).
+As one bundled item it was 0.88 x 0.80, ceiling 0.528, clearing 0.5 only at tc=26 (~26 deploys) — i.e. the
+read-only half was being held back for a quarter of a year of passes by risk that belongs entirely to the
+half that is not read-only.
+CORRECTION to this pass's table: tc = deploys since added, NOT passes. This pass shipped NO strategy deploy
+(infrastructure only, explorer/0.45.0 unchanged and deliberately not bumped), so current deploy-minor is 45,
+not the 46 I used earlier today — every tc I printed was one too high. No decision changes (how-nav is 0.5020
+rather than 0.5026, still over 0.5), but the corrected table is the one of record:
+how-nav 0.5020 (SHIPPED) > rival-recon 0.4921 > rival-awareness 0.4873 > trash-talk 0.4780 >
+move-pred(b) 0.4459 > band-refresh 0.4442 > predator-memory 0.3564 > log-scale 0.3075 >
+matrix(B) -0.1540 > matrix(A) -0.2125 (both just-added, tc=1).
+Note (A) scores BELOW (B) right now purely because the -0.25 just-added factor multiplies a larger
+good_idea x risk product. That inversion is an artefact of tc=1 and disappears at tc=2; do not read it as a
+ranking. NEXT PASS remains forge-to-arm slice 2 per the operator's decision.
