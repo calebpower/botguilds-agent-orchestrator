@@ -455,6 +455,17 @@ COHESION_HOLD = 2          # ...and stop once within this. The GAP is deliberate
                            # hysteresis two chars each closing on the other oscillate, and
                            # cohesion-vs-spacing is the known deadlock hazard (v0.37).
 COHESION_PRED_DENSE = 2    # a world with this many melee predators in view counts dangerous
+# v0.48.1 — 0.48.0 shipped INERT. Measured on run #116: cohesion was offered 28 times and
+# chosen 0, losing every single time to "moving toward loot" (4.0). Placing it at 2.8 to
+# avoid displacing income was correct in intent and useless in practice, because loot is
+# almost always available, and the existing ladder already puts gathering ABOVE spacing —
+# so "below spacing" forces "below gathering" too, and cohesion can never win a tick.
+# The fix is not a higher score, which would cost income and break the spacing ordering:
+# it is to stop COMPETING with gathering and instead BIAS it. When a character is out of
+# position in a dangerous world, prefer loot that lies near an ally. Same action, same
+# score, same income — the formation just closes while we work.
+COHESION_DETOUR = 10       # ...but only if such loot is within this far, so forming up can
+                           # never send a character across the map past nearer loot.
 PRED_SPACING_RADIUS = 2    # v0.37.0: step away from a MELEE predator this close (not yet
 #   adjacent) BEFORE it lands the first hit — the anti-stuck lever (see the act() block).
 # v0.38.0 MODE-GATED SPACING: 0.37 spaced at a flat 3.0 in EVERY band, which cost ~-49%
@@ -673,7 +684,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.48.0"
+    version = "explorer/0.48.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1276,6 +1287,19 @@ class Explorer:
         # grabs or chases loot re-fills — and would re-grab the item it just shed
         # off its own tile (the 0.15.0 thrash). It should walk its haul home.
         productive = False   # v0.36.0: did anything worth staying for turn up this tick?
+        # v0.48.1 COHESION CONTEXT, computed once and used twice: to bias which loot we
+        # walk toward (below) and, failing that, as a standalone move when there is nothing
+        # to gather at all. `form_up` is the whole gate — a dangerous world, an ally to
+        # form on, and a gap wider than the hysteresis threshold.
+        allies = [tuple(c["pos"]) for c in frame.get("chars", []) or []
+                  if c.get("char_uid") != uid and c.get("pos")]
+        form_up = bool(allies) and not homing and self._world_is_dangerous(ctx.world, bot.tick)
+        if form_up:
+            _gap = min(abs(pos[0] - a[0]) + abs(pos[1] - a[1]) for a in allies)
+            # Hysteresis: once closing, keep closing until inside HOLD.
+            form_up = _gap > (COHESION_HOLD if uid in self._cohering else COHESION_PULL)
+            if not form_up:
+                self._cohering.discard(uid)
         if not homing:
             if pos in ctx.loot or pos in ctx.gold:
                 offer({"char_uid": uid, "action": "pickup"}, 6.0, "loot/gold underfoot — grab it")
@@ -1297,10 +1321,22 @@ class Explorer:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, cstep)},
                           4.5, "beeline to a chest (direct gold + loot)")
                     productive = True
-                lstep = self._step(pos, lambda p: p in ctx.loot, ctx, blocked)
+                # v0.48.1: while out of position in a dangerous world, prefer loot that
+                # lies near an ally — gathering and forming up at the same time, at the
+                # same score, instead of cohesion losing this tick and every other one.
+                loot_goal, loot_why = ctx.loot, "moving toward loot"
+                if form_up:
+                    toward = {q for q in ctx.loot
+                              if min(abs(q[0] - a[0]) + abs(q[1] - a[1]) for a in allies)
+                              <= COHESION_PULL
+                              and abs(q[0] - pos[0]) + abs(q[1] - pos[1]) <= COHESION_DETOUR}
+                    if toward:
+                        loot_goal = toward
+                        loot_why = "moving toward loot near an ally (forming up as we work)"
+                lstep = self._step(pos, lambda p: p in loot_goal, ctx, blocked)
                 if lstep:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, lstep)},
-                          4.0, "moving toward loot")
+                          4.0, loot_why)
                     productive = True
 
             # v0.41.0 COMBAT-SEEK (B): with no better income underfoot, a DEVELOP char CLOSES on
@@ -1373,13 +1409,9 @@ class Explorer:
                 # rather than displacing income, and it loses outright to spacing (3.0),
                 # the dodge (7.3) and the retreat (8.5). A homing char is exempt (it is
                 # walking to the village); so is a world we have not scouted. ---
-                allies = [tuple(c["pos"]) for c in frame.get("chars", []) or []
-                          if c.get("char_uid") != uid and c.get("pos")]
-                if allies and self._world_is_dangerous(ctx.world, bot.tick):
+                if form_up:
                     gap = min(abs(pos[0] - a[0]) + abs(pos[1] - a[1]) for a in allies)
-                    # Hysteresis: once closing, keep closing until inside HOLD.
-                    threshold = COHESION_HOLD if uid in self._cohering else COHESION_PULL
-                    if gap > threshold:
+                    if True:
                         step = self._cohesion_step(pos, allies, ctx, blocked)
                         if step is not None:
                             self._cohering.add(uid)

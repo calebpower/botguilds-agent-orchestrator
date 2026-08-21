@@ -224,3 +224,70 @@ def test_a_QUIETER_look_does_not_lower_a_recent_danger_reading():
     bot.on_frame(_frame([_char("c1", (0, 0))], world="mines", tick=11))
     frac, preds, _ = strat._world_danger["mines"]
     assert frac == 0.5 and preds == 5, strat._world_danger["mines"]
+
+
+# ---- v0.48.1: cohesion BIASES gathering instead of competing with it ----------
+
+def _frame_loot(chars, loot, world="mines", tick=10, w=20):
+    tiles = [[x, y, "floor"] for x in range(w) for y in range(w)]
+    return {"world": world, "tick": tick, "chars": chars,
+            "visible": {"tiles": tiles, "entities": [],
+                        "items": [{"pos": list(p)} for p in loot], "gold": []}}
+
+
+def test_out_of_position_it_walks_to_loot_NEAR_AN_ALLY():
+    """0.48.0 shipped inert: cohesion was offered 28 times on run #116 and chosen 0,
+    losing every tick to "moving toward loot" (4.0). Raising its score was the wrong fix —
+    the ladder already puts gathering above spacing, so "below spacing" forces "below
+    gathering". Instead the gather TARGET is biased, so we gather and form up at once.
+
+    Two loot piles equidistant-ish from the character; only one is near the ally. It must
+    choose that one, and it must still be a LOOT move, not a cohesion move — income intact.
+    """
+    bot = _bot()
+    me, ally = _char("c1", (10, 10)), _char("c2", (2, 10))
+    _mark_dangerous(bot, "mines", 10)
+    acts = bot.on_frame(_frame_loot([me, ally], loot=[(3, 10), (17, 10)]))
+    mine = [a for a in acts if a.get("char_uid") == "c1"]
+    assert mine and mine[0]["action"] == "move", mine
+    assert mine[0]["dir"] == "W", f"went for the loot away from the ally: {mine[0]}"
+
+
+def test_in_a_SAFE_world_it_takes_the_NEARER_loot_not_the_ally_side_one():
+    """The control, and it must OFFER A CHOICE to mean anything: loot on both sides, the
+    ally-side pile FARTHER. In a safe world the bias must not apply, so the character takes
+    the nearer pile. The first version put loot only to the east, so removing the world
+    gate changed nothing and a mutant survived."""
+    bot = _bot()
+    me, ally = _char("c1", (10, 10)), _char("c2", (2, 10))
+    # west pile (3,10) is 7 away and beside the ally; east pile (13,10) is only 3 away
+    acts = bot.on_frame(_frame_loot([me, ally], loot=[(3, 10), (13, 10)], world="vale"))
+    mine = [a for a in acts if a.get("char_uid") == "c1"]
+    assert mine and mine[0].get("dir") == "E", f"biased toward the ally in a SAFE world: {mine}"
+
+
+def test_a_gap_INSIDE_the_hysteresis_band_does_not_start_forming_up():
+    """Exercises the gap between HOLD (2) and PULL (4), which nothing else did — every
+    other test uses a gap far outside it, so a mutant collapsing the two thresholds into
+    one survived. At gap 3, a character not already closing must NOT start."""
+    bot = _bot()
+    me, ally = _char("c1", (5, 10)), _char("c2", (2, 10))      # gap 3: HOLD < 3 < PULL
+    _mark_dangerous(bot, "mines", 10)
+    assert "c1" not in bot.strategy._cohering
+    # ally-side pile (1,10) is 4 away; the east pile (7,10) is only 2 away
+    acts = bot.on_frame(_frame_loot([me, ally], loot=[(1, 10), (7, 10)]))
+    mine = [a for a in acts if a.get("char_uid") == "c1"]
+    assert mine and mine[0].get("dir") == "E", f"started forming up inside the band: {mine}"
+
+
+def test_it_will_not_cross_the_map_to_form_up():
+    """COHESION_DETOUR bounds the bias: ally-side loot that is very far away must not pull
+    a character past everything nearer. Without the bound, forming up would cost real
+    income on a large map."""
+    bot = _bot()
+    me, ally = _char("c1", (18, 10)), _char("c2", (0, 10))
+    _mark_dangerous(bot, "mines", 10)
+    # ally-side loot at (1,10) is 17 away — beyond COHESION_DETOUR; nearer loot sits east
+    acts = bot.on_frame(_frame_loot([me, ally], loot=[(1, 10), (19, 10)]))
+    mine = [a for a in acts if a.get("char_uid") == "c1"]
+    assert mine and mine[0].get("dir") == "E", f"crossed the map to form up: {mine[0]}"
