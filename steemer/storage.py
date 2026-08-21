@@ -106,6 +106,26 @@ class Storage:
             )
         self._tick_commit()
 
+    def load_known_tiles(self) -> dict[str, dict[tuple[int, int], str]]:
+        """Every tile we have ever seen, as ``{world: {(x, y): kind}}``.
+
+        The counterpart to the ``tiles_seen`` upsert above, which had no reader: the map
+        was written on every frame and never once read back, so each redeploy started
+        map-blind and re-learned ground it already knew. We redeploy several times a day.
+
+        Deliberately returns kinds only, with no recency filter. The map is a HINT, not an
+        authority — a live frame overwrites any tile the moment a character sees it, and a
+        remembered tile that has since changed costs at most one bounced move, which
+        v0.50.0's server-driven learned-block already absorbs. Filtering by ``last_tick``
+        would trade that bounded, self-correcting cost for the unbounded one of not knowing
+        the map at all.
+        """
+        out: dict[str, dict[tuple[int, int], str]] = {}
+        cur = self.conn.execute("SELECT world, x, y, kind FROM tiles_seen")
+        for world, x, y, kind in cur.fetchall():
+            out.setdefault(world, {})[(int(x), int(y))] = kind
+        return out
+
     def record_actions(self, tick: int, actions: Iterable[dict[str, Any]]) -> None:
         rows = [(tick, a.get("char_uid"), a.get("action"), json.dumps(a), self.run_id)
                 for a in actions]

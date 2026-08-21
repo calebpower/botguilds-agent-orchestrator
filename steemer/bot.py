@@ -32,6 +32,19 @@ class GuildBot:
         self.strategy: Strategy = get_strategy(strategy) if isinstance(strategy, str) else strategy
         self.storage = storage
         self.known: dict[str, dict[tuple[int, int], str]] = {}   # world -> tiles
+        # v0.55.0: HYDRATE that map from storage. Without this the bot starts every run
+        # map-blind, and v0.54.0's vein-seek measured what that costs: it never fired ONCE
+        # in 7,714 frames, because the 85 vein tiles it was built to walk to live in the
+        # accumulated map and a fresh run has seen almost none of them. (Run #130 saw 2
+        # unique vein positions across 32k frames; the database knows 85.) Best-effort by
+        # design — a bot with no storage, a read-only replay, or a schema that predates the
+        # table must still start, just map-blind as before.
+        if storage is not None:
+            try:
+                self.known = storage.load_known_tiles()
+            except Exception as e:      # pragma: no cover - exercised by the None path
+                print(f"[map] could not hydrate known tiles ({e}) — starting map-blind",
+                      flush=True)
         # Per-world tiles a move_failed event says we could not enter, with the tick
         # it last bounced (expired after STUCK_BLOCK_TTL). v0.50.0 removed the
         # position-inference that used to feed this: see on_frame.
