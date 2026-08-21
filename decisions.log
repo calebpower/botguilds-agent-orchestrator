@@ -2871,3 +2871,13 @@ SUPPORTING MEASUREMENTS made this pass (all from data we already had):
 TABLE at deploy-minor 47 — EIGHT qualify: M3a forging 0.571 · shadow-eval 0.563 · magic/cast 0.552 ·
 rival-recon 0.550 · adaptive cohesion 0.539 · band-refresh 0.525 · trash-talk 0.513 · player market 0.506.
 NEXT unchanged: measure 0.47 on a matured #115, then the ORE problem — which is now also the raid target.
+OPERATOR DIRECTIVE (2026-08-21): NEXT PASS BUILDS ADAPTIVE COHESION (0.48.0), explicitly INSTEAD of the ore
+lever. Not a re-litigation of the wishlist — a direct instruction, and a sound one: the mines raid IS the ore
+run, so the M3a thread is approached from the other side rather than dropped. Design decisions already
+settled and written into HANDOFF so the pass builds rather than re-derives: gather when CLEAR (not when
+threatened — reactive is ~16 ticks too slow against a 6-tick median TTK at our 22-25 step spread); score slot
+~2.8 (above frontier 2.5, BELOW spacing 3.0 so predator-avoidance always wins); gate on the existing v0.38
+band-severity signal plus world (cohere mines/spire, stay dispersed in vale); hysteresis 4/2 against the
+two-chars-closing oscillation; cohesion-vs-spacing ordering is the known deadlock hazard (v0.37 precedent).
+Falsification stated in advance: pairwise distance falls in mines/spire but NOT vale; deaths don't rise;
+damage-taken per kill falls; move_failed doesn't rise (the oscillation tell); vale gathering unchanged.

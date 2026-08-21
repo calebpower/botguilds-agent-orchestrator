@@ -201,15 +201,40 @@ one eid/tile over many ticks → add a per-tile give-up)? move_failed not worse?
 2. 0.44 + 0.45 are MEASURED (iter 58): harvest is entirely ours, 4.1 hits/destroy, no pinning,
    and #103's deaths were the outage window, not the mechanic. **Beware the attribution trap:**
    `eid` (numeric) and `char_uid` (string) are different namespaces — see `decisions.log` iter 58.
-3. **Measure 0.47 on a matured #115:** armor buys > 0 and armored-fraction climbing (the headline —
-   it was 0% for 114 runs); gold holding above 150 and reaching the 200 ARMOR_BUY_FLOOR; lumber
-   sales present but not back to 0.45 levels; carry-`full`/move_failed not worse.
-   **Then the ORE problem** — the whole M3a chain's bottleneck. `HARVEST_KINDS` already includes
-   `vein`, but harvest is adjacency-only so we break one purely by luck. Seeking veins is the next
-   lever, and M3a forging is the top wishlist item (0.5707) with its product-name blocker GONE.
-   Forge products confirmed from rival events: shield_iron, dagger, spear, sickle, hook_chain,
-   shortsword, pickaxe, pike, bow — and shield_iron/hook_chain/pike are NOT sold in the shop at all.
-   NOTE: the new **cross-referencing exploration matrix** wishlist item stays QUEUED by operator
-   decision — it scores -0.176 only because it is just-added (tc=1), and the operator declined a
-   one-off override. It accrues tc normally; do not re-litigate it next pass.
-4. Show the wishlist table; record; commit + push; schedule the next wakeup.
+3. **Measure 0.47 on a matured #115** (start of pass, as usual): armor buys > 0 and
+   armored-fraction climbing (it was 0% for 114 runs); gold holding above 150 and reaching
+   the 200 ARMOR_BUY_FLOOR; lumber sales present but not back to 0.45 levels;
+   carry-`full`/move_failed not worse.
+
+4. **BUILD ADAPTIVE COHESION (0.48.0) — operator-directed 2026-08-21, explicitly INSTEAD of
+   the ore lever.** Wishlist item "Adaptive cohesion / raids", 0.539, qualifies. Do not
+   re-litigate the ordering; the mines raid IS the ore run, so this does not drop the M3a
+   thread, it approaches it from the other side.
+
+   **Design already settled — build, don't re-derive:**
+   - **Gather when CLEAR, not when threatened.** This inverts the obvious phrasing for a
+     measured reason: median solo TTK is 6 ticks, our mean pairwise distance is 22-25 steps
+     at a tile/tick, so "gang up, a mob is near" arrives ~16 ticks after the fight ended.
+     Cohesion must be a STANDING leash held while in a dangerous world/band, so the second
+     attacker is already adjacent when anything starts. Only the spreading-out half can be
+     reactive.
+   - **Score slot: ~2.8.** Above frontier (2.5) and scout (1.0) so it pulls idle characters
+     together; BELOW `SPACE_SCORE_SEVERE` (3.0) so predator-spacing always wins — never walk
+     into a mob to reach a friend; below gather (4.0), loot, adjacent-attack (8.0) and
+     retreat (8.5), which must all keep their precedence.
+   - **Gate on the EXISTING band-severity signal** (v0.38) plus world: cohere in
+     mines/spire, stay dispersed in vale (wildlife, 4.93 deaths/1k, our gathering economy).
+   - **Hysteresis, or it will oscillate:** pull when nearest-ally distance > 4, stop at <= 2.
+     Two characters both closing on each other is the obvious jitter case, and
+     cohesion-vs-spacing is the known deadlock hazard (v0.37 anti-stuck is the precedent for
+     how that goes wrong). Order the scores deliberately; never leave them to tie.
+   - Reuse `nav` for distance and the existing per-char roles (v0.39) if a
+     guardian-holds/forager-ranges split helps.
+
+   **Falsification — state these BEFORE deploying:** mean pairwise distance in mines/spire
+   must FALL (from 22-25 toward <8) while vale is UNCHANGED; our-char deaths must not rise
+   and damage-taken per kill should fall; `move_failed` must not rise (that is the
+   oscillation tell); vale gathering (foraged/pickup/gold per 1k) must be unchanged.
+   Mines gathering may fall — acceptable only if kills/XP rise to pay for it.
+
+5. Show the wishlist table; record; commit + push; schedule the next wakeup.
