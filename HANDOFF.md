@@ -19,10 +19,9 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 - **Current focus (operator direction, late Aug 2026):** *master every game mechanic + LEVEL
   characters while the map-progression window is open.* Gold is a FLOOR (gather only when low),
   not the goal. Also: reverse-engineer rivals.
-- **Active work:** the **FORGE-TO-ARM probe** — Slice 1 (harvest) just shipped & confirmed live.
-  See "In progress" below.
-- **Next scheduled loop wakeup:** ~01:39 (a ScheduleWakeup is pending; its prompt measures
-  0.44+0.45 and continues the forge probe). If you're resuming manually, just run a loop pass.
+- **Active work:** the **FORGE-TO-ARM probe** — Slice 1 (harvest) shipped and now MEASURED
+  (iter 58). Slice 2 is next, gated on the yield question. See "In progress" below.
+- **Resuming:** just run a loop pass. Start with `uv run python tools/healthcheck.py`.
 
 ## How to operate
 
@@ -31,12 +30,14 @@ deploy against prior runs → diagnose → implement ONE lever → mutation-chec
 (pytest + bounded replay + `reaper test`) → commit → self-deploy → record (decisions.log +
 findings.jsonl) → update memory → schedule next wakeup with the loop prompt.
 
-**Services** (`./svc.sh {up|down|restart|status} {bot|web|dash}`, runs directly — NOT via make,
-NOT run_in_background):
+**Services** (`./svc.sh {up|down|restart|status|pgid} {bot|web|dash|watch}`, runs directly — NOT
+via make, NOT run_in_background):
 - `bot` = the live player (`run-live.sh` supervises `steemer.runner`).
 - `web` = sidecar (`tools/web_sidecar.py`): map-color rotation @1s + rival intel/spectate +
   rival position tracking (writes `intel` table, kind='track').
 - `dash` = dashboard (`ui/server.py`, port 8800).
+- `watch` = the supervisor (`tools/healthcheck.py --watch 60 --fix`): restarts a dead bot/web/dash
+  and repairs an ABI-broken venv. Logs to `healthcheck.log`, and ONLY when something is wrong.
 
 **✅ DEPLOY GOTCHA — FIXED 2026-08-21, the manual dance below is no longer needed.**
 `./svc.sh down bot` used to leave the old `steemer.runner` alive because daemon(8) records
