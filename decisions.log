@@ -2285,3 +2285,19 @@ WISHLIST (tc=39-add_minor): how-nav 0.72*0.97*0.713=0.497, rival-awareness 0.483
 all <0.5. Codex/heatmap/story shipped. Nothing qualifies; none implemented.
 NEXT: re-measure on a coin-RICH band (income payoff is the missing axis) + await operator direction on
 the forager-boldness fix.
+
+ITER 47 (2026-08-20) — OPERATOR PICKED my favorite Phase-2 fix. SHIPPED + DEPLOYED explorer/0.39.1
+= FORAGER BOLDNESS GATED ON VALUE-TO-GATHER. A forager only earns its bold spacing thresholds when
+ctx.gold/loot/containers is non-empty (value in view); in a coin-dry band it reverts to the cautious
+(guardian) thresholds and disengages. Fixes the iter46 flaw: bold foragers were dying in coin-dry
+bands (#96) for zero income, re-feeding the death->recruit drain (deaths 0.386->0.500, move_failed
+23.6->45.7, recruit 1.11->2.34, all up while coins=0). Now the roster only takes forager risk where
+there's something to gain.
+GATE green: local 273/3; replay 1200 frames 0 errors with forager-bold 71 / forager-barren 10 /
+guardian 4 (value-gate discriminates live); reaper 279/2. Mutation-checked (drop the has_value gate ->
+barren test fails). Also fixed a shared-bot-state bug in the old role test (false pass). Committed
+07ce814, pushed. Redeployed run #97 (pid 74038, watchdog alive).
+PREDICT #97 vs #96: in coin-dry bands forager deaths DROP (they play safe) -> overall our-death and
+move_failed FALL back toward #95's 0.386/23.6, recruit falls; in coin-rich bands foragers still gather
+(bold). Re-verify Phase 2 with the role-split + coins-available check on #97. If the death/move_failed
+rise reverses, Phase 2 (with this fix) is a decent add -> THEN build Phase 3 (Prospector).
