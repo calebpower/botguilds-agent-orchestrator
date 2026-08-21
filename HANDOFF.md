@@ -6,8 +6,10 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.45.0` on **run #103**, git `0f54b48` (repo HEAD `463cb83`), branch `main`.
-  Bot writing frames ~12/s, staleness <1s. Watchdog alive. 3 services up (bot/web/dash).
+- **Live:** `explorer/0.45.0` on **run #113**, repo HEAD `5f9e0ef`, branch `main` (pushed).
+  Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
+  `watch` is the new always-on supervisor (`tools/healthcheck.py --watch 60 --fix`), which
+  restarts a dead service and repairs a broken venv. Start it with `./svc.sh up watch`.
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
   playing the BotGuilds multiplayer game (`bot.willmorrison.net`, ZeroMQ wire + HTTPS API).
   The strategy is `steemer/strategy/explorer.py`. Each loop pass: measure → diagnose → ship
@@ -36,15 +38,13 @@ NOT run_in_background):
   rival position tracking (writes `intel` table, kind='track').
 - `dash` = dashboard (`ui/server.py`, port 8800).
 
-**⚠️ DEPLOY GOTCHA (hit repeatedly):** `./svc.sh down bot` LEAVES the old `steemer.runner`
-process alive. Procedure that works:
-```
-OLD=$(pgrep -f "steemer.runner" | tr '\n' ' ')
-./svc.sh down bot; sleep 2
-kill $OLD; sleep 2
-pgrep -f "run-live.sh|steemer.runner"   # confirm ZERO before continuing
-./svc.sh up bot
-```
+**✅ DEPLOY GOTCHA — FIXED 2026-08-21, the manual dance below is no longer needed.**
+`./svc.sh down bot` used to leave the old `steemer.runner` alive because daemon(8) records
+the CHILD pid while the process-group LEADER is daemon itself, so `kill -TERM -$pid` hit a
+group that does not exist (proof: bot pid 2510, pgid 2508). `svc.sh` now resolves the real
+pgid, kills the descendant tree, and REPORTS any survivor instead of swallowing it — so
+`./svc.sh restart bot` is enough. (Historical workaround, kept only for context:
+`OLD=$(pgrep -f steemer.runner); ./svc.sh down bot; kill $OLD; pgrep -f run-live.sh`.)
 Then VERIFY liveness via the DB with a FRESH MariaDB connection (reused conns give a stale
 `MAX(received_at)`): check `runs.strategy_version`/`git_sha` for the newest run and frame
 staleness. A `kicked: another session hello'd — exiting` log line at redeploy is GRACEFUL
@@ -124,7 +124,9 @@ mines pillar) with ingot + lumber (+ flux) → a hafted weapon.
 **Slices:**
 - ✅ **Slice 1 (0.45) — harvest.** Done & confirmed live (lumber flowing, 0 deaths).
 - ⏳ **Slice 2 — seek + tool.** Path toward nearby resources when idle; prefer the axe/pickaxe
-  (a `pickaxe` already shows in inventories). Measure lumber/ore accumulation rate.
+  (a `pickaxe` already shows in inventories). **Measure the YIELD question FIRST:** on run #103,
+  133 terrain_destroyed produced only 8 lumber `drop` events (~6%). Measure material STOCK, not
+  destroy counts — a tool may be exactly what changes the conversion.
 - ⏳ **Slice 3 — forge + product-name discovery.** Probe the forge event's `product`/`tells` to
   learn the hafted-weapon product name (the piece deferred long ago), then craft ingot+lumber→weapon.
 - ⏳ **Slice 4 — wire to arming.** Prefer forging a weapon over the gold-gated buy → breaks the throttle.
@@ -135,10 +137,15 @@ one eid/tile over many ticks → add a per-tile give-up)? move_failed not worse?
 
 ## Open flags / next candidates (not yet built)
 
-- **Watchdog-cron gap:** `steemer/watchdog.py` is a read-only CLI but is NOT wired into cron (only
-  `archive_frames.py` is), so its "coverage" is illusory — a dead bot wouldn't be auto-caught.
-  Recommend cron-scheduling it + a sidecar-liveness extension. (Not done autonomously — it's the
-  operator's crontab.)
+- **~~Watchdog-cron gap~~ — CLOSED 2026-08-21** without needing the operator's crontab: the
+  supervisor is a 4th *service* (`./svc.sh up watch`), covering bot frames, sidecar `intel`
+  freshness and the dash port. It survives a reboot only if the operator starts it, though —
+  **if you find `watch` down, start it first.**
+- **venv ABI break after an OS update (WILL recur):** a FreeBSD/python update makes `uv` rebuild
+  `.venv` and reinstall a CACHED locally-compiled pyzmq built for the previous interpreter →
+  SIGSEGV (exit 139) on every start. Repair:
+  `uv pip install --no-cache --no-binary pyzmq --force-reinstall pyzmq` then
+  `uv cache clean pyzmq --force`. The supervisor now smoke-tests and repairs this itself.
 - **rival-recon dashboard** (operator's reverse-engineering priority): ~0.47 on the wishlist after
   honest stale-data dock. The rival position-tracking data IS flowing (`intel` kind='track'). Worth
   an explicit operator greenlight (like the codex got).
@@ -177,9 +184,11 @@ one eid/tile over many ticks → add a per-tile give-up)? move_failed not worse?
 
 ## Immediate next action for the new session
 
-1. Health check (services + watchdog + fresh-conn DB liveness; run the submodule check).
-2. Measure 0.44 (delta port — no regressions, any refresh requests) + 0.45 (harvest yield + safety,
-   watch for pinned-on-tree thrash) on the matured run #103.
-3. Continue the forge-to-arm probe (Slice 2 seek+tool, or Slice 3 forge+product-name) — full gate,
-   careful redeploy. Measure between slices.
+1. Health check — now one command: `uv run python tools/healthcheck.py` (exit 0/1/2, JSON).
+   Confirm all FOUR services incl. `watch`; run the submodule check.
+2. 0.44 + 0.45 are MEASURED (iter 58): harvest is entirely ours, 4.1 hits/destroy, no pinning,
+   and #103's deaths were the outage window, not the mechanic. **Beware the attribution trap:**
+   `eid` (numeric) and `char_uid` (string) are different namespaces — see `decisions.log` iter 58.
+3. Forge-to-arm Slice 2 — but answer the YIELD question first (does material STOCK accumulate?).
+   Then Slice 3 (forge + product-name discovery).
 4. Show the wishlist table; record; commit + push; schedule the next wakeup.
