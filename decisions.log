@@ -2881,3 +2881,36 @@ band-severity signal plus world (cohere mines/spire, stay dispersed in vale); hy
 two-chars-closing oscillation; cohesion-vs-spacing ordering is the known deadlock hazard (v0.37 precedent).
 Falsification stated in advance: pairwise distance falls in mines/spire but NOT vale; deaths don't rise;
 damage-taken per kill falls; move_failed doesn't rise (the oscillation tell); vale gathering unchanged.
+
+ITER 61 (2026-08-21) — 0.48.0 ADAPTIVE COHESION deployed on run #116 (operator-directed, brought forward at
+the operator's request rather than waiting for the scheduled wakeup).
+MEASURED 0.47 FIRST (run #115, 19k frames): PARTLY worked. Income recovered — lumber sales 0.41 -> 2.66 per
+1k frames, so the conditional feedstock reserve is doing its job. Armed(hand) fraction 22% -> 40%. And the
+EQUIP step placed gear into offhand/outfit/trinket/boots for the first time (9 non-hand equips vs 0 on #114).
+BUT ZERO ARMOR PURCHASES: gold sits at 139 and peaks ~165 against ARMOR_BUY_FLOOR=200, so the branch never
+fires. The buy is correct and starved. The sink is visible and is its own lever: 14 clubs bought on #115 and
+31 on #114 — recruits keep arriving bare and we keep paying 15g to arm them. NOT changed this pass; lowering
+the floor would not help while gold cannot reach it either way.
+LEVER: adaptive cohesion. Design was settled last pass from measurement (see decisions above): standing
+leash, score 2.8 (above frontier 2.5, strictly below spacing 3.0), gated on world danger, hysteresis 4/2,
+homing exempt, unscouted worlds default to DISPERSE.
+TWO THINGS THE BUILD ITSELF TAUGHT:
+ * The per-world danger reading had to be MAX-over-TTL, not the instantaneous view. Written naively
+   (overwrite every tick) a character standing in a quiet frame reset the world to "safe" on the spot, which
+   makes a STANDING formation impossible by construction — the feature would have shipped inert. Caught by a
+   wiring test failing, not by review. Timestamp refreshes only when danger is actually SEEN, so an emptied
+   world still ages out and is re-scouted.
+ * `_world_threat` (undead-only, built for safe-world routing) was the obvious gate and would have been
+   WRONG: it reads ~0 in the mines, whose bats/rats/moles/delvers are melee predators rather than undead —
+   so we would have stayed dispersed in precisely the world we most want to raid. Danger counts both.
+GATE: 17 new tests. 8 mutants, ALL KILLED — two initially survived and both exposed real test defects of
+mine: the wiring tests put the ally NORTH, where the frontier push also moves north, so "moved north" could
+not distinguish cohesion from ordinary exploring (ally moved WEST, which nothing else in the ladder produces);
+and the lone-character test only asserted "does not crash", which a mutant counting a character as its own
+ally passed happily. 393 local/400 reaper; replay 3000 real frames exit 0.
+DEPLOY: run 116, git 435fd4e, explorer/0.48.0; one clean tree (9240/9245/9246, pgid 9238), 0 orphans.
+FALSIFICATION (stated before deploy): mean pairwise distance must FALL in mines/spire and stay flat in VALE;
+our-char deaths must not rise; damage taken per kill should fall; move_failed must not rise (the oscillation
+tell); vale gathering per 1k unchanged. Mines gathering may fall, acceptable only if kills/XP rise to pay.
+NEXT: measure 0.48 on a matured #116 against exactly those criteria. Then either the CLUB-CHURN / gold sink
+(which is what is starving both the armor buy and the forge) or ore-seeking for M3a (0.571, still top).
