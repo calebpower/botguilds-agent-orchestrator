@@ -2410,3 +2410,43 @@ NEXT: confirm 0.41 holds as #99 matures / #100 rolls (deaths stay ~0, xp/level k
 doesn't worsen). Then the next leveling refinement pending operator input: wire mob_predict into combat-
 seek (attack from a predicted-safe angle) and/or a develop-mode push-NORTH boost (deeper=more XP). Rival-
 recon + move-pred(b) ready on operator go.
+
+ITER 52 (2026-08-20) — CONFIRM 0.41 on matured #99 + ROOT-CAUSE fix of the stuck-death (0.42.0).
+0.41 HOLDS on the fuller run #99 (54k frames): our-char deaths/1k 0.147 (8 deaths, still WELL under
+the #97 baseline 0.402 — NO spike); xp-events/1k 0.995 (+44% vs #98, climbing); move-fail fraction
+0.019 (stable). avg character level READS lower (3.48) ONLY because recruiting resumed (46 recruit
+events -> fresh level-1s dilute the mean); xp-RATE is the clean leveling signal and it's up. So combat-
+seek is still a win.
+DEATH DIAGNOSIS (the important part): traced all 8 our-char deaths. They are NOT combat-seek — every
+victim was HURT (hp<60%, so combat-seek's hp>=70% gate was inactive) and chose REST while a wolf PACK
+cornered it, bleeding out at FULL stamina (48-56); one victim wasn't even armed. Combat-seek's swarm/
+undead/hurt guards all held (no char died fighting). This is the pre-existing "rests-while-hurt-cornered"
+stuck-death the survival arc has chased.
+ROOT CAUSE FOUND (bot.py learned-block): the STUCK_BLOCK mechanism blacklists a tile whenever a char's
+move fails to land, but NEVER checked WHY. Run #99 had 9687 not_enough_stamina move errors and ~0 wall
+bounces -> the learned-block was almost entirely poisoning walkable 'path' tiles from the frame-stale
+stamina margin. Traced exactly: Recruit-15172 rested at (24,26) sta48 with a CLEAR 'path' tile at
+(24,25) it refused because an earlier stamina bounce had learned-blocked it for 150 ticks -> died one
+step from safety. This likely underlies the ~73% "stuck" deaths across the whole arc.
+FIX (0.42.0, two parts): (1) ROOT: record per-char move-failure reason from on_action_error; do NOT
+learn-block on not_enough_stamina (tile is fine; the stamina margin already stops re-issuing an
+unaffordable move, so nothing thrashes; real wall bounces still learn-block). (2) NET: DESPERATION
+ESCAPE — a hurt char whose retreat finds no known-walkable step steps onto any clear non-wall neighbour
+(even unseen), farthest from enemies; strictly better than resting to death. Scored 8.0 < retreat 8.5.
+VALIDATED on the real death frames (error stream fed): Recruit-15172 now chooses MOVE:S toward the clear
+tile every hurt frame instead of REST (live, lands at sta48 -> escapes). 4 new mutation-checked tests;
+existing wall-bounce learn test still passes. 296 local / 302 reaper green; replay 4000 frames exit0.
+DEPLOY: run 100, git 0fcc424, explorer/0.42.0, ~12 frames/s (NOTE: svc.sh down left the old runner
+75060/75061 alive per the known gotcha — killed them explicitly before confirming the new 75906 sole).
+WISHLIST (minor=42, tc=42-add_minor): how-nav 0.72*0.97*(0.75-1/29)=0.500 (boundary); rival-recon-tab
+0.83*0.97*0.583=0.469 (good DOCKED from 0.90 for the real stale-data limit: spectate lags ~45s, no live
+mobs — un-docked it'd read 0.509 but that games past a genuine limitation); rival-awareness 0.485;
+move-pred(b) 0.402; watchdog->sidecar 0.283. Nothing CLEARLY >0.5; none force-built. FLAG: rival-recon
+is the operator's reverse-engineering priority and is close — their enjoyment-credit could push it over
+(their call, like codex); + the WATCHDOG-CRON GAP still open (bot-watchdog CLI not scheduled).
+WATCH: recruiting resumed (46 events on #99) — re-check whether it's death-replacement churn + gold-
+arming drain, or just filling the bench; if 0.42 cuts deaths, the churn should ease.
+NEXT: measure 0.42 on run #100 — does our-death/1k drop toward ~0 (the stamina-bounce fix should cut the
+stuck-deaths)? does move_failed fall (fewer tiles wrongly blocked -> fewer doomed re-routes)? Confirm no
+new thrash. Then rival-recon (operator go) or the next leveling refinement (predictor-wired seek / push-
+north).
