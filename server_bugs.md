@@ -88,7 +88,7 @@ non-colour value with HTTP 400 `bad_color`). Testing was limited to our own guil
 (a wrong-token hello, and a bad colour); no attacks on other guilds or the server.
 Analysis by the steemer bot's owner for responsible disclosure._
 
-## 2026-08-21 — large per-world gaps in the frame `seq` stream, confined to ONE world
+## 2026-08-21 — RETRACTED: "per-world seq gaps" — the world-confinement was an artifact
 
 Observed on run #120 (`explorer/0.50.1`), 86,395 frames stored over ~108 minutes, of which
 58,808 (68%) carried the `delta` flag.
@@ -125,3 +125,33 @@ and a client cannot tell a stall from a silent resync.
 
 Reported with a specific hypothesis rather than a diagnosis: we can see the gaps and their
 shape, but not what produces them.
+
+### RETRACTION (same day, before anyone acted on it)
+
+**The central claim above — that every gap was confined to `vale` — is WRONG, and the
+report should not be sent to the server author.**
+
+`seq` is GLOBAL, not per-world. It round-robins across the worlds a guild has characters
+in: `vale=1, mines=2, village=3, vale=4, …`. So a gap spanning whole tick-cycles simply
+resumes at whichever world comes next in the rotation, and `vale` leads it. "All 31 gaps in
+vale" was an artifact of never checking that assumption, and it was the load-bearing
+argument for calling this server-side.
+
+**What the evidence actually shows, having looked properly:**
+
+* Across a gap, the very next frame arrives in a median of **9 ms**. A server-side stall
+  would make that interval as long as the gap (~11 s). Frames resume *immediately* with
+  jumped sequence numbers, which is the signature of messages being **discarded**, not
+  delayed or withheld.
+* The connection is stable throughout: the gaps appear back to back in the log with no
+  reconnect, no `silent 10s` re-hello, and no kick between them.
+* **Our consumer is periodically too slow.** Against a production rate of ~12 frames/s (3
+  worlds x ~4 ticks/s, an 83 ms budget per frame), **34% of frames take longer than 83 ms**
+  to handle, 12.3% exceed 200 ms, and the worst observed is **2,972 ms**.
+
+A ZeroMQ DEALER drops rather than blocks when its send queue is full, so a slow consumer
+produces exactly this: a healthy connection, no stall, and holes in the sequence.
+
+**Conclusion: this is OUR bug, not the server's.** It belongs in the client, and the fix is
+to get the per-frame work off the receive path. Left in this file only as a record of the
+retraction — a wrong report to a third party is worse than no report.

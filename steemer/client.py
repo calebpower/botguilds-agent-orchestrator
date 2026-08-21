@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import json
 import os
+import queue
+import threading
 import time
 from typing import Any, Protocol
 
@@ -33,8 +35,81 @@ from .storage import Storage
 # and the new server has never seen our HELLO, so we must re-send it.
 SILENCE_TIMEOUT = 10.0
 _MAX_BACKOFF = 30.0
+# v0.51.0 — how many pending storage writes to hold before dropping the oldest. The queue
+# exists so the RECEIVE loop never waits on the database; see _AsyncMirror.
+MIRROR_QUEUE_MAX = 4000
+
 REFRESH_THROTTLE = 2.0   # v0.44.0: at most one full-frame refresh request per this many
 #   seconds — a burst of dropped frames should trigger ONE resync, not a REFRESH storm.
+
+
+class _AsyncMirror:
+    """Storage writes on a background thread, so the receive loop never blocks on the DB.
+
+    WHY (measured on run #120, 2026-08-21): the receive loop used to zlib-compress the whole
+    frame and run three INSERTs before it could read the next message. 34% of frames took
+    longer than the ~83ms production budget (3 worlds x ~4 ticks/s), 12.3% exceeded 200ms,
+    and the worst was 2,972ms. A ZeroMQ DEALER DROPS rather than blocks when its send queue
+    fills, so our stalls cost 4.5% of the frame stream — 31 gaps averaging 131 frames — and
+    the bot then issued commands for characters that had already moved on
+    (`unknown_character` rose from 1.1 to 104 per 1k frames, the error rate from 13% to 43%).
+    The give-away that it was us and not the server: across a gap the NEXT frame arrives in a
+    median of 9ms. Nothing stalled; messages were discarded.
+
+    Bounded, and DROPS THE OLDEST on overflow: losing a log row is always better than
+    stalling the player. Drops are COUNTED and reported, because an unobservable loss is
+    exactly how this went unnoticed for so long.
+
+    One worker thread, so writes keep their order and the storage connection still has a
+    single owner (the loop hands it over at start-up and never touches it again).
+    """
+
+    def __init__(self, storage: Any, say, maxsize: int = MIRROR_QUEUE_MAX):
+        self._storage = storage
+        self._say = say
+        self._q: "queue.Queue[tuple[str, tuple] | None]" = queue.Queue(maxsize=maxsize)
+        self.dropped = 0
+        self.failed = 0
+        self._thread = threading.Thread(target=self._run, name="storage-mirror", daemon=True)
+        self._thread.start()
+
+    def submit(self, method: str, *args: Any) -> None:
+        try:
+            self._q.put_nowait((method, args))
+        except queue.Full:
+            # Shed the OLDEST pending write, not the newest: recent frames are the ones an
+            # analysis actually wants, and the alternative — blocking — is the bug.
+            try:
+                self._q.get_nowait()
+                self.dropped += 1
+            except queue.Empty:                       # pragma: no cover - race, harmless
+                pass
+            try:
+                self._q.put_nowait((method, args))
+            except queue.Full:                        # pragma: no cover - race, harmless
+                self.dropped += 1
+
+    def _run(self) -> None:
+        while True:
+            item = self._q.get()
+            if item is None:
+                return
+            method, args = item
+            try:
+                getattr(self._storage, method)(*args)
+            except Exception as e:      # logging must never stop the bot playing
+                self.failed += 1
+                if self.failed in (1, 10, 100) or self.failed % 1000 == 0:
+                    self._say(f"storage {method} failed ({e}) — continuing "
+                              f"[{self.failed} total]")
+
+    def pending(self) -> int:
+        return self._q.qsize()
+
+    def close(self, timeout: float = 10.0) -> None:
+        """Drain what is queued, then stop. Called on a clean exit only."""
+        self._q.put(None)
+        self._thread.join(timeout=timeout)
 
 
 class Bot(Protocol):
@@ -107,6 +182,10 @@ class Client:
         self.creds = load_token(token_file)
         self.server = server or self.creds.get("server", "tcp://localhost:5570")
         self.storage = storage
+        # v0.51.0: the async storage mirror. Created only by run(), so tests and replay --
+        # which drive _loop/on_frame directly and want writes to have landed by the time
+        # they assert -- keep the old synchronous behaviour.
+        self._async_mirror: _AsyncMirror | None = None
         self.verbose = verbose
         self.transport = _Transport(self.server, self.creds)
         self.running = False
@@ -131,7 +210,12 @@ class Client:
             print(*a, flush=True)
 
     def _mirror(self, method: str, *args: Any) -> None:
+        """Queue a storage write off the receive path (v0.51.0). Falls back to a direct
+        call when there is no async mirror, which is the case in tests and replay."""
         if self.storage is None:
+            return
+        if self._async_mirror is not None:
+            self._async_mirror.submit(method, *args)
             return
         try:
             getattr(self.storage, method)(*args)
@@ -196,6 +280,8 @@ class Client:
 
     def run(self, max_ticks: int | None = None) -> None:
         self.running = True
+        if self.storage is not None and self._async_mirror is None:
+            self._async_mirror = _AsyncMirror(self.storage, self._say)
         self._connect()
         try:
             self._loop(max_ticks)
@@ -247,9 +333,12 @@ class Client:
                 # stored frame and on_frame see the pre-delta shape.
                 self._maybe_refresh(message)
                 p.reassemble_tiles(message, self._tiles_mem, self._visible)
-                self._mirror("record_frame", message)
+                # v0.51.0: DECIDE AND SEND FIRST, then hand the frame to storage. The
+                # write no longer sits between receiving a frame and answering it, and it
+                # no longer sits between two receives either (it happens off-thread).
                 actions = self.bot.on_frame(message) or []
                 self.send_actions(actions)
+                self._mirror("record_frame", message)
                 seen += 1
                 if max_ticks is not None and seen >= max_ticks:
                     self.running = False
@@ -280,3 +369,10 @@ class Client:
         self.transport.close()
         if self.storage is not None:
             self._mirror("flush")
+        am, self._async_mirror = self._async_mirror, None
+        if am is not None:
+            pending = am.pending()
+            am.close()
+            if am.dropped or am.failed:
+                self._say(f"storage mirror: {am.dropped} write(s) dropped under load, "
+                          f"{am.failed} failed (queue held {pending} at close)")
