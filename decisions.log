@@ -3136,3 +3136,35 @@ assertion simply wrong about clubs; a malformed-ctx case that short-circuited be
 WISHLIST: matrix (A) ticked and moved to Done (15 open / 18 done; table 15 rows = 15 items). SEVEN qualify.
 NEXT: the frontier's own top cell IS the top wishlist item — `lumber x forge` at 0.95 / M3a forging at 0.573.
 We hold ingots now; the blocker is ORE. That is the lever.
+
+ITER 66b (2026-08-21) — CODEX "FRONTIER" PANE for the exploration matrix (operator-requested visualisation).
+DESIGN CALL: the obvious visualisation was the WRONG one. A heatmap of all 9,100 cells would be dominated by
+the default 0.25 prior for unclassified pairings, and the actionable output is SIX rows — it would look
+impressive and say nothing. Built three views for three questions instead: a verb-coverage BAR (26 segments,
+14 filled — makes "12 verbs never sent" visceral), a noun x verb GRID with the equip axis COLLAPSED (it varies
+only attack/charge/throw/cast; a 3D grid reads badly, so it lives in the tooltip), banded terrain/item/mob with
+terrain first, and the FRONTIER as a ranked table because each row needs a sentence of reasoning that no chart
+can carry. Placed in the Codex rather than a 10th tab: the Codex is everything we have learned, the frontier
+is its complement.
+COLOUR COMPUTED, NOT EYEBALLED (dataviz skill): ran the palette validator against the dashboard's own status
+tokens. CVD separation PASSES (worst adjacent dE 10.7 deutan / 11.9 tritan vs the >=8 target) but contrast
+WARNED — frontier amber #fab219 is 1.79:1 on the light surface, below 3:1, which is not dismissable. So the
+cell wears a TINT and the glyph wears INK tokens; identity is redundantly encoded three ways (glyph, legend,
+and the frontier table as the table view).
+TWO BUGS THE GATE CAUGHT, both worth having:
+ 1. The Codex sub-nav pane list was HARDCODED ["monsters","lands","items","mechanics"], so the new pane could
+    never unhide — button worked, data loaded, nothing appeared. Now DERIVED from the buttons. Same failure
+    shape as the rest of today's regressions: a list kept in sync by hand when the DOM already knew.
+ 2. api_matrix bailed with "no database" — wrong, because the vocabulary fixture is committed so the cube,
+    priors and never-sent verbs need no history; only the TESTED layer does, and with none everything is
+    untried, which is right for a fresh checkout. Now degrades to the full cube (53 frontier cells with no
+    history vs 6 with it — a neat demonstration that the tested layer is doing real work).
+PERF: cached per run like the codex (2.14s cold / 0.13s warm); the request thread never owns it.
+GATE: 6 grid + 3 endpoint tests (no-DB, cache hit, cache invalidation) + a Playwright pane test. 9 mutants all
+killed; one initially survived because the counts test asserted only that buckets SUM, which a mutant putting
+every cell in the wrong bucket satisfied — it now recounts the cells independently. 563 local / 571 reaper.
+ALSO LOGGED (reaper_bugs.md, explicitly a HYPOTHESIS not a finding): a session came up on an IPv6 SLAAC
+address (EUI-64 host part) where others got IPv4. SLAAC completes in one router advertisement while DHCPv4
+needs four packets, so if reaper records the first address the guest reports, which family you get is a
+boot-timing race — a plausible explanation for the intermittent `could not sync ... timed out`, though today's
+instance was against a STALE address from an expired session and is not evidence for it.
