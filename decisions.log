@@ -2649,3 +2649,21 @@ at 588702a. Local 352/3; reaper gate green.
 NEXT: forge-to-arm SLICE 2 (seek resources + prefer axe/pickaxe) — but measure the yield question first:
 does material STOCK actually accumulate? Then slice 3 (forge + product-name discovery). Watch #113 for a
 long clean 0.45 window now that the supervisor is running.
+
+WISHLIST ADD (2026-08-21, post-iter-58) — operator added the **cross-referencing exploration matrix**: a
+3D cube of noun x verb x equipped (equipped includes `none`), each cell scored 0..1 for "is this plausibly
+a mechanic, by analogy to real life or other games", then used to drive deliberate mechanic testing with
+exploring-role characters. Written up in wishlist.md with a 4-slice plan.
+SCORE: good_idea 0.88 (operator-requested; serves the stated #1 direction "master every mechanic"; it is the
+systematic version of the harvest discovery, which was literally the cell tree x attack x none; produces a
+durable, very visible artifact) x risk_to_bot 0.80 (the dock is ALL in slice 3 — issuing untried actions on
+live chars costs turns, can lose items, can pull aggro; slices 1-2 are read-only) x (0.75 - 1/1) = **-0.176**,
+negative only because tc=1 (just added) — exactly where the CODEX tab sat (-0.21) when the operator directed
+it built anyway. Table this pass unchanged otherwise: how-nav 0.5026 (SHIPPED), rival-recon 0.4934,
+rival-awareness 0.4880, trash-talk 0.4786, move-pred(b) 0.4474, band-refresh 0.4451, predator-memory 0.3780,
+log-scale bars 0.3094.
+RECOMMENDATION: slice 1 is the cheap, zero-risk win and I would take it next — the cube's axes come from data
+we already store (tiles_seen / item kinds / bestiary / docs-03 verbs) and the TESTED layer joins for free out
+of actions_sent x action_errors x events, which immediately yields THE FRONTIER: high-prior cells we have
+never once tried. Slice 3 (the experiment arm) needs the hard gating described in the wishlist entry and
+should not be built until 1-2 exist and the frontier is visible. `say` is excluded as an experiment surface.

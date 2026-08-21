@@ -10,6 +10,54 @@ top of **Open**.
 
 ## Open
 
+- [ ] **Cross-referencing exploration matrix** — a 3D cube of *noun × verb × equipped*, scored
+  by plausibility, used to drive deliberate mechanic discovery with exploring characters.
+  (operator request 2026-08-21)
+
+  **The cube.** Columns = every noun we have ever encountered (tile kinds from `tiles_seen`:
+  tree, fence, rock, vein, cauldron, forge, crop, herb…; item kinds from frames/inventories/
+  drops; mob kinds from the bestiary). Rows = every action verb (`docs/03-actions` plus any
+  we have inferred: move, attack, pickup, drop, use, equip, unequip, sell, buy, brew, smelt,
+  forge, recruit, embark, cast, list, buy_listing, rest, refresh). Depth = every equippable
+  item **including `none`**, so `tree × attack × none` is a real cell alongside
+  `tree × attack × axe`.
+
+  **The score.** Each cell carries a `prior` in 0..1: *is there something one could plausibly
+  do here — a mechanic that exists in real life or in other games?* `tree × attack × axe`
+  scores high; `grass × consume × sword` scores low. Scoring every cell individually does not
+  scale (thousands of cells), so the priors come from auditable **rule families** — e.g.
+  "chopping verb × woody target × bladed tool = high", "consume verb × non-food = low" — with
+  per-cell overrides where a family gets it wrong. The families are the reasoning; the numbers
+  are derived from them, so a new noun the game invents is scored the moment it appears.
+
+  **Why this is not speculation for its own sake:** the 0.45 harvest discovery *was* one cell
+  of this cube (`tree × attack × none`), found by hand. Trees/veins had sat in `nav.SOLID` as
+  scenery for the whole project. The cube is the systematic version of that, and the game is an
+  evolving target (Will's AI adds content without notice), so a standing discovery process
+  beats another lucky read of the docs.
+
+  **Slices** (the first two are read-only and carry zero bot risk; only slice 3 touches play):
+  1. **Build the cube + the TESTED layer, retroactively.** Axes from data we already store, and
+     the "what have we already tried?" layer joined for free out of `actions_sent` ×
+     `action_errors` × `events`: what we sent, whether it bounced and with which `reason`, and
+     what happened. This alone produces the artifact worth having — **the frontier: cells with
+     a high prior that we have never once tried.** Dashboard tab; pairs naturally with the Codex.
+  2. **Priors.** The rule families above, stored and regenerated as new kinds appear.
+  3. **The experiment arm** (the risky half — build last, gate hard). Exploring-role characters
+     spend a *budgeted* fraction of idle ticks probing the top untried cells. Gates: healthy,
+     no predator within the spacing radius, not carrying anything scarce, one experiment per
+     character per N ticks with a per-run global budget, and a strict verb allowlist that grows
+     only as each verb proves harmless. An `action_error` is **information, not failure** —
+     `unknown_action` vs `out_of_range` vs `wrong_slot` tells us whether the verb exists at all,
+     which is most of what we want to learn. Every experiment logs as a first-class record so
+     the cube updates itself.
+  4. **Feedback.** A confirmed mechanic graduates into the strategy, exactly as harvest did.
+
+  **Deliberately excluded:** `say` is not an experiment surface (that is the injection/abuse
+  boundary — the probe stays in `scratchpad/`), and no experiment may sell, drop or consume an
+  item that is not junk. Destructive-to-us verbs are the one place a wrong prior costs real
+  progress rather than one wasted tick.
+
 - [ ] **Move-prediction model — mobs AND rival players** — (a) MOBS: SHIPPED 2026-08-20
   (steemer/mob_predict.py — rule-based predict()/evaluate(), validated live #97: exact 0.81,
   chaser toward-when-moved 0.892; NOT yet wired into the strategy — 0.41 combat-seek uses simple
