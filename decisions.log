@@ -3065,3 +3065,35 @@ read-only, alarm advisory, only bot-side change is an optional `predict` on offe
 NEXT: measure #119 — our-char deaths should fall toward 0 and, specifically, the "only rest offered while
 hurt" signature should vanish. Also still pending measurement: 0.49 duplicate buys ~0 and gold past 200;
 0.48.1 cohesion on a long window.
+
+ITER 65 (2026-08-21) — 0.50.1: narrow the intent-latch rejection clause. Measured pass on run #119.
+0.50.0 WORKED, decisively — but only visible with a REFINED metric. The crude "hurt and only rest offered"
+signature barely moved (117: 58.1% -> 118: 50.3% -> 119: 51.9%) because it counts legitimately
+stamina-blocked ticks. Restricted to the PATHOLOGICAL case (hurt AND only-rest AND stamina >= 30, i.e. it
+could actually have moved):
+    run #117 (0.48.1)  15.69/1k frames   stamina-50 bucket 518
+    run #118 (0.49.0)   6.48/1k                             72
+    run #119 (0.50.0)   1.15/1k                              0
+93% reduction, and the full-stamina bucket — the exact state both dead characters were in — is EMPTY.
+Our-char deaths 0.261 -> 0.234/1k (noisy at this window; the mechanism metric is the trustworthy one).
+LESSON: a metric that lumps a legitimate cause in with the pathological one can hide a 93% win. Separate
+"couldn't act" from "could have acted and wasn't offered anything".
+REGRESSION I SHIPPED, now fixed: 0.49's latch gave 0 duplicate buys on #118 (vs 14 on #117) but 15 on #119 —
+and 15 of 15 were preceded by a `not_in_village` rejection. The rule "an explicit rejection frees the char
+immediately" was TOO BROAD: the char had actually left the village while the stale frame still showed it
+there, so clearing the latch re-issued an identical buy that failed identically — a retry storm on a
+PERSISTENT condition. It only surfaced because 0.50.0 unblocked movement, taking not_in_village from 8.6 to
+47.6 per 1k. A fix in one place exposing a latent bug in another.
+0.50.1: a rejection frees the latch only when the next attempt would DIFFER — wrong_slot (try another slot)
+and stat_requirement (stop trying that kind). Everything else waits out INTENT_TTL. My own 0.49 test asserted
+the too-broad behaviour and correctly failed; rewritten to the new contract and split so BOTH sides are
+covered. 3 mutants all killed, including one restoring 0.49's clause and one putting not_in_village back in
+the retry-differs set (the exact #119 bug).
+WISHLIST (deploy-minor 50): ticked + moved shadow-eval gate and adaptive cohesion to Done (16 open / 17
+done; coverage check 16 rows = 16 items). TEN items now qualify: M3a forging 0.573 · magic/cast 0.554 ·
+rival-recon 0.553 · band-refresh 0.527 · trash-talk 0.515 · player market 0.508 · **exploration matrix (A)
+0.506** (crossed at tc=5 exactly as projected when it was split out) · move-pred(b) 0.501.
+GATE: 435 local / 442 reaper; replay 2500 exit 0. DEPLOY: run 120, git 6244728.
+NEXT: measure #120 — duplicates back to 0 AND entombment still ~1/1k (the two must hold together; 0.50.1
+must not have re-entombed anyone). Then the top qualifying lever: M3a forging (0.573) is blocked on ORE, and
+exploration matrix (A) (0.506, read-only, zero bot risk) would map exactly that kind of unexplored mechanic.
