@@ -6,9 +6,9 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.47.0` on **run #115**, repo HEAD `2dedb88`, branch `main` (pushed).
+- **Live:** `explorer/0.53.0` on **run #130**, repo HEAD `d703bf8`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
-  `watch` is the new always-on supervisor (`tools/healthcheck.py --watch 60 --fix`), which
+  `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`), which
   restarts a dead service and repairs a broken venv. Start it with `./svc.sh up watch`.
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
   playing the BotGuilds multiplayer game (`bot.willmorrison.net`, ZeroMQ wire + HTTPS API).
@@ -19,12 +19,23 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 - **Current focus (operator direction, late Aug 2026):** *master every game mechanic + LEVEL
   characters while the map-progression window is open.* Gold is a FLOOR (gather only when low),
   not the goal. Also: reverse-engineer rivals.
-- **Active work:** the **FORGE-TO-ARM probe** — Slice 1 (harvest) shipped and measured; **Slice 2
-  shipped as 0.46.0**, then CORRECTED by 0.47.0 (0.46 reserved lumber unconditionally and cut our
-  main income for a forge we cannot run — gold fell to 139, under the 150 arm floor; the reserve is
-  now gated on the char holding METAL). **The forge `product` name is DISCOVERED** — it was in our
-  own events table (189 rival `forged`/`forge_started` events). **The M3a blocker is now ORE.**
-  0.47 also closed a 114-run gap: we had never bought ARMOR.
+- **The M3a CRAFTING CHAIN IS CLOSED** (0.52.0 forge + 0.53.0 equip-upgrade, runs #129/#130):
+  harvest trees/veins → smelt ore → **forge**. Recipes were learned from the server's own
+  `wrong_materials` rejections: **spear = 1 ingot + 1 lumber, dagger = 1 + 1, shield_iron =
+  3 ingots + 1 lumber**. All five `forged` events on #129 were ours.
+  **The cautionary half:** #129 also SOLD every item it forged, because equipping only ever
+  filled EMPTY slots and the sell rule drops gear once no slot remains. 0.53.0 lets gear
+  displace strictly dearer **same-class** gear, ranked on the shop's own `buy_price` (the only
+  ranking the game exposes — `tier` is not ordered).
+- **Open gaps, in priority order:** (1) 0.53 is deployed but **not yet exercised** — no swap has
+  had an occasion, and it is UNKNOWN whether the server even accepts an occupied-slot equip
+  (`SWAP_GIVE_UP=3` trips a kill-switch if not); (2) `shield_iron` is sold at no price, so it
+  cannot be ranked and only fits an offhand that is still empty — **valuing the unbuyable** is
+  the next slice; (3) **ORE is the bottleneck** — 491 trees destroyed vs 6 veins on #128;
+  (4) the slot search still offers a dagger to an `outfit` slot — seed it from gear class.
+- **Do NOT rebuild the async storage mirror.** 0.51.0 tried and segfaulted the live bot; 0.51.1's
+  reorder alone gave run #128 **0 gaps and 0.0% frame loss** over 85,319 frames. Closed by
+  measurement; a test pins `run()` against constructing one.
 - **Resuming:** just run a loop pass. Start with `uv run python tools/healthcheck.py`.
 
 ## How to operate

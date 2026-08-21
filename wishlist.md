@@ -55,21 +55,22 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| M3a forging | 0.90 | 0.88 | 38 | **0.573** | 0.594 | **qualifies** |
-| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 38 | **0.554** | 0.574 | **qualifies** |
-| Rival-recon dashboard tab | 0.80 | 0.97 | 27 | **0.553** | 0.582 | **qualifies** |
-| Band-refresh timing awareness | 0.80 | 0.92 | 30 | **0.527** | 0.552 | **qualifies** |
-| In-world trash talk (`say`) | 0.75 | 0.95 | 37 | **0.515** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 38 | **0.508** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 25 | **0.501** | 0.529 | **qualifies** |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 36 | 0.434 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 38 | 0.434 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 5 | 0.354 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 10 | 0.351 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Storage mirror off hot path | 0.50 | 0.95 | 38 | 0.344 | 0.356 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 37 | 0.318 | 0.330 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 20 | 0.315 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Expectation/reality mismatch detector | 0.90 | 0.95 | 1 | -0.214 | 0.641 | clears at tc=7 |
+| Rival-recon dashboard tab | 0.80 | 0.97 | 29 | **0.555** | 0.582 | **qualifies** |
+| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 40 | **0.555** | 0.574 | **qualifies** |
+| Band-refresh timing awareness | 0.80 | 0.92 | 32 | **0.529** | 0.552 | **qualifies** |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 39 | **0.516** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 40 | **0.509** | 0.527 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 27 | **0.503** | 0.529 | **qualifies** |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 38 | 0.435 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 40 | 0.435 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 7 | 0.391 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 12 | 0.360 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Expectation/reality mismatch detector | 0.90 | 0.95 | 3 | 0.356 | 0.641 | clears at tc=7 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 39 | 0.319 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 22 | 0.317 | 0.338 | INELIGIBLE — ceiling<0.5 |
+
+_Scored 2026-08-21 (iter 68). `tc` advanced by TWO this pass: 0.52.0 and 0.53.0 both
+deployed. **M3a forging** and **the storage mirror** both leave the table — see Done._
 
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
@@ -265,15 +266,8 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
 - [ ] **Magic / spellweaving (`cast`)** — the direct counter to the poison that
   dominates status-damage; a whole unused mechanic (M4). Needs mana/implement +
   attunement discovery.
-- [ ] **M3a forging** — armor is unbuyable; forging is the only route. Blocked on
-  learning a per-world `product` name (blind-forge storms `unknown_product`).
-  Path: harvest a `forged` event from a rival via `/events/spectate`, or the shop.
 - [ ] **Rival-awareness dashboard panel** — surface the spectate `intel` (us vs
   rivals: size, levels, gear) on the web UI.
-- [ ] **Move the storage mirror off the decision hot path** — `record_frame`
-  (~11 ms on MariaDB) runs before the decision in `client._loop`; sending actions
-  first would shave latency. Low value alone (measured small) — revisit if frame
-  staleness ever proves material.
 - [ ] **Player market (`list` / `buy_listing`)** — we only use the NPC shop; the
   guild-to-guild market is untouched.
 
@@ -284,6 +278,30 @@ is misleading to scan, and the every-pass check that the score table covers ever
 item is only checkable when the two are separated. Entries below keep their full
 original text; the short `-> module (date, @ run)` lines are the older ledger format
 and are kept as-is rather than rewritten.
+
+- [x] **M3a forging** — SHIPPED `explorer/0.52.0` (forge) + `0.53.0` (equip-upgrade),
+  2026-08-21, runs #129/#130. The blocker was never real: the `product` name was in our own
+  event stream all along — 189 rival `forged`/`forge_started` events name it outright
+  (`{"kind": "forge_started", "product": "shield_iron"}`). Recipe QUANTITIES are still
+  undocumented, so the design is learn-by-rejection, and run #129 duly LEARNED them from the
+  server's `wrong_materials` replies: **spear = 1 ingot + 1 lumber**, **dagger = 1 + 1**,
+  **shield_iron = 3 ingots + 1 lumber** (2+2 and every cheaper combination were refused).
+  All five `forged` events on #129 were ours. **Then 0.53.0, because #129 also showed the
+  forge output being SOLD** — the slot search learned outfit/trinket/boots were wrong for a
+  spear, `hand` held a club, and the sell rule concluded no slot remained. Gear may now
+  displace strictly dearer same-class gear, ranked on the shop's own prices.
+  **Known gap, stated rather than faked:** `shield_iron` is sold at no price, so it cannot be
+  ranked and can only be worn into an offhand that is still empty. Valuing the unbuyable is
+  the next slice.
+
+- [x] **Move the storage mirror off the decision hot path** — RESOLVED 2026-08-21 by
+  measurement, and NOT by building the thing. `0.51.0` built the worker thread and
+  SEGFAULTED the live bot (shared MariaDB connection, zero frames across #124–126); `0.51.1`
+  reverted it and kept only the free half — decide and send *before* recording. That alone
+  was the whole fix: run #128 took **85,319 frames with 0 gaps and 0.0% loss**, against
+  #120's 3.7% over 31 gaps, with >200ms stalls down 11.6% → 2.1%. There is no remaining
+  latency problem for a thread to solve, so the mirror should NOT be rebuilt. A test pins
+  `run()` against constructing one.
 
 - [x] **Cross-run KPI regression alarm** → `steemer/kpi_watch.py` (2026-08-20, @ run #88,
   bot on explorer/0.32.0). Read-only DB analysis; `flag_regressions` is mutation-checked.

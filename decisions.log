@@ -3206,3 +3206,63 @@ Verified live: marker cleared on the supervisor's first pass.
 GATE: 574 local / 582 reaper. Bot healthy on run #128+, explorer/0.51.1, git 06404c1.
 NEXT: re-do the async mirror properly — the writer needs its OWN connection. Then re-measure whether the
 frame loss actually falls. The diagnosis stands; only the implementation was wrong.
+
+================================================================================
+iter 68 — 2026-08-21 — FORGE (0.52.0) and then EQUIP-UPGRADE (0.53.0), runs #129/#130
+================================================================================
+FIRST, THE PRIOR PASS'S QUESTION IS SETTLED: the async storage mirror should NOT be rebuilt. 0.51.1 kept
+only the thread-free half (decide+send BEFORE record) and that was the entire fix. Run #128: 85,319 frames,
+0 gaps, 0.0% loss — against #120's 3.7% across 31 gaps. >200ms stalls 11.6% -> 2.1%; unknown_character
+136.3 -> 5.3/1k, no_such_character 67.0 -> 4.5, not_in_village 153.2 -> 33.7. The diagnosis was right and
+the elaborate implementation was unnecessary. Wishlist item closed by measurement, not by building it.
+
+0.52.0 FORGING — the M3a chain closed, and the blocker was never real. docs/07 deferred forging because the
+`product` name was "unpublished" and a blind guess storms unknown_product. It was in our OWN database the
+whole time: 189 rival forged/forge_started events name it outright. shield_iron leads the ladder because it
+is armour the shop sells at NO price and 100% of our chars have an empty offhand — the one product where
+forging is not the cheaper route but the only one.
+RECIPE QUANTITIES ARE STILL UNDOCUMENTED, so it learns by rejection: an ordered ladder, and every rejected
+(product, ingots, lumber) blacklisted. Run #129 duly LEARNED them from the server's own wrong_materials:
+  spear = 1 ingot + 1 lumber   dagger = 1 + 1   shield_iron = 3 ingots + 1 lumber (2+2 refused)
+All five `forged` events on #129 were OURS (spear x2, dagger x2, shield_iron x1). 15 forge actions,
+6 wrong_materials + 2 no_forge_nearby — the errors ARE the documentation.
+
+...AND THEN THE VERIFICATION FOUND THE OUTPUT WAS WORTHLESS. Filtering the `sale` feed to our own guild_id
+showed spear, dagger and shield_iron going straight back over the counter. Forging was value-DESTROYING.
+The chain was mechanical and nothing about it was a 0.52 regression: _equip_action filled only EMPTY slots,
+so the brute-force slot search tried the forged spear in outfit/trinket/boots and learned all three were
+wrong_slot (20 of the 20 equip errors on the run); that left `hand`, holding a 15-gold club; and _should_sell
+keeps gear "only while a slot it could still go into remains", which was now false. The sell rule long
+predates the forge — 0.52 merely produced the first items that ever met it.
+
+0.53.0 EQUIP-UPGRADE — gear may displace WORSE gear. Ranked on the shop's own buy_price, learned live from
+stock, because it is the only ranking the game exposes: items carry no damage or armour number, and `tier`
+is NOT ordered (#129 forged a tier-0 spear beside a tier-1 club). Three conditions, each earned by a failing
+test rather than by theory: SAME CLASS (weapon vs armour — ranking across classes proposed evicting a 25g
+shield with a 70g spear, which a test caught); STRICTLY dearer (equal churns forever, and this is also what
+stops a kind displacing itself); BOTH prices KNOWN (an unseen price is not zero).
+NAMED GAP, not a silent one: shield_iron is sold at no price, so it can never be SWAPPED in — only worn into
+an offhand still empty. Valuing the unbuyable would be a guess, and is the next slice.
+Swapping into an occupied slot is UNDOCUMENTED and may not exist, so it is learn-by-rejection too:
+SWAP_GIVE_UP=3 distinct refusals concludes there is no swap, and the sell guard lapses with it so held gear
+never becomes permanent dead weight. wrong_slot routes to the slot map and deliberately spends no refusal.
+
+THE HARNESS LIED AGAIN, AND THAT MATTERS MORE THAN THE FEATURE. tools/mutate.py infers "killed" from a
+nonzero pytest exit — and pytest also exits nonzero when the selector matches NOTHING. Two mutants this pass
+were reported KILLED against test names I had never written. A harness whose whole job is to prove tests can
+fail must not accept "there was no test" as proof. It now runs each selector CLEAN first and refuses to score
+it unless it passes unmutated; verified by feeding it a deliberately nonexistent selector, which it SKIPs.
+This is the second time this harness has silently lied (the first was the bytecode-mtime trap, same session).
+Both times the failure was the oracle, not the code — self-test the oracle.
+
+TESTS: 24 new (equip-upgrade), 10 (forge). 21 mutants killed on 0.53 after THREE rounds; the first round's
+survivors were all my own weak tests — a fixture that left the offhand empty, a kill-switch assertion
+confounded by its own blacklist, an unclassified kind blocked for the wrong reason — plus one guard that
+mutation proved genuinely redundant, which is now DELETED rather than tested around.
+GATE: 616 reaper / 608 local. Live: explorer/0.53.0, run #130, git d703bf8, pushed. All four services up.
+0.53 IS DEPLOYED BUT NOT YET EXERCISED: the price ledger is populating (17 kinds) and no gear has been sold,
+but no swap has had an occasion — it needs forged output landing on an ALREADY-ARMED character.
+NEXT: (1) confirm a live `upgrading ...` decision and that the server ACCEPTS an occupied-slot equip — if it
+refuses three times the kill-switch trips and the whole approach needs rethinking; (2) value the unbuyable so
+shield_iron can displace shield_wood; (3) ORE is the M3a bottleneck — 491 trees destroyed vs 6 veins on #128;
+(4) seed the slot map from gear class so a dagger stops being offered to an `outfit` slot.
