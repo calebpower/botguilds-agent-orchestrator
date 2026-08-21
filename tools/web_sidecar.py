@@ -46,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--spectate-seconds", type=float, default=30.0)
     ap.add_argument("--tiles-seconds", type=float, default=3600.0)
     ap.add_argument("--no-color", action="store_true", help="don't rotate the color")
+    ap.add_argument("--no-track", action="store_true",
+                    help="don't record rival positions from the spectate stream")
     ap.add_argument("--once", action="store_true", help="one pass of every task, then exit (smoke test)")
     args = ap.parse_args(argv)
 
@@ -59,6 +61,28 @@ def main(argv: list[str] | None = None) -> int:
 
     conn = _db.connect(_db.load_db_config(args.config))
     _db.apply_schema(conn)             # idempotent — ensures the intel table exists
+
+    # Rival-position recorder: a background thread consuming the public spectate SSE stream
+    # (steemer.spectate_track), on its OWN db connection so it never shares one across threads.
+    # run_recorder self-heals on portal failures; this wrapper restarts it if it ever escapes.
+    if not args.no_track:
+        import threading
+        from steemer import spectate_track as _track
+
+        def _tracker() -> None:
+            tconn = _db.connect(_db.load_db_config(args.config))
+            _db.apply_schema(tconn)
+            our_prefix = creds["guild_id"]
+            while True:
+                try:
+                    _track.run_recorder(client.spectate_guilds, base, tconn, our_prefix,
+                                        log=lambda m: _say(m))
+                except Exception as e:            # belt-and-suspenders: never let the thread die
+                    _say(f"track: recorder crashed ({e}) — restarting in 15s")
+                    time.sleep(15)
+
+        threading.Thread(target=_tracker, daemon=True, name="spectate-tracker").start()
+        _say("track: rival-position recorder started")
 
     tick = 0
     last_spectate = last_tiles = -1e18
