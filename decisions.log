@@ -2508,3 +2508,26 @@ the fielded core should rise (fewer bare mouths), avg-level dilution should ease
 still ~0 + move_failed still ~10. Then how-nav (now >0.5) or the forge-to-arm probe (operator's Phase-3
 slice) or rival-recon (operator priority). Phase 3 recommendation to operator: do recruit-burst (DONE) ->
 forge-to-arm -> broad Prospector last.
+
+ITER 55 (2026-08-21) — operator questions: forge-to-arm probe + "how did we miss tree-chopping" + "are
+you still checking upstream/starter-kit?". FINDINGS:
+TREE-CHOPPING MISS (root): trees (and bush/rock/vein/fence/cauldron/forge) are in nav.SOLID — inherited
+verbatim from the example bots (docs/08 lists the same impassable set) — so we PATHFIND AROUND them and
+never target them. Our `attack` action only ever targets ctx.enemies (all 3 attack sites: cornered-undead
+fallback, combat-seek, healthy-attack). So we never attack a tree to break it. docs/08 documented it all
+along: "trees/bushes/fences break after a few attacks; vein drops ore when broken." We DO brew (herbs->
+potions, essence-aware 87%), smelt (2 ore->ingot), and forage herbs (berries/sungrass), and we pick up
+lumber/ingot_copper/gem_rough PASSIVELY as loot — but we NEVER actively harvest breakable terrain. Forging
+itself was DEFERRED at M3a (docs/07: "forge needs an unpublished product name") in favor of brewing. Net:
+a systematic blind spot around terrain-harvest + forge — exactly the Prospector/forge-to-arm gap.
+UPSTREAM CHECK (loop step 10) — I LAPSED. Ran it early (found 2 behind ~iter had it logged), but skipped it
+through the 0.41-0.43 lever passes. reference_starter_kit is now 3 commits BEHIND origin/main. Changes are
+TRANSPORT-level, NOT new gameplay actions: protocol.py adds zlib frame compression + a REFRESH message;
+client.py adds _check_seq (sequence-gap detection) + _reassemble (delta) + last_seq. So the upstream update
+did NOT add chopping (that was always available) — the tree miss is ours, not a drift miss. BUT a REAL
+correctness finding surfaced: steemer/client has NO seq-gap/reassemble/refresh handling, yet 134/200 recent
+#101 frames carry a 'delta' key — the server sends deltas and we don't detect gaps or request a REFRESH, so
+a dropped/out-of-order delta could silently degrade our world view. Worth porting. DECISION: reinstate the
+submodule check EVERY loop pass; flag the delta/refresh port + the forge-to-arm probe to the operator; did
+NOT advance the pin or port anything yet (await operator priority). NEXT candidates ranked: (a) port seq-gap
++REFRESH handling (data integrity), (b) forge-to-arm probe (unblock leveling), (c) how-nav (>0.5 wishlist).
