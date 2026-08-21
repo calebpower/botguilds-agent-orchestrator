@@ -2301,3 +2301,27 @@ PREDICT #97 vs #96: in coin-dry bands forager deaths DROP (they play safe) -> ov
 move_failed FALL back toward #95's 0.386/23.6, recruit falls; in coin-rich bands foragers still gather
 (bold). Re-verify Phase 2 with the role-split + coins-available check on #97. If the death/move_failed
 rise reverses, Phase 2 (with this fix) is a decent add -> THEN build Phase 3 (Prospector).
+
+ITER 48 (2026-08-20) — big session. Operator DIRECTION CHANGE: master the game + LEVEL chars while
+the map-progression window is open; gold is a FLOOR not the goal; reverse-engineer rivals.
+SHIPPED (all pushed):
+1. RIVAL TRACKING (steemer/spectate_track.py + sidecar wiring): /events/spectate?char=&map= is a
+   PUBLIC no-auth SSE stream giving per-tick entities (every char/monster: pos, eid, guild_id,
+   name, gear) + move events. Records rival positions/moves into intel kind='track', keyed on the
+   SERVER TICK (the one shared clock — verified our-frame tick vs stream tick match within sampling
+   offset; NEVER align on wall-clock). run_recorder round-robins fielded rivals, RESILIENT to portal
+   failures (exponential backoff 3->48s + restart-on-crash + own db conn). Live-verified capturing
+   WillMorr positions+moves+gear(clubs). Retention: intel not pruned (~53h history).
+2. MOB MOVE-PREDICTOR (steemer/mob_predict.py, read-only): extends the bestiary to a next-tile
+   predictor. NOT ML — rule-based on the bestiary's measured stats (chaser steps toward nearest char;
+   move_rate=P(move)). Validated live on #97: overall next-tile 0.81; chasers move toward the nearest
+   char 89% of ticks-they-move. A mastery meter (accurate prediction = understanding).
+3. explorer/0.40.0 DEPLOYED (run #98): UNFROZE the weapon-buy (frozen at 0.28), re-gated on a gold
+   FLOOR (WEAPON_BUY_FLOOR=150) — arm bare chars above it, harvest below. Closes the gear gap (we
+   were level 3-5 with 0 gear vs WillMorr level 29 armed). Investigation: banked XP=0 (spend_xp works
+   live), so the bottleneck is EARNING XP (kills) — the combat-SEEK is the next lever (0.41). Gate:
+   local 286/3, replay 0 errors, reaper 292/2. Mutation-checked.
+OPEN: 0.41 combat-seek (reverse 0.24 no-chase; engage beatable mobs for XP, use the predictor);
+rival-recon analysis/dashboard on the track data; predictive model part (b) rivals; sidecar-watchdog
+(the track feed depends on the sidecar which can die unnoticed). VERIFY on #98: do chars ARM UP
+(armed count > 0)? does leveling start? Operator asked re line-dancing (oscillation) — diagnose next.
