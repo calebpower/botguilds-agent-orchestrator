@@ -2742,3 +2742,43 @@ headed. The operator's directed work and the formula now agree, which they did n
 ALSO marked two items done that were already shipped but never ticked: the how-nav explainer (this pass) and
 rival tracking via /events/spectate (2026-08-20, spectate_track.py).
 NEXT PASS unchanged: forge-to-arm slice 2 (which is the top-scoring item's own path).
+
+ITER 59 (2026-08-21) — 0.46.0 FORGE FEEDSTOCK RESERVE: stop selling our own harvest.
+HEALTH: all four services ok (healthcheck exit 0), submodule up-to-date at 588702a, tree clean.
+THE YIELD QUESTION (the handoff's gate on slice 2) — ANSWERED, and it redirected the slice. Run #113,
+62,845 frames / 20,545 ticks of clean 0.45:
+ * harvest works: 1,163 our-terrain_hit, 282 trees destroyed (4.1 hits/destroy, unchanged), and lumber DOES
+   reach inventories — so hypothesis (a) "breakables yield nothing" is dead, and (c) "`drop` under-reports"
+   is confirmed (only 17 drop events for far more lumber in hand).
+ * but STOCK SAWTOOTHS: 17 -> 28 -> 17 -> 4 -> 2 -> 14 -> 24 -> 2 -> 18. Something consumed it.
+ * SALES on #113: lumber x189, ore_copper x4, ingot_copper x2. 244 chosen decisions read "selling lumber
+   (tier 1) to bank gold". WE RAN 11 SMELTS TO MAKE INGOTS AND THEN SOLD TWO OF THE INGOTS.
+CAUSE: `_should_sell` classifies by `uses`; lumber and ingots carry none we recognise, so they fell through
+its "pure loot -> bank it" branch. 0.45's harvest was feeding the SHOP, not the forge. Building slice 2 as
+planned ("seek more resources + prefer the axe") would have poured more material through an open door and
+measured as success.
+LEVER (0.46.0): a FORGE_FEEDSTOCK branch checked BEFORE the pure-loot branch — lumber/ingot/flux/plank/
+timber reserved, surplus still sold. BOUNDED at FORGE_RESERVE_PER_CHAR=4 PER KIND per char: an unbounded
+reserve is precisely the v0.19.0 regression (unsold pack pinned chars `full`, drove embark<->return thrash,
+gold never accumulated). Per-kind not shared, so lumber can't crowd out ingots — the forge needs both. Ore
+keeps its own smelt-pair rule ahead of the new branch, so a lone unpairable ore is still sold.
+EXPECTED / FALSIFIABLE: lumber+ingot sale events collapse toward ~0; stock holds a FLOOR instead of
+sawtoothing; gold income dips a little (lumber was real income); carry-`full` incidents and move_failed must
+NOT rise — that is the regression the bound exists to prevent. Falsified if stock still crashes to zero, or
+if full/carry errors climb.
+GATE: 10 new tests (tests/test_forge_feedstock.py), 6 mutants, ALL KILLED. One initially SURVIVED and was
+worth it: the prefix-coverage test iterated FORGE_FEEDSTOCK_PREFIXES to check FORGE_FEEDSTOCK_PREFIXES — a
+test derived from the structure it checks, agreeing with itself no matter what, so a mutant narrowing the
+tuple to ("lumber",) slipped through. Rewritten to name the required kinds independently so the duplication
+IS the check. 362 local/369 reaper; replay 2500 real frames exit 0.
+DEPLOY: run 114, git 09b533d, explorer/0.46.0. FIRST REDEPLOY UNDER THE FIXED svc.sh — `./svc.sh restart bot`
+alone left exactly ONE clean process tree (7434/7439/7440, all pgid 7432), zero orphans, no crashloop marker,
+old run #113 closed cleanly. The manual capture-OLD-pids/kill/confirm-zero dance is confirmed obsolete.
+WISHLIST (minor=46, anchored scale): M3a forging 0.5707 (TOP — and this pass is ON its path) · shadow-eval
+0.5621 · magic/cast 0.5513 · rival-recon 0.5483 · band-refresh 0.5237 · trash-talk 0.5128 · player market
+0.5059 — SEVEN qualify. Near: move-pred(b) 0.4956, campaign layer 0.4894, matrix(A) clears at tc=5.
+Ineligible by ceiling: impassable-analysis 0.4324, rival-awareness 0.4323, storage-mirror 0.3423,
+predator-memory 0.3150, log-scale 0.3094, matrix(B) -0.1610.
+NEXT: measure 0.46 on a matured #114 (sale events for lumber/ingot -> ~0? stock floor? carry/full NOT worse?).
+Then forge-to-arm SLICE 3 = the top wishlist item's remaining blocker: discover the forge `product` name.
+Now that feedstock survives, that is the last thing between us and crafting weapons without gold.

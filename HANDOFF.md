@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.45.0` on **run #113**, repo HEAD `5f9e0ef`, branch `main` (pushed).
+- **Live:** `explorer/0.46.0` on **run #114**, repo HEAD `09b533d`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the new always-on supervisor (`tools/healthcheck.py --watch 60 --fix`), which
   restarts a dead service and repairs a broken venv. Start it with `./svc.sh up watch`.
@@ -19,8 +19,10 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 - **Current focus (operator direction, late Aug 2026):** *master every game mechanic + LEVEL
   characters while the map-progression window is open.* Gold is a FLOOR (gather only when low),
   not the goal. Also: reverse-engineer rivals.
-- **Active work:** the **FORGE-TO-ARM probe** — Slice 1 (harvest) shipped and now MEASURED
-  (iter 58). Slice 2 is next, gated on the yield question. See "In progress" below.
+- **Active work:** the **FORGE-TO-ARM probe** — Slice 1 (harvest) shipped and measured; **Slice 2
+  shipped as 0.46.0** (the yield question found we were SELLING our own harvest — 189 lumber and
+  even 2 ingots on run #113 — so the lever became a feedstock reserve, not "seek more"). **Slice 3
+  is next: discover the forge `product` name**, the last blocker on the top wishlist item.
 - **Resuming:** just run a loop pass. Start with `uv run python tools/healthcheck.py`.
 
 ## How to operate
@@ -124,10 +126,13 @@ mines pillar) with ingot + lumber (+ flux) → a hafted weapon.
 
 **Slices:**
 - ✅ **Slice 1 (0.45) — harvest.** Done & confirmed live (lumber flowing, 0 deaths).
-- ⏳ **Slice 2 — seek + tool.** Path toward nearby resources when idle; prefer the axe/pickaxe
-  (a `pickaxe` already shows in inventories). **Measure the YIELD question FIRST:** on run #103,
-  133 terrain_destroyed produced only 8 lumber `drop` events (~6%). Measure material STOCK, not
-  destroy counts — a tool may be exactly what changes the conversion.
+- ✅ **Slice 2 (0.46) — feedstock reserve.** The yield question redirected this slice. Harvest was
+  fine; run #113 chopped 282 trees and then SOLD 189 lumber, 4 ore and 2 INGOTS, because
+  `_should_sell` banks anything without recognised `uses`. Now reserved (4 per KIND per char,
+  surplus still sells — bounded so it cannot re-create the v0.19.0 carry clog). `drop` events
+  UNDER-REPORT; measure material STOCK from inventories, never drop counts.
+- ⏳ **Slice 2b — seek + tool** (deferred, and no longer urgent): path toward resources when idle,
+  prefer the axe/pickaxe. Only worth it once stock is proven to hold a floor on #114.
 - ⏳ **Slice 3 — forge + product-name discovery.** Probe the forge event's `product`/`tells` to
   learn the hafted-weapon product name (the piece deferred long ago), then craft ingot+lumber→weapon.
 - ⏳ **Slice 4 — wire to arming.** Prefer forging a weapon over the gold-gated buy → breaks the throttle.
@@ -190,10 +195,12 @@ one eid/tile over many ticks → add a per-tile give-up)? move_failed not worse?
 2. 0.44 + 0.45 are MEASURED (iter 58): harvest is entirely ours, 4.1 hits/destroy, no pinning,
    and #103's deaths were the outage window, not the mechanic. **Beware the attribution trap:**
    `eid` (numeric) and `char_uid` (string) are different namespaces — see `decisions.log` iter 58.
-3. **Forge-to-arm Slice 2 — this is the operator's explicit call for the next pass** (asked and
-   answered 2026-08-21). Answer the YIELD question FIRST: does material STOCK accumulate? On #103,
-   133 terrain_destroyed produced only 8 lumber `drop` events (~6%). Then seek-resources + prefer
-   the axe/pickaxe. Then Slice 3 (forge + product-name discovery).
+3. **Measure 0.46 on a matured #114 first:** lumber/ingot `sale` events should collapse toward 0,
+   material stock should hold a FLOOR instead of sawtoothing, and carry-`full` / move_failed must
+   NOT rise (that is the regression the per-kind bound exists to prevent).
+   **Then forge-to-arm SLICE 3: discover the forge `product` name** — with feedstock now surviving,
+   that is the last thing between us and crafting weapons without gold, and it is the remaining
+   blocker on the top-scoring wishlist item (M3a forging, 0.5707).
    NOTE: the new **cross-referencing exploration matrix** wishlist item stays QUEUED by operator
    decision — it scores -0.176 only because it is just-added (tc=1), and the operator declined a
    one-off override. It accrues tc normally; do not re-litigate it next pass.
