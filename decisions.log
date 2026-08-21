@@ -2556,3 +2556,23 @@ NEXT: the FORGE-TO-ARM probe (operator-requested 2nd half) — the terrain-harve
 nav.SOLID + attack-only-monsters, iter55) is the target. Scope it: recon what's harvestable + the craft chain
 (chop tree->lumber, break vein->ore->smelt->ingot, forge ingot+lumber->hafted weapon; forge product name is
 undiscovered per docs/07). Build incrementally with gating (don't strand chars chopping in danger).
+
+ITER 57 (2026-08-21) — FORGE-TO-ARM probe SLICE 1 built + deployed (0.45.0): opportunistic terrain harvest.
+RECON: we're surrounded by breakables (within 5 tiles over 600 frames: 3490 tree / 2039 rock / 2874 bush
+hits; census/120fr: bush 919, herb 879, tree 797, rock 788, crop 503) — the harvest layer we ignored as
+scenery is huge. SLICE 1: a non-homing char ALREADY ADJACENT to a tree/vein attacks the tile to harvest
+(HARVEST_KINDS={tree,vein}); adjacent-only (zero pathing risk — predators near/adjacent already returned via
+dodge/spacing), needs no weapon, scored 3.3 (below gather 4.0/wildlife-seek 3.5, above frontier 2.5 — fires
+only when nothing better underfoot). 3 tests (harvest / none-adjacent / yields-to-loot), harvest mutation-
+checked; 310 local/316 reaper; replay 2500 frames exit0, harvest fires 390x.
+DEPLOY: run 103, git 0f54b48 (killed svc.sh-down remnants first). VERIFIED LIVE + MECHANIC CONFIRMED:
+brand-new event kinds we'd NEVER logged appear — terrain_hit=120, terrain_destroyed=30 (~4 hits/tree, matches
+docs "break after a few attacks") — and `drop` events with item="lumber". So chop -> ~4 hits -> tree
+destroyed -> LUMBER drops -> pickup. 0 char-deaths (harvesting is safe). The raw-materials layer is unlocked;
+this is exactly the mechanic Will's AI found (tree->wood). We already smelt ore->ingot, so with lumber now
+flowing the forge chain is one step from arm-from-craft.
+NEXT SLICES: (2) SEEK resources + prefer the tool (axe/pickaxe — pickaxe already in inventory); measure
+lumber/ore accumulation rate. (3) FORGE + discover the hafted-weapon product name (deferred at M3a per docs/07
+"forge needs an unpublished product name") — probe the forge event's product/tells. (4) wire forge-a-weapon
+into the arming loop to break the gold/arm-throttle. MEASURE before each: material stock, deaths flat, does
+avg move_failed stay low.
