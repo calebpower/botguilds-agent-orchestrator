@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.46.0` on **run #114**, repo HEAD `09b533d`, branch `main` (pushed).
+- **Live:** `explorer/0.47.0` on **run #115**, repo HEAD `2dedb88`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the new always-on supervisor (`tools/healthcheck.py --watch 60 --fix`), which
   restarts a dead service and repairs a broken venv. Start it with `./svc.sh up watch`.
@@ -20,9 +20,11 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   characters while the map-progression window is open.* Gold is a FLOOR (gather only when low),
   not the goal. Also: reverse-engineer rivals.
 - **Active work:** the **FORGE-TO-ARM probe** — Slice 1 (harvest) shipped and measured; **Slice 2
-  shipped as 0.46.0** (the yield question found we were SELLING our own harvest — 189 lumber and
-  even 2 ingots on run #113 — so the lever became a feedstock reserve, not "seek more"). **Slice 3
-  is next: discover the forge `product` name**, the last blocker on the top wishlist item.
+  shipped as 0.46.0**, then CORRECTED by 0.47.0 (0.46 reserved lumber unconditionally and cut our
+  main income for a forge we cannot run — gold fell to 139, under the 150 arm floor; the reserve is
+  now gated on the char holding METAL). **The forge `product` name is DISCOVERED** — it was in our
+  own events table (189 rival `forged`/`forge_started` events). **The M3a blocker is now ORE.**
+  0.47 also closed a 114-run gap: we had never bought ARMOR.
 - **Resuming:** just run a loop pass. Start with `uv run python tools/healthcheck.py`.
 
 ## How to operate
@@ -53,7 +55,11 @@ Then VERIFY liveness via the DB with a FRESH MariaDB connection (reused conns gi
 staleness. A `kicked: another session hello'd — exiting` log line at redeploy is GRACEFUL
 supersession of the old session, NOT a kick-war — confirm via DB freshness, not the log.
 
-**Gate:** `reaper test` runs the full pytest incl. Playwright frontend in a Linux container;
+**Gate:** if `reaper up` fails with `unable to create VM NNNN: config file already exists`, the
+previous session EXPIRED and `down` forgot it without reclaiming the VM. Recover with
+`reaper down --all && reaper up` — no hypervisor access needed (logged in `/home/cal/reaper_bugs.md`).
+Sessions expire in ~2h, so expect this after any long gap.
+`reaper test` runs the full pytest incl. Playwright frontend in a Linux container;
 result is in `out/pytest.log` (not stdout). Local `uv run python -m pytest -q` for fast checks.
 Bounded replay over real frames: `uv run python -m steemer.replay --limit N` (set the Bash tool
 timeout > the inner one; default Bash timeout is 120s). **This workstation is FreeBSD** — use
@@ -195,12 +201,14 @@ one eid/tile over many ticks → add a per-tile give-up)? move_failed not worse?
 2. 0.44 + 0.45 are MEASURED (iter 58): harvest is entirely ours, 4.1 hits/destroy, no pinning,
    and #103's deaths were the outage window, not the mechanic. **Beware the attribution trap:**
    `eid` (numeric) and `char_uid` (string) are different namespaces — see `decisions.log` iter 58.
-3. **Measure 0.46 on a matured #114 first:** lumber/ingot `sale` events should collapse toward 0,
-   material stock should hold a FLOOR instead of sawtoothing, and carry-`full` / move_failed must
-   NOT rise (that is the regression the per-kind bound exists to prevent).
-   **Then forge-to-arm SLICE 3: discover the forge `product` name** — with feedstock now surviving,
-   that is the last thing between us and crafting weapons without gold, and it is the remaining
-   blocker on the top-scoring wishlist item (M3a forging, 0.5707).
+3. **Measure 0.47 on a matured #115:** armor buys > 0 and armored-fraction climbing (the headline —
+   it was 0% for 114 runs); gold holding above 150 and reaching the 200 ARMOR_BUY_FLOOR; lumber
+   sales present but not back to 0.45 levels; carry-`full`/move_failed not worse.
+   **Then the ORE problem** — the whole M3a chain's bottleneck. `HARVEST_KINDS` already includes
+   `vein`, but harvest is adjacency-only so we break one purely by luck. Seeking veins is the next
+   lever, and M3a forging is the top wishlist item (0.5707) with its product-name blocker GONE.
+   Forge products confirmed from rival events: shield_iron, dagger, spear, sickle, hook_chain,
+   shortsword, pickaxe, pike, bow — and shield_iron/hook_chain/pike are NOT sold in the shop at all.
    NOTE: the new **cross-referencing exploration matrix** wishlist item stays QUEUED by operator
    decision — it scores -0.176 only because it is just-added (tc=1), and the operator declined a
    one-off override. It accrues tc normally; do not re-litigate it next pass.
