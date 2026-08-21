@@ -426,6 +426,35 @@ DOT_KINDS = frozenset({"poison", "burn"})   # damage-over-time: flee regardless 
 THREAT_KINDS = frozenset({"cultist", "zombie", "ghoul", "vampire_bat", "cinder_wisp",
                           "skeleton", "wraith", "lich", "ghast", "specter", "revenant"})
 FLEE_RADIUS = 4            # Manhattan tiles: flee when a THREAT is this close or nearer
+# --------------------------------------------------------------------------- #
+# v0.48.0 ADAPTIVE COHESION — draw together where it pays, stay spread where it does not.
+#
+# MEASURED before building (2026-08-21, from our own event history; rivals cluster and we
+# do not, so their kills were the experiment):
+#   participants   DPS on the mob   party dmg taken/tick   per-MEMBER dmg taken/tick
+#        1              2.36                0.51                    0.51
+#        2              4.80                0.49                    0.24
+# Damage output roughly doubles, and it holds within mob kind (rat_grey 1.86->6.07, wolf
+# 3.78->10.42, skunk 2.59->5.97). The party's total intake per tick is FLAT because a mob
+# swings at ONE target per tick -- so per-member intake halves. Net ~2x kill speed at ~half
+# personal damage: roughly 4x less damage taken per member per kill.
+#
+# XP is SPLIT (total per kill is flat in participant count: 5.70 at 1p, 5.87 at 2p), so
+# cohesion is not an XP multiplier -- but halved share x doubled kill rate leaves XP/TIME
+# about unchanged, and the safety margin is what buys access to content worth more XP.
+#
+# WHY THE LEASH IS STANDING AND NOT REACTIVE: median solo time-to-kill is 6 ticks, our mean
+# pairwise distance was 22-25 steps, and movement is a tile per tick. "Gang up, a mob is
+# near" therefore arrives ~16 ticks AFTER the fight ended. Only the spreading-out half can
+# be reactive; the coming-together has to already have happened.
+COHESION_SCORE = 2.8       # ABOVE frontier(2.5)/scout(1.0) so idle chars close up, BELOW
+                           # spacing(3.0) so predator-avoidance always wins -- never walk
+                           # into a mob to reach a friend -- and below gather(4.0+).
+COHESION_PULL = 4          # start closing when the nearest ally is farther than this...
+COHESION_HOLD = 2          # ...and stop once within this. The GAP is deliberate: without
+                           # hysteresis two chars each closing on the other oscillate, and
+                           # cohesion-vs-spacing is the known deadlock hazard (v0.37).
+COHESION_PRED_DENSE = 2    # a world with this many melee predators in view counts dangerous
 PRED_SPACING_RADIUS = 2    # v0.37.0: step away from a MELEE predator this close (not yet
 #   adjacent) BEFORE it lands the first hit — the anti-stuck lever (see the act() block).
 # v0.38.0 MODE-GATED SPACING: 0.37 spaced at a flat 3.0 in EVERY band, which cost ~-49%
@@ -644,7 +673,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.47.0"
+    version = "explorer/0.48.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -675,6 +704,14 @@ class Explorer:
         # Updated live from what fielded chars see; drives safe-world routing at embark
         # and expires after THREAT_TTL so an emptied world gets re-scouted.
         self._world_threat: dict[str, tuple[float, int]] = {}
+        # v0.48.0: per-world DANGER for cohesion — (undead_frac, melee_pred_count, tick).
+        # _world_threat above tracks UNDEAD only (it exists for safe-world routing), and
+        # that reads ~0 in the mines, whose bats/rats/moles/delvers are melee predators
+        # rather than undead. Cohering on it alone would leave us dispersed in exactly the
+        # world we most want to raid, so danger counts both.
+        self._world_danger: dict[str, tuple[float, int, int]] = {}
+        # Characters currently closing on an ally — the hysteresis latch.
+        self._cohering: set[str] = set()
 
     def on_action_error(self, bot: "Any", message: dict[str, Any]) -> None:
         """Learn equip slots from the server's rejections. We send at most one
@@ -1051,6 +1088,23 @@ class Explorer:
         if world:
             frac = (len(threats) / len(ctx.enemies)) if ctx.enemies else 0.0
             self._world_threat[world] = (frac, bot.tick)
+            # Danger is the MAX seen within THREAT_TTL, not the instantaneous view. Written
+            # naively (overwrite every tick) a character standing somewhere quiet resets the
+            # world to "safe" on the spot — which defeats a STANDING formation entirely, since
+            # the whole point is to be together BEFORE anything appears. The timestamp is
+            # refreshed only when danger is actually observed, so a genuinely emptied world
+            # still ages out and gets re-scouted rather than being feared forever.
+            pred_n = sum(1 for en in ctx.enemies.values()
+                         if self._is_melee_predator(en.get("kind")))
+            prev = self._world_danger.get(world)
+            fresh = prev if (prev and bot.tick - prev[2] < THREAT_TTL) else None
+            if frac or pred_n:
+                self._world_danger[world] = (
+                    max(frac, fresh[0]) if fresh else frac,
+                    max(pred_n, fresh[1]) if fresh else pred_n,
+                    bot.tick)
+            elif fresh is None and prev is not None:
+                del self._world_danger[world]        # expired and nothing seen: forget it
         if threats and not homing:
             near = any(abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= FLEE_RADIUS for p in threats)
             if near:
@@ -1313,6 +1367,32 @@ class Explorer:
                 self._retreat(uid, pos, ctx, blocked, offer, 2.5,
                               "no heal past the safe depth — heading home before poison strands us")
             else:
+                # --- v0.48.0 ADAPTIVE COHESION: in a dangerous world, close up while the
+                # coast is CLEAR so we are already together when something starts. Offered
+                # here — below gathering, above frontier/scout — so it fills idle ticks
+                # rather than displacing income, and it loses outright to spacing (3.0),
+                # the dodge (7.3) and the retreat (8.5). A homing char is exempt (it is
+                # walking to the village); so is a world we have not scouted. ---
+                allies = [tuple(c["pos"]) for c in frame.get("chars", []) or []
+                          if c.get("char_uid") != uid and c.get("pos")]
+                if allies and self._world_is_dangerous(ctx.world, bot.tick):
+                    gap = min(abs(pos[0] - a[0]) + abs(pos[1] - a[1]) for a in allies)
+                    # Hysteresis: once closing, keep closing until inside HOLD.
+                    threshold = COHESION_HOLD if uid in self._cohering else COHESION_PULL
+                    if gap > threshold:
+                        step = self._cohesion_step(pos, allies, ctx, blocked)
+                        if step is not None:
+                            self._cohering.add(uid)
+                            offer({"char_uid": uid, "action": "move",
+                                   "dir": nav.step_dir(pos, step)}, COHESION_SCORE,
+                                  f"closing on the nearest ally ({gap} away) — dangerous "
+                                  f"world, forming up while it is clear")
+                            productive = True
+                        else:
+                            self._cohering.discard(uid)
+                    else:
+                        self._cohering.discard(uid)
+
                 north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known), ctx, blocked)
                 if north:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
@@ -1419,6 +1499,38 @@ class Explorer:
             return None
         best = min(affordable, key=lambda s: s["buy_price"])
         return best["kind"], best["buy_price"]
+
+    def _world_is_dangerous(self, world: str | None, tick: int) -> bool:
+        """Is this world worth holding formation in? Undead present, or melee predators
+        dense enough that a lone character keeps losing trades.
+
+        Unknown or STALE (older than THREAT_TTL) reads False: the default is to DISPERSE,
+        which preserves the gathering economy and means a world we have not scouted cannot
+        silently collapse the roster into one tile.
+        """
+        d = self._world_danger.get(world or "")
+        if not d or tick - d[2] >= THREAT_TTL:
+            return False
+        return d[0] >= UNDEAD_SEVERE_GUARDIAN or d[1] >= COHESION_PRED_DENSE
+
+    @staticmethod
+    def _cohesion_step(pos: tuple[int, int], allies: list[tuple[int, int]],
+                       ctx: "FieldContext", blocked) -> tuple[int, int] | None:
+        """One step toward being within ``COHESION_HOLD`` of any ally, or None.
+
+        The GOAL is proximity, not the ally's tile — an ally's own tile is occupied and
+        therefore blocked, so pathing to it would always fail.
+        """
+        def close_enough(t: tuple[int, int]) -> bool:
+            return any(abs(t[0] - a[0]) + abs(t[1] - a[1]) <= COHESION_HOLD for a in allies)
+        # Short-circuit if we are ALREADY in range: nav.bfs_step answers "which neighbour
+        # leads to the nearest goal" and does not treat the start tile as a goal, so
+        # without this it would hand back a pointless step. The caller's hysteresis check
+        # normally prevents that, but the helper should not depend on its caller for
+        # correctness.
+        if close_enough(pos):
+            return None
+        return nav.bfs_step(pos, close_enough, ctx.known, blocked)
 
     @staticmethod
     def _is_melee_predator(kind: str | None) -> bool:
