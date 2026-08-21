@@ -54,6 +54,20 @@ def run(mutants: Iterable[Mutant], timeout: int = 900) -> int:
             print(f"SKIP(anchor missing) {label}", flush=True)
             survivors.append(f"{label} (anchor missing)")
             continue
+        # SELF-TEST THE ORACLE (added 2026-08-21, after it lied a second time). "Killed"
+        # is inferred from a NONZERO pytest exit -- and pytest also exits nonzero when the
+        # selector matches nothing at all. Two mutants were reported KILLED against test
+        # names that did not exist; a harness whose job is to prove tests can fail must
+        # not accept "there was no test" as proof. So: run the selector CLEAN first and
+        # require it to pass. If it cannot pass unmutated, its verdict means nothing.
+        base = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+             *selector.split()],
+            capture_output=True, text=True, timeout=timeout, env=env)
+        if base.returncode != 0:
+            print(f"SKIP(selector does not pass clean) {label}: {selector}", flush=True)
+            survivors.append(f"{label} (selector does not pass clean)")
+            continue
         shutil.copy(path, path + ".mutbak")
         open(path, "w").write(src.replace(old, new, 1))
         try:

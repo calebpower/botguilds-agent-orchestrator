@@ -591,6 +591,9 @@ POTION_MIN_GOLD = 20       # buy a potion once we can afford one (its shop price
 XP_PRIORITY = ("vit", "end", "str")   # survival first: HP, then stamina, then damage
 XP_STAT_TARGET = 8         # grow each toward the full-rate effective-bonus cap
 EQUIP_SLOTS = ("hand", "offhand", "outfit", "trinket", "boots")
+# v0.53.0: how many distinct (kind, slot) swap refusals before we conclude the server has
+# no equip-into-occupied-slot mechanic at all and stop attempting upgrades for the run.
+SWAP_GIVE_UP = 3
 BREW_MIN = 2               # a brew takes 2-4 ingredients
 BREW_MAX = 4
 BREW_MIN_GOLD = 10         # keep a little gold buffer before buying bottles
@@ -728,7 +731,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.52.0"
+    version = "explorer/0.53.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -758,6 +761,19 @@ class Explorer:
         # uid -> the (product, n_ingot, n_lumber) most recently attempted, so
         # on_action_error can attribute a rejection to the recipe that earned it.
         self._forge_attempt: dict[str, tuple[str, int, int]] = {}
+        # v0.53.0: kind -> the shop's buy_price, learned from every village frame we see.
+        # This is the only QUALITY ranking the game exposes: items carry no damage or
+        # armour number, just `tier` -- and run #129 showed tier is not ordered, since a
+        # forged spear came out tier 0 beside a tier-1 club. The shop's own valuation is
+        # the game's opinion of what a kind is worth, read from the same frame field the
+        # weapon and armour buys already trust.
+        self.price: dict[str, int] = {}
+        # (kind, slot) pairs the server refused to SWAP into while occupied, and the
+        # kill-switch that stops trying at all if swapping turns out to be unsupported.
+        self._swap_failed: set[tuple[str, str]] = set()
+        self._swap_refusals = 0
+        self._swap_unsupported = False
+        self._equip_upgrade: set[str] = set()   # uids whose in-flight equip is a swap
         # "Heading home to sell" latch (v0.16.0): uids that filled up and are now
         # walking home. While latched, looting is suppressed so a shed item is
         # never re-grabbed off the char's own tile (the 0.15.0 pickup<->drop
@@ -799,10 +815,21 @@ class Explorer:
             return
         kind, slot = pend
         reason = message.get("reason")
+        was_upgrade = uid in self._equip_upgrade
+        self._equip_upgrade.discard(uid)
         if reason == "wrong_slot":
             self.slot_wrong[kind].add(slot)     # not this slot — try another next time
         elif reason == "stat_requirement":
             self.wont_fit.add(kind)             # can't meet the requirement; stop trying
+        elif was_upgrade:
+            # v0.53.0: equipping into an OCCUPIED slot is an undocumented mechanic. Any
+            # other rejection means this pair cannot be swapped -- record it so it is
+            # tried once, and if enough distinct pairs are refused, conclude the server
+            # has no swap at all and stop paying for the lesson.
+            self._swap_failed.add((kind, slot))
+            self._swap_refusals += 1
+            if self._swap_refusals >= SWAP_GIVE_UP:
+                self._swap_unsupported = True
 
     # -- village: gear + economy + healing supply + discovery-first deployment --
 
@@ -811,6 +838,7 @@ class Explorer:
         cfg = bot.config
         chars = frame.get("chars", [])
         gold = guild.get("gold", 0)
+        self._learn_prices(frame)
 
         for char in chars:
             uid = char["char_uid"]
@@ -1559,10 +1587,102 @@ class Explorer:
             if slot is None:
                 continue                    # no empty, not-known-wrong slot for it
             self.equipping[uid] = (kind, slot)
+            self._equip_upgrade.discard(uid)
             return {"char_uid": uid, "action": "equip", "slot": slot,
                     "item_id": item["item_id"],
                     "_why": f"equipping {kind} -> {slot} "
                             f"(wrong so far: {sorted(self.slot_wrong[kind]) or 'none'})"}
+        # v0.53.0 UPGRADE pass. Filling only EMPTY slots meant a character never
+        # improved on what it already wore -- and run #129 showed what that costs: we
+        # forged a spear, the slot search learned outfit/trinket/boots were wrong for it,
+        # `hand` was occupied by a 15-gold club, so `_should_sell` concluded no slot
+        # remained and SOLD the spear we had just spent an ingot and a lumber to make.
+        # Forging is worth nothing until its output can displace something worse.
+        for item in inv:
+            kind = item["kind"]
+            if "equip" not in (item.get("uses") or []) or kind in self.wont_fit:
+                continue
+            slot = self._upgrade_slot(kind, eqp)
+            if slot is None:
+                continue
+            self.equipping[uid] = (kind, slot)
+            self._equip_upgrade.add(uid)
+            worn = self._worn_kind(eqp.get(slot))
+            return {"char_uid": uid, "action": "equip", "slot": slot,
+                    "item_id": item["item_id"],
+                    "_why": f"upgrading {slot}: {kind} ({self.price.get(kind)}g) "
+                            f"over {worn} ({self.price.get(worn)}g)"}
+        return None
+
+    def _learn_prices(self, frame: dict[str, Any]) -> None:
+        """Remember what the shop charges for each kind. Learned rather than hardcoded
+        for the same reason `_afford_weapon` reads prices live: the economy shuffles per
+        world, and a price we never see stays unknown (which blocks a swap rather than
+        guessing at one)."""
+        for sitem in (frame.get("shop", {}) or {}).get("stock", []) or []:
+            kind, price = sitem.get("kind"), sitem.get("buy_price")
+            if isinstance(kind, str) and isinstance(price, int):
+                self.price[kind] = price
+
+    @staticmethod
+    def _worn_kind(slot_value: Any) -> str | None:
+        """The kind in an equipment slot. Slots hold an item dict, but tolerate a bare
+        kind string so this never depends on which shape a frame happens to use."""
+        if isinstance(slot_value, dict):
+            k = slot_value.get("kind")
+            return k if isinstance(k, str) else None
+        return slot_value if isinstance(slot_value, str) else None
+
+    def _upgrade_slot(self, kind: str, eqp: dict[str, Any]) -> str | None:
+        """The OCCUPIED slot this kind should displace, or None.
+
+        Three conditions, each of which a test earned:
+
+        * SAME CLASS. A price only means something against a comparable item -- a 70g
+          spear is not an "upgrade" over a 25g shield, they do different jobs, and
+          ranking across classes proposed exactly that nonsense (spear -> offhand).
+        * STRICTLY dearer. Equal is not better, or two same-priced kinds displace each
+          other every village visit forever. This is also what stops a kind displacing
+          ITSELF -- a second spear ranks equal to the worn one, so it never swaps, and
+          no separate identity check is needed (an earlier one was redundant).
+        * BOTH prices KNOWN. An unseen price is not zero -- treating it so would let
+          anything displace anything the shop happens not to stock.
+
+        Consequence worth naming: `shield_iron` is not sold at any price, so it has no
+        price to rank and can never be SWAPPED in -- only worn into an offhand that is
+        still empty. Ranking the unbuyable would mean inventing a value for it, which is
+        the guess this method exists to avoid."""
+        if self._swap_unsupported:
+            return None
+        mine = self.price.get(kind)
+        if mine is None:
+            return None
+        # An unclassified kind needs no early-out of its own: its class is None, and the
+        # per-slot check below compares classes, so it matches nothing wearable. (An
+        # explicit guard here was redundant and mutation-testing proved it -- no test
+        # could tell the two versions apart, because no behaviour differs.)
+        klass = self._gear_class(kind)
+        for slot in EQUIP_SLOTS:
+            if slot in self.slot_wrong[kind] or (kind, slot) in self._swap_failed:
+                continue
+            worn = self._worn_kind(eqp.get(slot))
+            if worn is None:
+                continue                    # empty -- that is pass 1's job, not a swap
+            if self._gear_class(worn) != klass:
+                continue                    # not comparable -- different job
+            theirs = self.price.get(worn)
+            if theirs is not None and mine > theirs:
+                return slot
+        return None
+
+    @staticmethod
+    def _gear_class(kind: str | None) -> str | None:
+        """Which job a kind does: a hand weapon, or armour. ``None`` for anything we
+        have no classification for, which blocks the comparison rather than guessing."""
+        if kind in WEAPON_KINDS:
+            return "weapon"
+        if kind in ARMOR_KINDS:
+            return "armor"
         return None
 
     @staticmethod
@@ -1851,6 +1971,11 @@ class Explorer:
             return True                     # pure loot -> bank it
         if kind in self.wont_fit:
             return True                     # equippable but fails its stat requirement
+        # v0.53.0: keep it if it out-values something we are WEARING. Without this the
+        # upgrade pass never gets a turn -- selling runs first for any char whose slots
+        # are all occupied or known-wrong, which is exactly the case an upgrade is for.
+        if self._upgrade_slot(kind, eqp) is not None:
+            return False
         # otherwise keep it only while a slot it could still go into remains:
         return all(s in self.slot_wrong[kind] or eqp.get(s) is not None
                    for s in EQUIP_SLOTS)
