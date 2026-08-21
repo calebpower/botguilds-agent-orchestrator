@@ -14,7 +14,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = ["run-live.sh", "redeploy.sh", "analyze-iteration.sh",
-           "apply-iteration.sh", ".githooks/pre-commit"]
+           "apply-iteration.sh", "svc.sh", ".githooks/pre-commit"]
 
 
 @pytest.mark.parametrize("script", SCRIPTS)

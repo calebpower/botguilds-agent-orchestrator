@@ -39,7 +39,10 @@ cache = ["uv", "pwb"]
 # importorskip). install-deps must run HERE (this fresh container's /usr/lib) so chromium
 # finds libglib etc.; the browser binary itself comes from the pool cache. No pipe: dash
 # lacks pipefail, so redirect (not tee) so a red suite can't be masked.
-cmd = "PLAYWRIGHT_BROWSERS_PATH=$REAPER_CACHE_PWB UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group frontend playwright install-deps chromium && PLAYWRIGHT_BROWSERS_PATH=$REAPER_CACHE_PWB UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group frontend pytest -q > $REAPER_OUT/pytest.log 2>&1"
+# procps: svc.sh resolves process groups and ownership with ps(1), and the slim image
+# ships none -- without it tests/test_supervision.py cannot exercise that logic at all
+# (and svc.sh itself would refuse to stop anything, which is how the gap was found).
+cmd = "apt-get update -qq && apt-get install -y -qq procps && PLAYWRIGHT_BROWSERS_PATH=$REAPER_CACHE_PWB UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group frontend playwright install-deps chromium && PLAYWRIGHT_BROWSERS_PATH=$REAPER_CACHE_PWB UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group frontend pytest -q > $REAPER_OUT/pytest.log 2>&1"
 
 [sync]
 # out/ is auto-excluded. Skip the FreeBSD venv (wrong platform), caches, local

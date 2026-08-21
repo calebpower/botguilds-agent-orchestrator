@@ -46,7 +46,13 @@ top of **Open**.
   reference/enjoyment value; read-only (dashboard sidecar, zero bot risk). Dovetails with the
   behavioural-mob work, the heatmap, and rival-recon. (operator request 2026-08-20)
 
-- [ ] **Extend the watchdog to cover the web SIDECAR** — `steemer/watchdog.py` only checks the
+- [x] **Extend the watchdog to cover the web SIDECAR** — SHIPPED 2026-08-21 as the wider
+  **always-on supervisor** (`steemer/health.py` + `tools/healthcheck.py` + `svc.sh up watch`):
+  covers bot (frame freshness), web sidecar (`intel` freshness) AND dash (port), restarts what
+  is dead with a per-service cooldown, and repairs a broken venv instead of restarting into it.
+  Prompted by the 2026-08-21 outage, where all three services were down and the bot then
+  crash-looped on an ABI-broken pyzmq while `svc.sh status` reported "up". Original text:
+  `steemer/watchdog.py` only checks the
   BOT's frame-liveness. The `web` sidecar (`tools/web_sidecar.py`: rainbow map-color rotation +
   rival intel/spectate + tiles) died externally on 2026-08-19 and sat dead ~1.5 days UNNOTICED
   (stuck color, paused intel recording) — the frame-watchdog can't see it. Add a sibling
