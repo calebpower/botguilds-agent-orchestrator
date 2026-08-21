@@ -49,6 +49,10 @@ class GuildBot:
         # it last bounced (expired after STUCK_BLOCK_TTL). v0.50.0 removed the
         # position-inference that used to feed this: see on_frame.
         self._learned_blocked: dict[str, dict[tuple[int, int], int]] = {}
+        # v0.56.0: per-world tiles seen since THIS process started. The hydrated map
+        # cannot distinguish "there is ground here" (durable) from "there is a chest
+        # here" (was true once); this set is how the second kind stays honest.
+        self._seen_this_run: dict[str, set[tuple[int, int]]] = {}
         self.tick = 0
         self.config: dict[str, Any] = {}
         self.guild: dict[str, Any] = {}
@@ -114,9 +118,14 @@ class GuildBot:
     def _field(self, frame: dict[str, Any]) -> list[dict[str, Any]]:
         world = frame["world"]
         known = self.known.setdefault(world, {})
+        # v0.56.0: tiles seen THIS RUN, tracked apart from the hydrated map. Remembered
+        # TERRAIN is durable and worth routing over; remembered CONTENTS are not, and
+        # conflating the two is what v0.55.0 got wrong -- see `containers` below.
+        seen_now = self._seen_this_run.setdefault(world, set())
         visible = frame.get("visible", {}) or {}
         for t in visible.get("tiles", []):
             known[(t[0], t[1])] = t[2]
+            seen_now.add((t[0], t[1]))
 
         enemies = {tuple(e["pos"]): e for e in visible.get("entities", [])
                    if e.get("faction") == "monster"}
@@ -127,7 +136,17 @@ class GuildBot:
         bodies = {tuple(c["pos"]) for c in frame.get("chars", [])}
         bodies |= {tuple(e["pos"]) for e in visible.get("entities", [])
                    if e.get("faction") == "guild"}
-        containers = {p for p, k in known.items() if k in CONTAINER_KINDS}
+        # Only chests seen THIS RUN. v0.55.0 hydrated `known` from storage, and because
+        # this line derives targets from `known` it silently promoted chest-beelining from
+        # a local errand to a map-wide one: characters set off across the whole remembered
+        # map (at score 4.5) toward chests recorded in earlier runs, most already opened.
+        # Measured on run #132 -- move failures went 5.2% -> 21.6% of moves, and 50 of the
+        # 118 failures attributable to a specific character's own decision were "beeline to
+        # a chest". A chest is CONTENT: it gets opened, and it refills on the band's own
+        # schedule, so a sighting from a previous run is not evidence it is there now.
+        # Terrain keeps the full hydrated map; only this target set is scoped to the run,
+        # which is exactly the pre-0.55.0 behaviour.
+        containers = {p for p in seen_now if known.get(p) in CONTAINER_KINDS}
 
         # Learned-blocked tiles (chars that bounced here recently) also block nav,
         # so a char that hit a wall stops re-issuing the same doomed move. Expire

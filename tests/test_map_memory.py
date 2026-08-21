@@ -133,3 +133,88 @@ def test_a_hydrated_map_lets_vein_seek_fire_where_a_blind_one_cannot():
     assert Explorer._ore_step(
         (0, 0), FieldContext(world="mines", known=remembering.known["mines"]),
         set()) == (1, 0)
+
+
+# ---- v0.56.0: terrain is durable, CONTENTS are not ---------------------------
+
+def _frame(tiles, world="mines", tick=1):
+    return {"type": "frame", "tick": tick, "world": world, "events": [],
+            "chars": [{"char_uid": "u1", "eid": 1, "pos": [0, 0], "hp": 9, "max_hp": 9,
+                       "stamina": 9, "inventory": [], "equipment": {}}],
+            "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
+
+
+def _containers_seen_by(bot, frame):
+    """The container set the strategy is actually handed for this frame — asserted at
+    the boundary the strategy sees, not on a bot attribute, so the test cannot pass by
+    agreeing with an internal that never reaches a decision."""
+    seen = {}
+
+    class Spy:
+        version = "spy/0"
+
+        def act(self, _bot, _char, _frame, ctx, _trace):
+            seen["c"] = set(ctx.containers)
+
+        def village(self, _bot, _frame):
+            return []
+
+    bot.strategy = Spy()
+    bot.on_frame(frame)
+    return seen["c"]
+
+
+def test_a_chest_remembered_from_an_earlier_run_is_not_a_target():
+    """The v0.55.0 regression itself. `containers` was derived from `known`, so hydrating
+    the map promoted chest-beelining from a local errand to a map-wide one — characters
+    set off across the whole remembered map toward chests recorded in earlier runs, most
+    of them already opened. Move failures went 5.2% -> 21.6% of moves on run #132."""
+    st = _storage_with([[40, 40, "chest", 0, 0], [0, 0, "floor", 0, 0]])
+    bot = GuildBot("explorer", storage=st)
+    assert bot.known["mines"][(40, 40)] == "chest", "the map still REMEMBERS it"
+    assert _containers_seen_by(bot, _frame([[0, 0, "floor", 0, 0]])) == set(), \
+        "but it is not a target until seen this run"
+
+
+def test_a_chest_seen_this_run_IS_a_target():
+    """The other side of the boundary — without it, the fix above would pass just as
+    well if chests stopped being targets altogether."""
+    bot = GuildBot("explorer")
+    assert _containers_seen_by(bot, _frame([[3, 3, "chest", 0, 0]])) == {(3, 3)}
+
+
+def test_a_chest_stays_a_target_after_it_leaves_sight():
+    """Within a run the set must still ACCUMULATE, exactly as it did before v0.55.0 —
+    a character walking to a chest loses sight of it on the way."""
+    bot = GuildBot("explorer")
+    _containers_seen_by(bot, _frame([[3, 3, "chest", 0, 0]]))
+    assert _containers_seen_by(bot, _frame([[9, 9, "floor", 0, 0]], tick=2)) == {(3, 3)}
+
+
+def test_terrain_from_an_earlier_run_is_STILL_used_for_routing():
+    """The distinction the fix rests on: contents are scoped to the run, terrain is not.
+    If this fails, the fix has thrown away what v0.55.0 was for."""
+    from steemer.strategy.base import FieldContext
+    from steemer.strategy.explorer import Explorer
+
+    tiles = [[x, 0, "floor", 0, 0] for x in range(12)] + [[12, 0, "vein", 0, 0]]
+    bot = GuildBot("explorer", storage=_storage_with(tiles))
+    ctx = FieldContext(world="mines", known=bot.known["mines"])
+    assert Explorer._ore_step((0, 0), ctx, set()) == (1, 0)
+
+
+def test_worlds_do_not_share_their_this_run_sightings():
+    """The worlds must be kept apart at the SAME coordinates, or the test proves nothing:
+    a shared sighting set is harmless while (3,3) means nothing in the other world. Here
+    vale also remembers a chest at (3,3) from an earlier run, so a shared set would let a
+    sighting in the MINES resurrect vale's stale chest as a live target."""
+    st = Storage(":memory:")
+    st.begin_run("sha", "test/0")
+    st.record_frame({"world": "vale", "tick": 1, "chars": [],
+                     "visible": {"tiles": [[3, 3, "chest", 0, 0]]}})
+    st.flush()
+    bot = GuildBot("explorer", storage=st)
+    assert bot.known["vale"][(3, 3)] == "chest", "vale REMEMBERS a chest there"
+    seen_in_mines = _containers_seen_by(bot, _frame([[3, 3, "chest", 0, 0]], world="mines"))
+    assert seen_in_mines == {(3, 3)}, "seeing one in the mines is fine"
+    assert _containers_seen_by(bot, _frame([[8, 8, "floor", 0, 0]], world="vale")) == set()
