@@ -2325,3 +2325,23 @@ OPEN: 0.41 combat-seek (reverse 0.24 no-chase; engage beatable mobs for XP, use 
 rival-recon analysis/dashboard on the track data; predictive model part (b) rivals; sidecar-watchdog
 (the track feed depends on the sidecar which can die unnoticed). VERIFY on #98: do chars ARM UP
 (armed count > 0)? does leveling start? Operator asked re line-dancing (oscillation) — diagnose next.
+
+ITER 49 (2026-08-20) — VERIFY 0.40 arm-up + 0.39.1 Phase-2 fix (scheduled pass; note the wakeup
+prompt was STALE — 0.40 shipped as arm-up, not Prospector). Health: watchdog alive, 3 services up,
+bot #98 on 0.40.0.
+ARM-UP WORKING: run #98 (young, 2.4k frames) 11/26 chars now carry a weapon (from 0), 10 buy events.
+0.40 unfreeze is doing its job — gear gap closing.
+PHASE-2 FIX VERIFIED (0.39.1 reversed the 0.39.0 regression): move_failed/1k #95~23 -> #96 44.33 ->
+#97 22.01 (the spike HALVED back to healthy — bold foragers no longer thrash in coin-dry bands);
+our-death/1k 0.386/0.412/0.402 (flat, fine); recruit/1k 1.11/1.93/1.61 (down). So Phase 2 WITH the
+value-gate is a DECENT ADD; the iter46 heads-up is resolved.
+DECISION: did NOT auto-build Phase 3 / 0.41 combat-seek — both are strategy changes + redeploy that
+can spike deaths (outward-facing, not clearly reversible-safe), and I explicitly OFFERED 0.41 to the
+operator awaiting their go [[never-hang-the-loop]]. Holding for confirmation. #98 too young (2.4k) to
+measure arm-up's survival/combat effect yet.
+WISHLIST (tc=40-add_minor): how-nav 0.72*0.97*0.714=0.499, rival-awareness 0.485, rival-recon-tab
+0.85*0.97*0.5=0.412 (operator-prioritized rival reverse-engineering, data now flowing, but tc=4 caps
+it). Nothing >0.5; none auto-built.
+READY ON OPERATOR GO: 0.41 combat-seek (turn arm-up into leveling; use the mob-predictor); rival-recon
+analysis/dashboard on the track feed; sidecar-watchdog (track feed depends on the sidecar).
+NEXT: measure arm-up's effect on a matured #98 (does survival hold with armed chars? do kills/XP rise?).
