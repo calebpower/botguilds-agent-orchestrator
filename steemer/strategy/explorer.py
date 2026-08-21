@@ -540,6 +540,24 @@ WEAPON_KINDS = frozenset({"club", "dagger", "shortsword", "spear", "bow"})
 # combat-SEEK that earns the XP is the next lever (0.41). spend_xp already converts XP live.
 WEAPON_BUY_FLOOR = 150
 
+# v0.41.0 COMBAT-SEEK (the leveling lever): now that chars ARM (0.40), a DEVELOP-mode char
+# EARNS XP by fighting beatable mobs instead of always fleeing them — reversing the 0.24
+# no-chase. DEVELOP-mode = armed + comfortably healthy + stamina to sustain a fight; below
+# any of these a char reverts to the survival behaviour (flee/dodge/harvest) untouched. Two
+# safe engagements: (A) fight a LONE melee predator that comes ADJACENT (override the dodge —
+# the char was going to be adjacent anyway; armed+healthy it trades hits and wins, and
+# hurt-retreat still bails it out below 60% HP), and (B) actively SEEK benign wildlife (0-dmg
+# mobs) to farm free XP. NEVER fought: undead (DoT — flee wins above) or a SWARM (>=2 melee
+# predators within reach — too much incoming). Predators are not actively walked into (their
+# strike-range tiles stay blocked); we only fight the lone ones that reach us. Gold-floor is
+# enforced INDIRECTLY: develop-mode requires a weapon, and the weapon-buy is itself gated on
+# WEAPON_BUY_FLOOR, so a poor guild can't arm -> its chars aren't in develop-mode -> they
+# harvest/survive. No per-tick treasury read needed in the field.
+DEVELOP_HP = 0.7          # only pick a fight comfortably above the 0.6 retreat line
+DEVELOP_STAMINA = 15      # enough stamina to attack AND still afford a step to disengage
+COMBAT_SEEK_RADIUS = 5    # seek wildlife / gauge predator density within this many tiles
+COMBAT_SWARM = 2          # >=2 melee predators within reach -> too dangerous to fight, flee
+
 
 MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina before
 #   stepping — headroom so a ~1-tick-stale frame reading still affords the move on
@@ -579,7 +597,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.40.0"
+    version = "explorer/0.41.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -965,6 +983,29 @@ class Explorer:
         # a delver is a fast death) and do NOT linger to loot. Scoped to dist 1, so the
         # wildlife worlds stay lootable otherwise (this is NOT the radius-4 undead flee).
         preds = [p for p, en in ctx.enemies.items() if self._is_melee_predator(en.get("kind"))]
+
+        # --- v0.41.0 COMBAT-SEEK (A): fight a LONE predator that came adjacent. A DEVELOP-mode
+        # char (armed + comfortably healthy + stamina to fight) that has a single melee predator
+        # ADJACENT and no swarm nearby ATTACKS it for XP instead of dodging (below). It was going
+        # to be adjacent regardless; armed and healthy it wins the trade, and if it drops below
+        # the retreat line the hurt-block bails it out next tick. Undead never reach here (the
+        # flee returned above); a swarm (>=2 melee predators within reach) skips this and falls
+        # through to the dodge. This is what turns the 0.40 arm-up into actual leveling. ---
+        armed = (char.get("equipment") or {}).get("hand") is not None
+        develop = (armed and not homing and hp >= max_hp * DEVELOP_HP
+                   and stamina >= DEVELOP_STAMINA)
+        near_preds = [p for p in preds
+                      if abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= COMBAT_SEEK_RADIUS]
+        if develop and len(near_preds) < COMBAT_SWARM:
+            adj_pred = [p for p in nav.neighbors(pos) if p in preds]
+            if adj_pred:
+                target = min(adj_pred, key=lambda p: ctx.enemies[p].get("hp_frac", 1.0))
+                kind = ctx.enemies[target].get("kind", "predator")
+                trace.observe(f"develop: fighting a lone {kind} for XP (armed, healthy) — not dodging")
+                offer({"char_uid": uid, "action": "attack", "target": list(target)},
+                      7.6, f"develop: fighting a lone {kind} for XP (not dodging)")
+                return
+
         melee_adj = [p for p in nav.neighbors(pos) if p in preds]
         if melee_adj:
             kind = ctx.enemies[melee_adj[0]].get("kind", "melee predator")
@@ -1099,6 +1140,25 @@ class Explorer:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, lstep)},
                           4.0, "moving toward loot")
                     productive = True
+
+            # v0.41.0 COMBAT-SEEK (B): with no better income underfoot, a DEVELOP char CLOSES on
+            # benign WILDLIFE (0-dmg mobs) to farm free XP — step to a tile adjacent to the
+            # nearest wildlife within COMBAT_SEEK_RADIUS, and the 8.0 adjacent-attack finishes it
+            # next tick. Scored 3.5: BELOW real gathering (gold 5.0 / chest 4.5 / loot 4.0 — free
+            # income still comes first) but ABOVE frontier(2.5)/scout(1.0), so leveling beats
+            # aimless wandering. Only wildlife is sought (its neighbour tiles are walkable);
+            # predators are fought only when they reach us (block A), never chased into.
+            if develop:
+                wild = {p for p, en in ctx.enemies.items()
+                        if en.get("kind") in WILDLIFE_SAFE
+                        and abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= COMBAT_SEEK_RADIUS}
+                if wild:
+                    wstep = self._step(pos, lambda p: any(n in wild for n in nav.neighbors(p)),
+                                       ctx, blocked)
+                    if wstep:
+                        offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, wstep)},
+                              3.5, "develop: closing on wildlife to farm XP")
+                        productive = True
 
         # Gather/explore only when NOT heading home (v0.16.0): a homing char that
         # opens a container spills loot it won't grab, and scouting/frontier-pushing

@@ -1371,3 +1371,83 @@ def test_village_action_re_send_guard_skips_a_recent_actor():
     assert bot.on_frame(frame(4)) == []                          # within cooldown -> skipped
     assert bot.on_frame(frame(3 + VILLAGE_ACTION_COOLDOWN)) == \
         [{"char_uid": "c1", "action": "sell", "item_id": "i1"}]   # cooldown elapsed -> retries
+
+
+# --- v0.41.0 COMBAT-SEEK: now that chars arm (0.40), a DEVELOP-mode char (armed + comfortably
+# healthy + stamina) EARNS XP by fighting beatable mobs instead of always fleeing. Two safe
+# engagements: (A) fight a LONE melee predator that came adjacent (override the dodge) and
+# (B) actively SEEK benign wildlife (0-dmg) to farm free XP. Never a swarm, never undead. ---
+_FIGHT_TILES = [[0, 0, "floor"], [1, 0, "floor"], [0, 1, "floor"]]
+
+
+def _armed(**over):
+    """A field char carrying a hand weapon (the develop-mode prerequisite)."""
+    c = _field_char(equipment={"hand": {"kind": "club"}, "offhand": None, "outfit": None,
+                               "trinket": None, "boots": None})
+    c.update(over)
+    return c
+
+
+def test_develop_char_fights_a_lone_adjacent_predator_for_xp():
+    # armed + full HP + a LONE wolf adjacent -> ATTACK it for XP, overriding the dodge below.
+    bot = _bot()
+    frame = _field_frame(_armed(), _FIGHT_TILES,
+        entities=[{"pos": [1, 0], "faction": "monster", "kind": "wolf", "hp_frac": 0.6}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "attack", "target": [1, 0]} in acts
+
+
+def test_bare_char_dodges_the_predator_instead_of_fighting():
+    # SAME setup but BARE (no weapon) -> not develop-mode -> dodges away, never attacks. The
+    # mutation guard on the develop gate: unarm the char and the fight must vanish.
+    bot = _bot()
+    frame = _field_frame(_field_char(), _FIGHT_TILES,
+        entities=[{"pos": [1, 0], "faction": "monster", "kind": "wolf", "hp_frac": 0.6}])
+    acts = bot.on_frame(frame)
+    assert all(a.get("action") != "attack" for a in acts)
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts     # dodges to (0,1)
+
+
+def test_lightly_hurt_armed_char_dodges_not_fights():
+    # armed but at 63% HP (below DEVELOP_HP 0.7, above the 0.6 retreat line) -> not develop -> it
+    # dodges rather than pick a fight it might not finish before it has to retreat.
+    bot = _bot()
+    frame = _field_frame(_armed(hp=19, max_hp=30), _FIGHT_TILES,
+        entities=[{"pos": [1, 0], "faction": "monster", "kind": "wolf", "hp_frac": 0.6}])
+    acts = bot.on_frame(frame)
+    assert all(a.get("action") != "attack" for a in acts)
+
+
+def test_develop_char_does_not_fight_a_predator_swarm():
+    # armed + healthy but TWO melee predators within reach -> a swarm -> combat-seek is skipped
+    # and the char dodges/flees instead of trading hits it can't win against two.
+    bot = _bot()
+    tiles = [[0, 0, "floor"], [1, 0, "floor"], [2, 0, "floor"], [0, 1, "floor"]]
+    frame = _field_frame(_armed(), tiles, entities=[
+        {"pos": [1, 0], "faction": "monster", "kind": "wolf", "hp_frac": 0.6},
+        {"pos": [2, 0], "faction": "monster", "kind": "wolf", "hp_frac": 0.6}])
+    acts = bot.on_frame(frame)
+    assert all(a.get("action") != "attack" for a in acts)
+
+
+def test_develop_char_seeks_out_wildlife_to_farm_xp():
+    # armed + healthy, a benign chicken 2 tiles SOUTH, a north frontier open. The char CLOSES on
+    # the chicken (moves S toward being adjacent) rather than pushing the frontier — free XP.
+    bot = _bot()
+    tiles = [[0, 1, "floor"], [0, 2, "floor"], [0, 3, "floor"], [0, 4, "floor"]]
+    frame = _field_frame(_armed(pos=[0, 3]), tiles,
+        entities=[{"pos": [0, 1], "faction": "monster", "kind": "chicken", "hp_frac": 1.0}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts     # closing on the chicken
+
+
+def test_bare_char_does_not_seek_wildlife():
+    # SAME geometry but BARE -> no develop-mode seek; it pushes the NORTH frontier instead of the
+    # chicken to the south. Mutation guard on block (B): the seek is gated on the weapon.
+    bot = _bot()
+    tiles = [[0, 1, "floor"], [0, 2, "floor"], [0, 3, "floor"], [0, 4, "floor"]]
+    frame = _field_frame(_field_char(pos=[0, 3]), tiles,
+        entities=[{"pos": [0, 1], "faction": "monster", "kind": "chicken", "hp_frac": 1.0}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts     # frontier north
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} not in acts
