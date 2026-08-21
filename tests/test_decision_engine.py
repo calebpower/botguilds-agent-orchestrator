@@ -1564,3 +1564,31 @@ def test_recruit_uses_the_fresh_snapshot_when_the_spectate_count_is_stale():
     bot.spectate = _StaleSpectate()
     frame = _village_frame(10, 0, by_world={"vale": [f"v{i}" for i in range(12)]})  # 12 fielded
     assert all(a.get("action") != "recruit" for a in bot.on_frame(frame))   # max(9,12)=12 > 10
+
+
+# --- v0.44.0 FORGE-TO-ARM probe (slice 1): opportunistic terrain harvest. A safe char adjacent
+# to a breakable resource tile (tree/vein) attacks it to harvest lumber/ore — the raw-materials
+# layer we'd ignored as scenery. Adjacent-only, scored below real gathering. ---
+
+def test_harvests_an_adjacent_tree_for_materials():
+    bot = _bot()
+    frame = _field_frame(_field_char(pos=[0, 0]), [[0, 0, "floor"], [0, 1, "tree"]])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "attack", "target": [0, 1]} in acts   # chops the tree
+
+
+def test_no_harvest_when_no_resource_is_adjacent():
+    bot = _bot()
+    frame = _field_frame(_field_char(pos=[0, 0]), [[0, 0, "floor"], [0, 1, "floor"]])
+    acts = bot.on_frame(frame)
+    assert all(a.get("action") != "attack" for a in acts)     # nothing to harvest
+
+
+def test_harvest_yields_to_real_loot_underfoot():
+    # loot underfoot (6.0) beats the harvest (3.3): materials only when nothing better is here.
+    bot = _bot()
+    frame = _field_frame(_field_char(pos=[0, 0]), [[0, 0, "floor"], [0, 1, "tree"]],
+                         items=[{"pos": [0, 0], "kind": "egg"}])
+    acts = bot.on_frame(frame)
+    assert {"char_uid": "c1", "action": "pickup"} in acts
+    assert {"char_uid": "c1", "action": "attack", "target": [0, 1]} not in acts

@@ -558,6 +558,15 @@ DEVELOP_STAMINA = 15      # enough stamina to attack AND still afford a step to 
 COMBAT_SEEK_RADIUS = 5    # seek wildlife / gauge predator density within this many tiles
 COMBAT_SWARM = 2          # >=2 melee predators within reach -> too dangerous to fight, flee
 
+# v0.44.0 FORGE-TO-ARM probe (slice 1): breakable terrain we HARVEST for raw materials by
+# attacking the tile (docs/08: "trees/bushes/fences break after a few attacks; vein drops ore").
+# We treated all of these as impassable scenery (nav.SOLID) and never touched them — the entire
+# raw-materials layer went unmined. Start with the two forge inputs: trees -> lumber, veins ->
+# ore (-> smelt -> ingot). Kept deliberately narrow (not bush/rock/fence) until the mechanic and
+# the drops are measured, then expand. These are still SOLID for pathing — we only ATTACK them
+# from an adjacent tile, never stand on them.
+HARVEST_KINDS = frozenset({"tree", "vein"})
+
 
 MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina before
 #   stepping — headroom so a ~1-tick-stale frame reading still affords the move on
@@ -603,7 +612,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.44.0"
+    version = "explorer/0.45.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1222,6 +1231,24 @@ class Explorer:
             if box:
                 offer({"char_uid": uid, "action": "open", "target": list(box)},
                       7.0, "cracking a chest — direct gold + loot (gold-rush v0.24.0)")
+
+            # v0.44.0 FORGE-TO-ARM probe (slice 1): opportunistic terrain HARVEST. A safe,
+            # non-homing char ALREADY ADJACENT to a breakable resource tile ATTACKS it to
+            # harvest raw materials (tree -> lumber, vein -> ore) instead of ignoring it as
+            # scenery. Adjacent-only so there is ZERO extra pathing/danger — a predator near
+            # or adjacent already returned above (dodge/spacing), so reaching here is safe to
+            # spend the few ticks a break costs. Needs no weapon (it's gathering, not combat),
+            # so bare chars harvest too. Scored 3.3: below real gathering (loot 4.0 / wildlife-
+            # seek 3.5) and adjacent-attack (8.0), above frontier(2.5)/scout(1.0) — it fires
+            # only when nothing better is underfoot. Feeds the craft chain we already run
+            # (smelt ore->ingot; the forge step + arming come in later slices).
+            harvest = next((p for p in nav.neighbors(pos)
+                            if ctx.known.get(p) in HARVEST_KINDS), None)
+            if harvest is not None:
+                hkind = ctx.known.get(harvest)
+                offer({"char_uid": uid, "action": "attack", "target": list(harvest)}, 3.3,
+                      f"harvesting an adjacent {hkind} for materials (forge-to-arm probe)")
+                productive = True
 
             # GOLD-RUSH (v0.24.0): do NOT chase monsters. Combat is not the gold
             # source and it is what gets our under-equipped chars killed (poison
