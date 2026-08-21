@@ -2450,3 +2450,34 @@ NEXT: measure 0.42 on run #100 — does our-death/1k drop toward ~0 (the stamina
 stuck-deaths)? does move_failed fall (fewer tiles wrongly blocked -> fewer doomed re-routes)? Confirm no
 new thrash. Then rival-recon (operator go) or the next leveling refinement (predictor-wired seek / push-
 north).
+
+ITER 53 (2026-08-20) — MEASURE 0.42 stuck-death fix on run #100 (23k frames). VERDICT: CLEAN WIN.
+THE FIX WORKED: our-char deaths/1k #99 0.137 -> #100 0.0 (ZERO, confirmed by 2 oracles: eid-set = 0 AND
+death-name kind_name='char' = NONE). move_failed/1k 26.58 -> 10.05 (HALVED, back to #98 levels); fail-
+FRACTION 0.0208 -> 0.0071 (LOWEST of all runs) — exactly the predicted fingerprint: not learn-blocking
+walkable tiles on stamina bounces => fewer wrongly-blocked tiles => fewer doomed re-routes. NO THRASH:
+not_enough_stamina/1k 144.99(#99) -> 21.34(#100) (fell, didn't jump — the stamina margin still gates
+re-issue). 0.41 combat-seek still holds: xp/1k 0.776 (> #98's 0.691), 0 deaths.
+NEW ISSUE FLAGGED (pre-existing, unmasked by frequent deploys; NOT caused by 0.42): RECRUIT BURST ON
+DEPLOY. All 21 #100 recruits fired in the first ~160 ticks (1/8-tick cooldown) then STOPPED — a deploy-
+wave overshoot: at run start the roster count read LOW (fielded=9), so the bot recruited until the count
+caught up, overshooting the fieldable cap (target min(world_cap,roster_cap,party_cap*maps+bench)=~17) to
+30 total (10 fielded + ~20 BENCHED in village). Root: the roster count feeding the recruit gate (auth =
+bot.spectate.counts(), else here+fielded) reads low right after a fresh deploy while the count warms, so
+the burst overshoots before it stabilizes. COST is mild: 24/30 chars BARE (only 6 armed — gold stuck
+~140, just below the 150 arm-floor, in a coin-DRY band 0.00 gold-tiles/frame so can't gather to arm),
+diluting avg-level (2.87) and leaving a big idle bench. NOT draining gold (recruiting is free; only 2
+weapon-buys). Transient per-deploy but ACCUMULATES across my frequent redeploys (roster 18->25->30).
+DECISION: did NOT rush a recruiting-logic fix — fielding is historically delicate (v0.21 armed-only
+filter emptied the field -> income death-spiral) and the count-staleness fix needs care; the 0.42 verify
+is this pass's deliverable and it's a clean win. Candidate next lever: gate recruiting on a STABLE/settled
+roster count (skip the first N ticks post-deploy, or require a non-increasing count) so the deploy burst
+stops overshooting the fieldable cap -> a focused ARMED core levels faster than a diluted bare bench
+(serves the operator's leveling goal). Needs operator input or a dedicated pass.
+WISHLIST (minor=42, no code shipped this pass so tc unchanged): how-nav 0.500 (boundary); rival-recon-tab
+0.469 (good DOCKED to 0.83 for stale ~45s spectate/no-live-mobs — un-docked 0.509 games the limit);
+rival-awareness 0.485; move-pred(b) 0.402; watchdog->sidecar 0.283. Nothing CLEARLY >0.5; none built.
+FLAG: rival-recon (operator's reverse-engineering priority, near-boundary) + the WATCHDOG-CRON GAP (bot-
+watchdog CLI still not scheduled) + the RECRUIT-BURST issue above.
+NEXT: let #100 mature (confirm deaths stay 0, move_failed stays ~10); decide the recruit-burst fix and/or
+next leveling refinement (predictor-wired seek / push-north) — pending operator input on priorities.
