@@ -1209,25 +1209,71 @@ def test_embarks_a_home_char_toward_the_emptiest_map_from_the_frame_distribution
                and a["map"] in ("mines", "spire") for a in acts)  # emptiest (0) map
 
 
-def test_stuck_char_learns_the_blocked_tile_and_stops_reissuing_the_move():
-    # v0.12.0: (0,1) is a north frontier (floor bordering the unknown), so the char
-    # pushes north into it. If we then DON'T move the char, that move bounced
-    # (move_failed) — the bot must learn (0,1) is blocked and NOT re-issue move N
-    # (the freeze that starved field productivity: one char sat at (43,3) for 40+
-    # ticks "pushing north" without moving).
+def test_a_move_failed_EVENT_teaches_the_blocked_tile_and_stops_reissuing():
+    # v0.12.0 wanted this: (0,1) is a north frontier, so the char pushes north; when that
+    # move bounces the bot must learn (0,1) is blocked and stop re-issuing it (the freeze
+    # that starved field productivity — one char sat at (43,3) for 40+ ticks "pushing
+    # north" without moving).
+    # v0.50.0 changed the EVIDENCE: the server's own `move_failed` event, which names the
+    # character and the tile it could not enter, instead of inferring a bounce from an
+    # unchanged position. See the test below for why that inference was fatal.
     bot = _bot()
     tiles = [[0, 0, "floor"], [0, 1, "floor"], [1, 0, "floor"]]
+    char = _field_char(pos=[0, 0], stamina=40)
+    char["eid"] = 7
 
-    def frame(tick):
-        return {"world": "vale", "tick": tick,
-                "chars": [_field_char(pos=[0, 0], stamina=40)],
+    def frame(tick, events=()):
+        return {"world": "vale", "tick": tick, "chars": [dict(char)],
+                "events": list(events),
                 "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
 
     a1 = bot.on_frame(frame(10))
     assert {"char_uid": "c1", "action": "move", "dir": "N"} in a1        # pushes north
-    a2 = bot.on_frame(frame(11))                                          # still at (0,0) -> bounced
-    assert (0, 1) in bot._learned_blocked["vale"]                        # learned the wall
-    assert all(not (x.get("action") == "move" and x.get("dir") == "N") for x in a2)  # no longer N
+    a2 = bot.on_frame(frame(11, events=[
+        {"kind": "move_failed", "eid": 7, "pos": [0, 0], "to": [0, 1]}]))
+    assert (0, 1) in bot._learned_blocked["vale"]                        # learned it
+    assert all(not (x.get("action") == "move" and x.get("dir") == "N") for x in a2)
+
+
+def test_an_UNCHANGED_POSITION_alone_does_NOT_block_the_tile():
+    """THE regression, and it killed two characters on 2026-08-21.
+
+    Frames are stale, so "the character is where it was" is NOT evidence that its move
+    bounced. The old code blacklisted on exactly that, and three stale frames in a row
+    sealed every exit: Recruit-15469 (vale, tick 1413613) tried S, E then W, had (7,35),
+    (8,36) and (6,36) blacklisted for STUCK_BLOCK_TTL with a crab_green on the fourth
+    side, and then rested for ten ticks and bled out at 56/56 stamina with `rest` (0.5)
+    the only offer left. v0.42.0 had closed the `not_enough_stamina` path; this is the
+    no-error-at-all path, and there were zero errors in either fatal window.
+    """
+    bot = _bot()
+    tiles = [[0, 0, "floor"], [0, 1, "floor"], [1, 0, "floor"]]
+    char = _field_char(pos=[0, 0], stamina=40)
+    char["eid"] = 7
+
+    def frame(tick):
+        return {"world": "vale", "tick": tick, "chars": [dict(char)], "events": [],
+                "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
+
+    bot.on_frame(frame(10))            # issues move N
+    bot.on_frame(frame(11))            # same position, and NO move_failed event
+    bot.on_frame(frame(12))            # ...still, twice over
+    assert bot._learned_blocked.get("vale", {}) == {}, (
+        "a stale frame was mistaken for a bounce — this is what entombs a hurt character")
+
+
+def test_a_move_failed_for_a_DIFFERENT_entity_is_ignored():
+    """move_failed fires for rivals and mobs too; blocking on theirs would poison our map
+    with tiles that are perfectly walkable for us."""
+    bot = _bot()
+    tiles = [[0, 0, "floor"], [0, 1, "floor"], [1, 0, "floor"]]
+    char = _field_char(pos=[0, 0], stamina=40)
+    char["eid"] = 7
+    bot.on_frame({"world": "vale", "tick": 10, "chars": [dict(char)],
+                  "events": [{"kind": "move_failed", "eid": 999, "pos": [5, 5],
+                              "to": [0, 1]}],
+                  "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}})
+    assert (0, 1) not in bot._learned_blocked.get("vale", {})
 
 
 def test_learned_block_does_not_fire_when_the_char_actually_moved():
@@ -1236,7 +1282,7 @@ def test_learned_block_does_not_fire_when_the_char_actually_moved():
     tiles = [[0, 0, "floor"], [0, 1, "floor"], [1, 0, "floor"]]
 
     def frame(tick, pos):
-        return {"world": "vale", "tick": tick,
+        return {"world": "vale", "tick": tick, "events": [],
                 "chars": [_field_char(pos=pos, stamina=40)],
                 "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
 
@@ -1592,3 +1638,75 @@ def test_harvest_yields_to_real_loot_underfoot():
     acts = bot.on_frame(frame)
     assert {"char_uid": "c1", "action": "pickup"} in acts
     assert {"char_uid": "c1", "action": "attack", "target": [0, 1]} not in acts
+
+
+def test_a_hurt_char_with_free_floor_is_never_left_with_only_REST():
+    """The lethal symptom, asserted directly rather than via its cause.
+
+    Both deaths on 2026-08-21 look identical in the trace: a hurt character at FULL
+    stamina, walkable floor beside it, and `rest` (0.5) as the ONLY weighed option —
+    retreat (8.5) and the desperation escape (8.0) both silent because every neighbour had
+    been blacklisted. Whatever the mechanism, a hurt character with somewhere to go must
+    always be offered somewhere to go.
+    """
+    bot = _bot()
+    # open floor all around, one predator to the north, character hurt and at full stamina
+    tiles = [[x, y, "floor"] for x in range(-1, 2) for y in range(-1, 2)]
+    char = _field_char(pos=[0, 0], stamina=56)
+    char.update(hp=6, max_hp=30, eid=7)
+    frame = {"world": "vale", "tick": 10, "chars": [char], "events": [],
+             "visible": {"tiles": tiles, "items": [], "gold": [],
+                         "entities": [{"pos": [0, 1], "faction": "monster",
+                                       "kind": "crab_green", "hp_frac": 1.0}]}}
+    actions = bot.on_frame(frame)
+    mine = [a for a in actions if a.get("char_uid") == "c1"]
+    assert mine, "a hurt character with free floor was offered nothing but rest"
+    assert mine[0].get("action") == "move", mine
+    assert mine[0].get("dir") != "N", "stepped INTO the predator"
+
+
+def test_a_learned_block_EXPIRES_so_a_temporarily_occupied_tile_is_not_dead_forever():
+    """Blocks must age out. A tile is often unenterable only because another character or
+    a mob is standing on it this instant; keeping it blacklisted permanently would shrink
+    the walkable map every time anything got in the way."""
+    from steemer.bot import STUCK_BLOCK_TTL
+    bot = _bot()
+    tiles = [[0, 0, "floor"], [0, 1, "floor"], [1, 0, "floor"]]
+    char = _field_char(pos=[0, 0], stamina=40)
+    char["eid"] = 7
+
+    def frame(tick, events=()):
+        return {"world": "vale", "tick": tick, "chars": [dict(char)],
+                "events": list(events),
+                "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
+
+    bot.on_frame(frame(10, events=[{"kind": "move_failed", "eid": 7,
+                                    "pos": [0, 0], "to": [0, 1]}]))
+    assert (0, 1) in bot._learned_blocked["vale"]
+    bot.on_frame(frame(10 + STUCK_BLOCK_TTL - 1))
+    assert (0, 1) in bot._learned_blocked["vale"], "expired too early"
+    bot.on_frame(frame(10 + STUCK_BLOCK_TTL))
+    assert (0, 1) not in bot._learned_blocked["vale"], "never expired"
+
+
+def test_the_DESPERATION_escape_fires_when_the_retreat_has_nowhere_known_to_go():
+    """Isolates the last-resort branch, which the test above does NOT reach (there the
+    retreat at 8.5 answers first, so it would pass even with desperation scored below
+    rest — a mutant proved exactly that).
+
+    Here the only KNOWN tile is the character's own: the homeward route is unknown ground,
+    so the retreat finds no walkable step and must hand over to the desperation escape,
+    which is allowed to step onto a clear unseen tile. That is the branch standing between
+    a cornered, bleeding character and resting to death.
+    """
+    bot = _bot()
+    char = _field_char(pos=[0, 5], stamina=56)
+    char.update(hp=5, max_hp=30, eid=7)
+    frame = {"world": "vale", "tick": 10, "chars": [char], "events": [],
+             "visible": {"tiles": [[0, 5, "floor"]],      # nothing else is known ground
+                         "entities": [], "items": [], "gold": []}}
+    actions = bot.on_frame(frame)
+    mine = [a for a in actions if a.get("char_uid") == "c1"]
+    assert mine and mine[0].get("action") == "move", (
+        "cornered on unknown ground with nowhere KNOWN to retreat, the character was left "
+        "to rest and bleed out")

@@ -32,13 +32,9 @@ class GuildBot:
         self.strategy: Strategy = get_strategy(strategy) if isinstance(strategy, str) else strategy
         self.storage = storage
         self.known: dict[str, dict[tuple[int, int], str]] = {}   # world -> tiles
-        # Stuck detection: a char's last field pos + last move dir, and per-world
-        # tiles that bounced (learned blocked, with the tick they last bounced).
-        self._last_pos: dict[str, tuple[int, int]] = {}
-        self._last_move_dir: dict[str, str | None] = {}
-        # Per-char reason the last issued move failed (from on_action_error), used to
-        # tell a transient stamina bounce from a real wall hit before learning-blocked.
-        self._last_move_err: dict[str, str | None] = {}
+        # Per-world tiles a move_failed event says we could not enter, with the tick
+        # it last bounced (expired after STUCK_BLOCK_TTL). v0.50.0 removed the
+        # position-inference that used to feed this: see on_frame.
         self._learned_blocked: dict[str, dict[tuple[int, int], int]] = {}
         self.tick = 0
         self.config: dict[str, Any] = {}
@@ -69,16 +65,10 @@ class GuildBot:
         return self._field(frame)
 
     def on_action_error(self, message: dict[str, Any]) -> None:
-        # Remember WHY a move failed, per char, so _field can tell a transient
-        # not_enough_stamina bounce (the tile is fine, we just couldn't afford the
-        # step this tick) from a real wall hit. Blacklisting a walkable tile on a
-        # stamina bounce walled hurt chars into their own dead-ends and killed them
-        # (run #99: 9687 stamina errors vs ~0 wall errors — the learned-block was
-        # almost entirely poisoning good tiles). See _field.
-        if message.get("action") == "move":
-            uid = message.get("char_uid")
-            if uid is not None:
-                self._last_move_err[uid] = message.get("reason")
+        # v0.50.0: the per-char "why did the last move fail" bookkeeping is gone with
+        # the position-inference it existed to qualify. Blocking is now driven by the
+        # server's `move_failed` event alone, which cannot be confused with a stamina
+        # bounce because a stamina rejection does not emit one.
         # The client already mirrors errors to storage; give the strategy a look.
         hook = getattr(self.strategy, "on_action_error", None)
         if callable(hook):
@@ -132,6 +122,34 @@ class GuildBot:
         learned = self._learned_blocked.setdefault(world, {})
         for t in [t for t, tk in learned.items() if self.tick - tk >= STUCK_BLOCK_TTL]:
             del learned[t]
+
+        # v0.50.0 — learn blocked tiles from the SERVER'S OWN `move_failed` event, which
+        # names the character and the exact tile it could not enter. Positive evidence.
+        #
+        # Until now a tile was blacklisted whenever a character's position merely LOOKED
+        # unchanged after a move. Frames are stale, so that is not evidence of a bounce —
+        # and three stale frames in a row seal every exit. Both of our most recent deaths
+        # were this, with the same signature: a hurt character at FULL stamina, walkable
+        # floor beside it, and `rest` (0.5) the only offer left because retreat AND the
+        # desperation escape could find no unblocked neighbour. Traced on Recruit-15469
+        # (vale, tick 1413613): move S at 1413599, E at 1413600, W at 1413601 each looked
+        # unlanded, blacklisting (7,35), (8,36) and (6,36) for STUCK_BLOCK_TTL; a
+        # crab_green held the fourth side. It then rested for ten ticks and bled out at
+        # 56/56 stamina.
+        #
+        # This is the v0.42.0 stuck-death returning through the door v0.42.0 did not
+        # close: that fix excluded `not_enough_stamina` specifically, but the
+        # NO-ERROR-AT-ALL path still blacklisted, and there were zero errors in either
+        # fatal window. Inference from absence is the bug; only the event is evidence.
+        our_eids = {c["eid"]: c["char_uid"] for c in frame.get("chars", [])
+                    if c.get("eid") is not None}
+        for ev in frame.get("events") or []:
+            if ev.get("kind") != "move_failed" or ev.get("eid") not in our_eids:
+                continue
+            to = ev.get("to")
+            if isinstance(to, (list, tuple)) and len(to) == 2:
+                learned[(to[0], to[1])] = self.tick
+
         bodies |= set(learned)
 
         ctx = FieldContext(world=world, known=known, enemies=enemies, loot=loot,
@@ -141,21 +159,6 @@ class GuildBot:
         for char in frame.get("chars", []):
             uid = char["char_uid"]
             cur = (char["pos"][0], char["pos"][1])
-            # If this char issued a move last tick and hasn't moved, that move
-            # bounced — remember the tile it tried to enter as blocked, and apply it
-            # immediately so this frame's decision avoids it. BUT only when the bounce
-            # was a real wall hit, NOT a transient not_enough_stamina rejection: a
-            # stamina bounce leaves the tile perfectly walkable, and blacklisting it
-            # for STUCK_BLOCK_TTL walls hurt chars into their own dead-ends (traced:
-            # run #99 a forager rested to death one step from a clear 'path' tile it
-            # had stamina-bounced off earlier). The MOVE_STAMINA_SAFETY margin already
-            # stops the strategy re-issuing an unaffordable move, so nothing thrashes.
-            if self._last_pos.get(uid) == cur and self._last_move_dir.get(uid) in nav.DIRS \
-                    and self._last_move_err.get(uid) != "not_enough_stamina":
-                dx, dy = nav.DIRS[self._last_move_dir[uid]]
-                learned[(cur[0] + dx, cur[1] + dy)] = self.tick
-                ctx.bodies.add((cur[0] + dx, cur[1] + dy))
-
             trace = DecisionTrace(tick=self.tick, world=world, char_uid=uid)
             self.strategy.act(self, char, frame, ctx, trace)
             action = trace.decide()
@@ -171,9 +174,4 @@ class GuildBot:
                     moved_dir = action["dir"]
                     dx, dy = nav.DIRS[moved_dir]
                     ctx.bodies.add((cur[0] + dx, cur[1] + dy))
-            self._last_pos[uid] = cur
-            self._last_move_dir[uid] = moved_dir
-            # Clear the stale failure reason; the error for THIS tick's move (if any)
-            # arrives via on_action_error before the next frame is processed.
-            self._last_move_err[uid] = None
         return actions

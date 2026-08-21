@@ -78,6 +78,49 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
 
 ## Open
 
+- [ ] **Expectation/reality mismatch detector ("did what we predicted actually happen?")**
+  — the bot DECLARES an expectation alongside each decision ("we expect *foo* to happen"),
+  a separate mechanism follows that trail against later frames, and a MISMATCH raises an
+  emergency alert we can watch for. Surfaced in the **Decisions** dashboard tab alongside
+  the reasoning that made the prediction. (operator request 2026-08-21)
+
+  **This would have caught both of the deaths diagnosed the same day, and the duplicate-
+  spend bug, and it is the generalisation of two fixes already shipped:**
+  - `Recruit-15469` (vale) and `Recruit-15484` (mines) both died because a tile was
+    blacklisted on a *stale* frame. The expectation "after `move S` my position becomes
+    (7,35)" was silently violated three ticks running; nothing was watching, and the
+    character was entombed and bled out at 56/56 stamina.
+  - v0.49.0's intent latch is exactly this idea in miniature, scoped to one case: "after
+    `buy club`, a club appears in my inventory". Before it, a stale frame bought six.
+  - v0.50.0's learned-block fix is the same shape again: stop INFERRING from absence,
+    require positive evidence.
+  A general mechanism would have found all three from one place instead of three
+  post-mortems.
+
+  **Shape.** Each `offer()` may carry a `predict` — a small, checkable claim about the next
+  few frames: a position, an inventory delta, a slot filled, a tile destroyed, a status
+  cleared. The verifier reads later frames and resolves each prediction to
+  `confirmed` / `violated` / `expired`, keyed to the decision that made it. That gives:
+  - **A live alarm** on a violation rate that spikes, reusing `steemer/anomaly.py`, which
+    already watches the action-error stream for exactly this kind of signal.
+  - **A per-branch confidence score** — which branches predict well and which are lying to
+    us. Pairs naturally with `steemer/shadow.py`: shadow answers "does this branch ever
+    WIN a tick", this answers "when it wins, does what it expected actually happen".
+  - **The Decisions tab** showing ✓/✗ against each recorded reason, so the operator can see
+    a character's beliefs failing in real time rather than reconstructing it afterwards.
+
+  **The trap to design around:** frames are STALE, so "it has not happened yet" must not
+  read as "it did not happen". Every prediction needs a grace window before it can be
+  called violated — that confusion is the direct cause of both deaths above, and the
+  detector must not repeat the bug it exists to catch. (Same lesson as
+  `shadow.MIN_DECISIONS` and the v0.48.0 warm-up misread.)
+
+  **Scoring:** good_idea 0.90 (it generalises three separate fixes; it is the only proposal
+  on this list that would surface unknown-unknown misbehaviour rather than a bug we already
+  suspect; and it is directly operator-visible in the dashboard); risk_to_bot 0.95 (the
+  verifier is read-only and the alarm is advisory — the only bot-side change is carrying an
+  optional `predict` on offers, which cannot alter a decision).
+
 - [ ] **Exploration matrix (A) — the cube + the frontier** *(READ-ONLY; no bot risk)* —
   build the noun × verb × equipped cube, score its cells, and populate what we have already
   tried. Ships an artifact, touches nothing the bot does. (operator request 2026-08-21; split
