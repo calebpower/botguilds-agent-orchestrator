@@ -89,6 +89,22 @@ def one_pass(*, fix: bool, dry_run: bool, last_restart_at: dict,
     if any(r["level"] == "critical" for r in reports.values()):
         venv = health.smoke_venv()
 
+    # v0.51.1: clear a STALE crash-loop marker. run-live.sh writes run/bot.crashloop after
+    # repeated fast failures but only clears it when the runner next EXITS having actually
+    # played — so a bot that recovered and has been healthy for hours still reports
+    # CRASH-LOOP to `svc.sh status`. Observed for real after the 0.51.0 revert. The
+    # supervisor sees frame freshness every pass, which is exactly the evidence needed, so
+    # it owns reconciling the file.
+    if reports.get("bot", {}).get("level") == "ok":
+        marker = os.path.join(ROOT, "run", "bot.crashloop")
+        try:
+            os.unlink(marker)
+            _log("cleared a stale run/bot.crashloop — the bot is alive and writing frames")
+        except FileNotFoundError:
+            pass
+        except OSError as exc:                       # pragma: no cover - defensive
+            _log(f"could not clear {marker}: {exc!r}")
+
     actions = health.plan(reports, now=now, last_restart_at=last_restart_at,
                           venv_ok=venv["ok"], cooldown_s=cooldown_s)
     if fix:

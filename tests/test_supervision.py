@@ -287,3 +287,56 @@ def test_a_clean_exit_stops_the_supervisor_and_clears_the_marker(tmp_path):
                        capture_output=True, text=True, timeout=30)
     assert r.returncode == 0 and "supervisor stopping" in r.stdout
     assert not (tmp_path / "run" / "bot.crashloop").exists()
+
+
+def test_the_supervisor_clears_a_STALE_crashloop_marker(tmp_path, monkeypatch):
+    """run-live.sh writes run/bot.crashloop on repeated fast failures, but only clears it
+    when the runner next EXITS having played — so a bot that recovered and has been healthy
+    for hours still reports CRASH-LOOP. Seen for real after the v0.51.0 revert: run #128 was
+    writing frames at 0.3s staleness while `svc.sh status bot` still announced a crash-loop
+    from an hour earlier.
+
+    The supervisor checks frame freshness every pass, which IS the evidence, so it clears it.
+    """
+    import tools.healthcheck as hc
+
+    marker = tmp_path / "run" / "bot.crashloop"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("2026-08-21 11:05:54 exit=139 consecutive_fast_failures=5\n")
+    monkeypatch.setattr(hc, "ROOT", str(tmp_path))
+    monkeypatch.setattr(hc.db, "connect", lambda *a, **k: _NullConn())
+    monkeypatch.setattr(hc.health, "collect", lambda *a, **k: {
+        "bot": {"ok": True, "level": "ok", "status": "alive", "age_s": 0.3},
+        "web": {"ok": True, "level": "ok", "status": "alive", "age_s": 1.0},
+        "dash": {"ok": True, "level": "ok", "status": "listening", "age_s": None}})
+    hc.one_pass(fix=False, dry_run=True, last_restart_at={}, dash_port=1, cooldown_s=1)
+    assert not marker.exists(), "a healthy bot still carried a crash-loop marker"
+
+
+def test_the_supervisor_does_NOT_clear_the_marker_while_the_bot_is_DEAD(tmp_path, monkeypatch):
+    """The other side, and the one that matters: the marker is how a human finds out a
+    crash-loop happened. Clearing it while the bot is still down would erase the only
+    breadcrumb."""
+    import tools.healthcheck as hc
+
+    marker = tmp_path / "run" / "bot.crashloop"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("exit=139\n")
+    monkeypatch.setattr(hc, "ROOT", str(tmp_path))
+    monkeypatch.setattr(hc.db, "connect", lambda *a, **k: _NullConn())
+    monkeypatch.setattr(hc.health, "collect", lambda *a, **k: {
+        "bot": {"ok": False, "level": "critical", "status": "dead", "age_s": 9000},
+        "web": {"ok": True, "level": "ok", "status": "alive", "age_s": 1.0},
+        "dash": {"ok": True, "level": "ok", "status": "listening", "age_s": None}})
+    monkeypatch.setattr(hc.health, "smoke_venv", lambda *a, **k: {"ok": True, "detail": "x"})
+    hc.one_pass(fix=False, dry_run=True, last_restart_at={}, dash_port=1, cooldown_s=1)
+    assert marker.exists(), "the crash-loop breadcrumb was erased while the bot was down"
+
+
+class _NullConn:
+    def execute(self, *a, **k):
+        class _C:
+            def fetchone(self): return None
+            def fetchall(self): return []
+        return _C()
+    def close(self): pass

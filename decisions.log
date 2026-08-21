@@ -3168,3 +3168,41 @@ address (EUI-64 host part) where others got IPv4. SLAAC completes in one router 
 needs four packets, so if reaper records the first address the guest reports, which family you get is a
 boot-timing race — a plausible explanation for the intermittent `could not sync ... timed out`, though today's
 instance was against a STALE address from an expired session and is not evidence for it.
+
+ITER 67 (2026-08-21) — "stats look whack" (operator). A long diagnosis with THREE corrections of my own work.
+WHAT WAS REAL: error rate 12.7% -> 42.9%, `unknown_character` 1.1 -> 104 per 1k frames, `not_in_village`
+8.6 -> 115 per 1k, all starting at 0.50.0 and ESCALATING WITHIN run #120 (0 -> 548/1k across the run).
+WHAT WAS NOT REAL — my measurement errors:
+ * "fielded collapsed 10 -> 6": NO. The authoritative portal shows a stable 10 throughout. I computed it
+   from `chars_by_world`, which is EMPTY in field frames, so I was sampling village frames and calling the
+   artifact a regression. The operator had to point me at the portal.
+ * "recruits spiked to 110": duration artifact. Per 1k frames it is 1.46 vs 1.11 — run #120 was 2.8x longer.
+ * "all 31 gaps are in vale, therefore server-side": WRONG, and I had already FILED it as a server bug.
+   `seq` is GLOBAL, round-robining vale/mines/village, so a gap spanning tick-cycles resumes at whichever
+   world leads the rotation. Never checked the assumption; it was the load-bearing argument. RETRACTED in
+   server_bugs.md before anyone acted on it.
+THE ACTUAL CAUSE, and it is OURS: across a gap the NEXT frame arrives in a median of 9ms. A server stall
+would make that interval as long as the gap (~11s). Frames resume instantly with jumped seq — messages
+DISCARDED, not delayed. Connection stable throughout (no reconnect/silence/kick between gaps). And our
+consumer is periodically far too slow: against a ~83ms budget (3 worlds x ~4 ticks/s), 34% of frames take
+>83ms to handle, 12.3% >200ms, worst 2,972ms. A ZeroMQ DEALER DROPS rather than blocks when its send queue
+fills. That cost 4.5% of the stream on #120 (31 gaps, mean 131 frames), which the bot experienced as commands
+to characters that had moved on.
+0.51.0 SHIPPED THE FIX AND IT CRASH-LOOPED THE BOT. Moving storage writes to a worker thread was correct in
+isolation (8 tests, 8 mutants) and wrong in situ: the MariaDB connection is ALSO used from the main thread by
+begin_run/end_run/flush, and mysql-connector is not safe for that — SEGFAULT (exit 139, a 55MB core dump in
+the repo root that the pre-commit hook then caught), ZERO frames across runs #124-126. I checked for other
+THREADS touching storage and found none; the right question was OWNERSHIP of the connection, and the
+lifecycle callers were the input I never enumerated. Same failure shape as the whole session.
+0.51.1 REVERTED it. KEPT the half that needs no thread: the loop now DECIDES and SENDS first, then records,
+so the write no longer sits between receiving a frame and answering it. A test asserts run() does not
+construct an _AsyncMirror, so it cannot be re-enabled without fixing connection ownership first.
+ALSO FIXED (found while recovering): the 0.46 crash-loop marker only cleared when the runner next EXITED
+having played, so a bot that recovered hours ago still reported CRASH-LOOP. run #128 was writing frames at
+0.3s staleness while `svc.sh status bot` announced a crash-loop from an hour earlier. The SUPERVISOR now
+clears it when it sees the bot healthy — it checks frame freshness every 60s, which is exactly the evidence.
+Two mutants: never-clears, and clears-while-dead (which would erase the only breadcrumb). Both killed.
+Verified live: marker cleared on the supervisor's first pass.
+GATE: 574 local / 582 reaper. Bot healthy on run #128+, explorer/0.51.1, git 06404c1.
+NEXT: re-do the async mirror properly — the writer needs its OWN connection. Then re-measure whether the
+frame loss actually falls. The diagnosis stands; only the implementation was wrong.
