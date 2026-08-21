@@ -87,3 +87,41 @@ is intended; mutations gated on `/me`). SEC-3 dismissed by test (server rejects 
 non-colour value with HTTP 400 `bad_color`). Testing was limited to our own guild
 (a wrong-token hello, and a bad colour); no attacks on other guilds or the server.
 Analysis by the steemer bot's owner for responsible disclosure._
+
+## 2026-08-21 — large per-world gaps in the frame `seq` stream, confined to ONE world
+
+Observed on run #120 (`explorer/0.50.1`), 86,395 frames stored over ~108 minutes, of which
+58,808 (68%) carried the `delta` flag.
+
+**31 discontinuities in `seq`, totalling 4,064 missed frames — 4.5% of the stream.**
+
+What makes this look server-side rather than transport:
+
+* **Every one of the 31 gaps is in `vale`.** Zero in `mines`, `spire` or `village`, which
+  were streaming normally throughout. Network loss would not respect world boundaries.
+* **The gaps are large and block-shaped**: median 138 frames, mean 131, max 356. At the
+  observed ~11.9 frames/s that is a **~11-second blackout** per event, not a dropped packet.
+  Largest: 356 @tick 1450674, 308 @1450884, 270 @1451709, 237 @1451529, 235 @1450470.
+* **They are spread out, not bursty** — 31 separate events across 6,826 ticks, so it is not
+  one bad minute.
+* Our client is NOT behind: measured processing lag against the newest tick seen is 0
+  throughout, and frame throughput is a steady 11.9/s with 3.9 ticks/s, matching earlier runs.
+* The authoritative portal (`/api/spectate/guilds`) shows our roster stable at 10 across the
+  whole window, and the ZeroMQ frames never name a character the portal lacks — so the
+  frames are not inventing state, they simply stop arriving for a stretch.
+
+**Consequence for a client.** During each ~11s blackout we keep acting on the last known
+world state; characters move, return to the village, or are replaced, and the commands we
+send then bounce. On this run that showed up as `unknown_character` at 104/1k frames (vs
+1.1/1k two runs earlier), `not_in_village` at 115/1k, and `out_of_range` elevated — the
+error rate rose from 12.7% to 42.9%. The correlation is direct: bucketing the run into
+eighths, the dropped-frame rate goes 0,0,0,0,22,228,172,0 per 1k and the
+`unknown_character` rate tracks it.
+
+**What would help a client most**, if the underlying stall cannot be removed: on resuming
+after a gap, mark the affected world's state as stale until a full frame arrives, or emit an
+explicit "you missed N frames" marker. Right now a gap is only inferable from a `seq` jump,
+and a client cannot tell a stall from a silent resync.
+
+Reported with a specific hypothesis rather than a diagnosis: we can see the gaps and their
+shape, but not what produces them.
