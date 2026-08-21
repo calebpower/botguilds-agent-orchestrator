@@ -2377,3 +2377,36 @@ NEXT: measure 0.41's effect on a matured run 99/100 — the leveling test: do KI
 climbing?) WITHOUT a death spike (our-death/1k holding ~0.4)? Is move_failed steady? Watch the KPI
 death alarm closely (this is the first pro-combat lever). If deaths spike, tighten DEVELOP_HP / drop
 block A. Rival-recon + move-pred(b) still ready on operator go.
+
+ITER 51 (2026-08-20) — MEASURE 0.41 combat-seek on matured run #99 (28.9k frames). VERDICT: CLEAN WIN.
+DEATH-SPIKE CHECK (the risk): our-char deaths/1k #97 0.402 -> #98 0.0 -> #99 0.0. ZERO our-char deaths
+over 28.9k frames under a PRO-COMBAT policy. Confirmed by TWO oracles: (1) death events with eid in our
+roster-eid set = 0; (2) every death event's kind_name/name is a MOB (8 chicken, 5 rat_grey, 3 cow, 3
+frog, 2 skunk, 2 lava_ant, 1 boar, 1 cinder_wisp, 1 rat_brown) — not one of our chars. NO SPIKE; the
+survival nets held. The dying mobs ARE our combat-seek targets: wildlife (block B) + lone predators
+boar/lava_ant (block A) — the mechanism is visibly producing the kills.
+LEVELING PAYOFF: xp-events/1k (ours, eid-filtered) 0.658 -> 0.691 -> 0.899 (+30% vs #98, +37% vs #97).
+avg character level 3.41 -> 3.69 -> 3.88 (climbing steadily); max 6->7->7. Arm-up alone was ~flat XP;
+0.41 moved it. So the arm-up -> leveling arc is delivering: more XP earned, levels climbing, zero deaths.
+MOVE_FAILED (watch, not blocker): fail-FRACTION move_failed/(move+move_failed) 0.014 -> 0.010 -> 0.021
+(#99 highest but still 97.9% success). Absolute moves DOUBLED (#98 16.9k -> #99 36.9k) — chars far more
+active (combat destinations break up the "line dance"). The extra bounce is block B: a char steps toward
+a tile adjacent to wildlife and the chicken/rat wanders off it. Minor inefficiency (wastes a tick ->
+rest), not a survival risk. If it climbs further, refine block B targeting (seek stationary-ish wildlife
+or predict its step) — NOT needed now.
+GOLD/COINS: run99 treasury 137-168, stable/slightly CLIMBING (ends 168), not draining; 5 weapon-buys
+(self-limited by the 150 floor), 0 recruits (recruit-cap holding), 28 sales. coins-available 0.10 gold-
+tiles/field-frame (coin-scarce band) -> modest gold is expected, not a leak. Combat-seek did NOT drain
+gold for combat.
+DECISION: 0.41 is a clean win; NOTHING to tighten. Did NOT auto-build another combat lever on top —
+0.41 just landed and deserves to mature/be observed before stacking (predictor-wired attacks, push-
+north boost are the candidates, all strategy changes -> operator go). No operator reply this pass
+(autonomous) -> held big builds per never-hang (reversible-only).
+WISHLIST (minor=41, unchanged — no bot change shipped this pass): how-nav 0.499, rival-awareness 0.484,
+rival-recon-tab 0.480 (operator's reverse-engineering PRIORITY, climbing), move-pred(b) rivals 0.364,
+watchdog->sidecar 0.170, short-TTL predator memory 0.150. Nothing >0.5; none built. FLAG for operator:
+rival-recon (0.48, their priority) + how-nav (0.499 boundary) — either warrants an explicit greenlight.
+NEXT: confirm 0.41 holds as #99 matures / #100 rolls (deaths stay ~0, xp/level keep climbing, move_failed
+doesn't worsen). Then the next leveling refinement pending operator input: wire mob_predict into combat-
+seek (attack from a predicted-safe angle) and/or a develop-mode push-NORTH boost (deeper=more XP). Rival-
+recon + move-pred(b) ready on operator go.
