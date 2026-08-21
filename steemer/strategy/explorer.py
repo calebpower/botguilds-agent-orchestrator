@@ -685,6 +685,23 @@ VEIN_SEEK_RANGE = 14
 # wander off alone to mine, and well below adjacent harvest(3.3) and any real gathering.
 VEIN_SEEK_SCORE = 2.7
 
+# v0.57.0: how far a field errand may travel. Every goal search in the field used to be
+# UNBOUNDED, which was harmless only because the map was small: before v0.55.0 a character
+# knew a few hundred tiles around itself, so "the nearest chest" was necessarily nearby and
+# usually had no known corridor leading to it anyway.
+#
+# Hydrating the map removed that accidental limit and the bot fell over. Run #132: move
+# failures 5.2% -> 19.4% of moves, and chest-beelining went from 0.047 to 0.70 decisions
+# PER FRAME — a fifteenfold rise — as every chest ever seen became reachable from anywhere.
+# v0.56.0 scoped WHICH chests count (contents are not durable) and recovered only 19.4% ->
+# 16.5%, because the remaining ones were still reachable from across the world.
+#
+# A long errand is not merely slow, it is failure-prone: it is planned over remembered
+# terrain where the DYNAMIC obstacles — rivals, monsters, our own characters — cannot be
+# seen, and re-planned every tick from a frame that may already be stale. The map should
+# tell a character where the ground is, not send it on a pilgrimage.
+FIELD_GOAL_RANGE = 20
+
 
 MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina before
 #   stepping — headroom so a ~1-tick-stale frame reading still affords the move on
@@ -752,7 +769,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.56.0"
+    version = "explorer/0.57.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2110,14 +2127,21 @@ class Explorer:
             offer({"char_uid": uid, "action": "move", "dir": "S"}, score,
                   why + " (stepping off the south edge to the village)", urgent=urgent)
             return
-        step = self._step(pos, lambda p: p[1] == 0, ctx, blocked)
+        # EXPLICITLY UNBOUNDED, and this is not an oversight. Going home is not an errand:
+        # a character may be at y=126 in the mines or y=199 in vale, and every caller here
+        # is a survival behaviour — hurt and walking home to heal (8.5), fleeing undead
+        # (7.2), pack-full (7.5). Capping this at FIELD_GOAL_RANGE would leave a hurt
+        # character unable to find a route home and offering `rest` instead, which is the
+        # stuck-death that v0.42.0 and v0.50.0 were both spent on. The bound exists for
+        # OPPORTUNISTIC goals; retreat is the opposite of opportunistic.
+        step = self._step(pos, lambda p: p[1] == 0, ctx, blocked, max_depth=None)
         if step:
             offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
                   score, why, urgent=urgent)
 
     @staticmethod
-    def _step(pos, is_goal, ctx: FieldContext, blocked):
-        return nav.bfs_step(pos, is_goal, ctx.known, blocked)
+    def _step(pos, is_goal, ctx: FieldContext, blocked, max_depth: int | None = FIELD_GOAL_RANGE):
+        return nav.bfs_step(pos, is_goal, ctx.known, blocked, max_depth=max_depth)
 
     @staticmethod
     def _intent_key(action: dict[str, Any]) -> str | None:

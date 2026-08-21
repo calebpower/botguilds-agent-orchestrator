@@ -194,3 +194,45 @@ def test_it_is_scored_below_forming_up_and_above_wandering():
     from steemer.strategy.explorer import COHESION_SCORE
     assert VEIN_SEEK_SCORE < COHESION_SCORE
     assert VEIN_SEEK_SCORE > 2.5          # the frontier/push-north offer
+
+
+# ---- v0.57.0: the field goal bound, and what it must NOT bound ---------------
+
+def test_an_errand_beyond_the_goal_range_is_not_taken():
+    """Hydrating the map (v0.55.0) made every chest ever seen reachable from anywhere,
+    and chest-beelining went from 0.047 to 0.70 decisions per frame while move failures
+    went 5.2% -> 19.4%. Opportunistic goals are now bounded."""
+    from steemer.strategy.explorer import FIELD_GOAL_RANGE
+    known = {(x, 0): "floor" for x in range(80)}
+    known[(60, 0)] = "chest"
+    # The real beeline's goal is a tile ADJACENT to a chest — a chest is solid, so a
+    # search that targets the chest tile itself finds nothing regardless of any bound
+    # and the test would pass for the wrong reason.
+    beside_chest = lambda p: any(known.get(n) == "chest" for n in nav.neighbors(p))
+    assert Explorer._step((0, 0), beside_chest, _ctx(known), set()) is None
+    assert FIELD_GOAL_RANGE < 59
+
+
+def test_an_errand_within_the_goal_range_is_still_taken():
+    known = {(x, 0): "floor" for x in range(80)}
+    known[(10, 0)] = "chest"
+    beside_chest = lambda p: any(known.get(n) == "chest" for n in nav.neighbors(p))
+    assert Explorer._step((0, 0), beside_chest, _ctx(known), set()) == (1, 0)
+
+
+def test_walking_HOME_is_never_bounded():
+    """The bound must not reach the retreat. A character at y=100 walking home to heal is
+    not on an errand, and capping it would leave it unable to find a route and offering
+    `rest` instead — precisely the stuck-death of v0.42.0/v0.50.0.
+
+    Asserted through _retreat itself rather than _step, because the defect would live in
+    how the caller invokes the helper, not in the helper."""
+    known = {(0, y): "floor" for y in range(101)}
+    offers = []
+
+    def offer(action, score, why, urgent=False):
+        offers.append((action, score, why))
+
+    Explorer()._retreat("u1", (0, 100), _ctx(known), set(), offer, 8.5, "hurt — walking home")
+    assert offers, "a hurt character 100 tiles from home must still find a route"
+    assert offers[0][0]["dir"] == "S"
