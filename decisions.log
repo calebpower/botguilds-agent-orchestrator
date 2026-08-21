@@ -3266,3 +3266,13 @@ NEXT: (1) confirm a live `upgrading ...` decision and that the server ACCEPTS an
 refuses three times the kill-switch trips and the whole approach needs rethinking; (2) value the unbuyable so
 shield_iron can displace shield_wood; (3) ORE is the M3a bottleneck — 491 trees destroyed vs 6 veins on #128;
 (4) seed the slot map from gear class so a dagger stops being offered to an `outfit` slot.
+
+--- iter 68 addendum, same day: 0.53.0 VERIFIED LIVE on run #130 ---
+The unknown is resolved: THE SERVER DOES ACCEPT AN OCCUPIED-SLOT EQUIP. Frame 4559057 shows c15829's `hand`
+changing in place club -> dagger, non-empty to non-empty. Two oracles — the decision was issued ("upgrading
+hand: dagger (20g) over club (15g)") and the equipment map changed across frames. Zero swap refusals, so the
+SWAP_GIVE_UP kill-switch never armed; the 11 equip errors are all wrong_slot, which route to the slot map.
+The ladder now closes: forge or loot something better -> displace the worse item -> SELL the displacement.
+Gear sales on #130 are clubs ONLY (x5), against #129 which sold spear, dagger AND shield_iron. And c15829
+wears a FORGED shield_iron in its offhand — armour the shop sells at no price, so we could not otherwise
+own it. That was the entire point of leading the product ladder with it.
