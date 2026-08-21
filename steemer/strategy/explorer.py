@@ -664,6 +664,27 @@ COMBAT_SWARM = 2          # >=2 melee predators within reach -> too dangerous to
 # from an adjacent tile, never stand on them.
 HARVEST_KINDS = frozenset({"tree", "vein"})
 
+# v0.54.0 FORGE-TO-ARM slice 2: SEEK ore. Run #130 measured the M3a bottleneck precisely and
+# it is not what "harvest more" would suggest -- 120 trees destroyed against 5 veins, and
+# lumber piling up while ore trickles. The cause is not scarcity: the accumulated map knows
+# 83 vein tiles in the mines, and HALF our character-frames are already IN the mines. It is
+# DENSITY. Slice 1 harvests only what a character is already ADJACENT to, and vale's 357
+# trees are thick enough to brush past constantly while 83 veins among ~4,900 mine floor
+# tiles are not. So a character that wants ore must now WALK to one.
+#
+# Deliberately narrow, because the 0.46.0 regression was exactly this shape -- a change made
+# "for the forge" that quietly cost us our income:
+#   * ORE ONLY. Trees are not sought; slice 1 already gets more lumber than we can use.
+#   * Only when the character can USE more metal (under the per-char forge reserve) and has
+#     carry room, so it is never a march for cargo we would drop or sell.
+#   * Bounded by VEIN_SEEK_RANGE, so it is a detour and not an expedition.
+ORE_KINDS = frozenset({"vein"})
+VEIN_SEEK_RANGE = 14
+# Scored ABOVE frontier(2.5) -- walking toward a known resource beats walking at random --
+# but BELOW cohesion(2.8), so a character in a world dangerous enough to form up does not
+# wander off alone to mine, and well below adjacent harvest(3.3) and any real gathering.
+VEIN_SEEK_SCORE = 2.7
+
 
 MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina before
 #   stepping — headroom so a ~1-tick-stale frame reading still affords the move on
@@ -731,7 +752,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.53.0"
+    version = "explorer/0.54.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1499,6 +1520,17 @@ class Explorer:
                 offer({"char_uid": uid, "action": "attack", "target": list(harvest)}, 3.3,
                       f"harvesting an adjacent {hkind} for materials (forge-to-arm probe)")
                 productive = True
+            elif self._wants_ore(char):
+                # v0.54.0 slice 2: nothing breakable underfoot, so WALK to ore. Only ore --
+                # see ORE_KINDS. Guarded by _wants_ore so this is never a march for cargo we
+                # would only drop or sell at the other end.
+                step = self._ore_step(pos, ctx, blocked)
+                if step is not None:
+                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
+                          VEIN_SEEK_SCORE,
+                          "walking to a known vein — ore is the forge bottleneck "
+                          f"({FORGE_METAL_PREFIXES[0]}/{FORGE_METAL_PREFIXES[1]} under reserve)")
+                    productive = True
 
             # GOLD-RUSH (v0.24.0): do NOT chase monsters. Combat is not the gold
             # source and it is what gets our under-equipped chars killed (poison
@@ -1769,6 +1801,39 @@ class Explorer:
         if close_enough(pos):
             return None
         return nav.bfs_step(pos, close_enough, ctx.known, blocked)
+
+    @staticmethod
+    def _ore_step(pos: tuple[int, int], ctx: "FieldContext", blocked) -> tuple[int, int] | None:
+        """One step toward the nearest known ORE tile within ``VEIN_SEEK_RANGE``, or None.
+
+        The goal tile is SOLID (a vein is scenery you break, not ground you stand on), so
+        this asks for the step that brings us ADJACENT to it and lets slice 1's
+        adjacent-harvest offer do the breaking. bfs_step already permits a goal tile to be
+        entered when nothing else is; here we never want to enter it, only to reach its
+        neighbour -- which is why the goal is "a walkable tile beside a vein", not the vein.
+        """
+        def beside_ore(t: tuple[int, int]) -> bool:
+            return any(ctx.known.get(n) in ORE_KINDS for n in nav.neighbors(t))
+        # The range limit is `max_depth` alone. An explicit manhattan check here was
+        # redundant — a path of at most N steps cannot end further than N away — and
+        # mutation testing proved it: no test could tell the two versions apart.
+        return nav.bfs_step(pos, beside_ore, ctx.known, blocked, max_depth=VEIN_SEEK_RANGE)
+
+    @staticmethod
+    def _wants_ore(char: dict[str, Any]) -> bool:
+        """Would this character actually benefit from another ore? Only if it is under the
+        per-char forge reserve AND has carry room -- otherwise the walk ends in a drop or a
+        sale, which is the v0.46.0 mistake (reserving feedstock we could not use, at the
+        cost of the income that was paying for weapons)."""
+        inv = char.get("inventory") or []
+        metal = sum(1 for i in inv if (i.get("kind") or "").startswith(FORGE_METAL_PREFIXES))
+        if metal >= FORGE_RESERVE_PER_CHAR:
+            return False
+        carry = char.get("carry") or {}
+        used, cap = carry.get("used"), carry.get("cap")
+        if isinstance(used, int) and isinstance(cap, int) and used >= cap - 1:
+            return False                    # no room for what the trip would bring back
+        return True
 
     @staticmethod
     def _is_melee_predator(kind: str | None) -> bool:

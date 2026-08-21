@@ -55,6 +55,7 @@ def bfs_step(
     is_goal: Callable[[tuple[int, int]], bool],
     known: dict[tuple[int, int], str],
     blocked: Iterable[tuple[int, int]] = (),
+    max_depth: int | None = None,
 ) -> tuple[int, int] | None:
     """Breadth-first over remembered walkable tiles; return the *next* tile to
     step toward the nearest goal, or ``None`` if no goal is reachable.
@@ -62,9 +63,18 @@ def bfs_step(
     ``start`` itself is never returned. Neighbours of ``start`` are candidates
     even if unknown-as-goal, but only walkable tiles are expanded — so a goal on
     an unseen tile is reachable only if it is directly adjacent to a walked path.
+
+    ``max_depth`` bounds the search to that many steps from ``start``. Without it a
+    goal that is merely UNREACHABLE — behind a wall, or on the far side of the map —
+    costs a full sweep of the world's known component, and pays it again every frame
+    for every character that wants one. The accumulated map is ~7,000 tiles per world,
+    the frame budget is ~83ms, and a slow consumer does not block: a ZeroMQ DEALER
+    DROPS. That is exactly how run #120 lost 3.7% of its stream, so a caller that
+    searches speculatively should bound the cost rather than hope the goal is close.
     """
     blocked_set = set(blocked)
     came_from: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
+    depth: dict[tuple[int, int], int] = {start: 0}
     queue: deque[tuple[int, int]] = deque([start])
     goal: tuple[int, int] | None = None
     while queue:
@@ -72,9 +82,12 @@ def bfs_step(
         if current != start and is_goal(current):
             goal = current
             break
+        if max_depth is not None and depth[current] >= max_depth:
+            continue                      # expand no further, but keep draining the queue
         for nxt in neighbors(current):
             if nxt in came_from:
                 continue
+            depth[nxt] = depth[current] + 1
             # allow stepping *onto* a goal tile even if it is unknown (e.g. loot
             # or an enemy on an as-yet-unseen tile), but NEVER onto a known-solid
             # tile — a "frontier" wall borders the unseen yet cannot be stood on,

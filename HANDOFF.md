@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.53.0` on **run #130**, repo HEAD `d703bf8`, branch `main` (pushed).
+- **Live:** `explorer/0.53.0` on **run #130**, repo HEAD `34e314b`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`), which
   restarts a dead service and repairs a broken venv. Start it with `./svc.sh up watch`.
@@ -27,12 +27,15 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   filled EMPTY slots and the sell rule drops gear once no slot remains. 0.53.0 lets gear
   displace strictly dearer **same-class** gear, ranked on the shop's own `buy_price` (the only
   ranking the game exposes — `tier` is not ordered).
-- **Open gaps, in priority order:** (1) 0.53 is deployed but **not yet exercised** — no swap has
-  had an occasion, and it is UNKNOWN whether the server even accepts an occupied-slot equip
-  (`SWAP_GIVE_UP=3` trips a kill-switch if not); (2) `shield_iron` is sold at no price, so it
+- **NEW MECHANIC CONFIRMED (run #130):** the server **accepts equipping into an OCCUPIED slot** —
+  frame 4559057 shows `c15829`'s hand changing in place club → dagger. This was unknown when
+  0.53.0 shipped and was hedged with a 3-refusal kill-switch that never armed. The gear ladder
+  now closes: forge/loot something better → displace the worse item → sell the displacement.
+  Gear sales on #130 are clubs ONLY, and `c15829` wears a forged `shield_iron`.
+- **Open gaps, in priority order:** (1) `shield_iron` is sold at no price, so it
   cannot be ranked and only fits an offhand that is still empty — **valuing the unbuyable** is
-  the next slice; (3) **ORE is the bottleneck** — 491 trees destroyed vs 6 veins on #128;
-  (4) the slot search still offers a dagger to an `outfit` slot — seed it from gear class.
+  the next slice; (2) **ORE is the bottleneck** — 491 trees destroyed vs 6 veins on #128;
+  (3) the slot search still offers a dagger to an `outfit` slot — seed it from gear class.
 - **Do NOT rebuild the async storage mirror.** 0.51.0 tried and segfaulted the live bot; 0.51.1's
   reorder alone gave run #128 **0 gaps and 0.0% frame loss** over 85,319 frames. Closed by
   measurement; a test pins `run()` against constructing one.
