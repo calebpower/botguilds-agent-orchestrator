@@ -41,6 +41,15 @@ Do not inflate to clear the bar; recalibration should move items DOWN as often a
 
 ## Current scores
 
+**Bookkeeping rules** (normalised 2026-08-21 after the operator noticed ticked items sitting
+inside `## Open` alongside a separate `## Done` section — two conventions that had drifted,
+with `## Done` unmaintained since 2026-08-20):
+- A shipped item moves to `## Done` with its full text. `## Open` contains ONLY open items.
+- **The table below must have exactly one row per open item.** Counting them is the cheap
+  mechanical check, and it exists because the Campaign Layer was silently absent from 16 of
+  20 score tables — an omission is worse than a wrong number and far harder to notice.
+
+
 Recalculated fresh each pass. `tc` at deploy-minor **47** (`explorer/0.47.0`), counting
 DEPLOYS since an item was added — a pass that ships no deploy does not advance it.
 
@@ -162,41 +171,6 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   understand the mechanic — a mastery meter); integrate mob-prediction into the strategy only once
   validated. Data: bestiary + spectate-track (intel kind='track') + our frames. (operator request)
 
-- [x] **"Codex" tab — an auto-populated wiki (lands / items / monsters / mechanics)** — SHIPPED 2026-08-20 (ui/server.py api_codex + /api/codex + Codex tab, Playwright-tested). Built as a one-off on operator request (score -0.21 by the formula: just-added tc=1, but operator-directed). Reuses the bestiary (monsters), tiles_seen+events (lands), frame item-sightings (items), docs/*.md + confirmed findings (mechanics); regenerated every load. — a
-  dashboard tab that consolidates everything we've learned into one browsable reference,
-  regenerated after each run so it stays current. Most of the data already exists — this is
-  largely presentation + consolidation, not new analysis:
-  - **Monsters** — reuse `steemer/bestiary.py` (per-mob chaser/stationary behaviour, aggro
-    range, hit-rate, est damage/hit, benign-vs-predator-vs-undead classification). One page
-    per mob kind.
-  - **Lands (worlds)** — per world: terrain vocabulary (`tiles_seen` kinds), size/bounds,
-    live undead/threat level (`_world_threat`), band-refresh cadence, and the survivor-bias-
-    corrected **danger** (from the heatmap `danger` layer, deaths/time-in-tile), plus which
-    mobs rotate in.
-  - **Items** — kinds seen (from frames' `visible.items` + character inventories), their slot/
-    type (weapon/outfit/potion/tome), and gold value where known (shop prices / sale events).
-  - **Mechanics** — the game rules we've learned, drawn from `docs/*.md` + the findings
-    notebook (band refreshes, poison/DoT, coins bank instantly, forge blocked on product
-    discovery, stamina gating, etc.).
-  A build step regenerates the codex snapshot from the DB (bestiary, tiles_seen, item
-  sightings, danger) + docs + findings after each run; the tab renders it. High operator-
-  reference/enjoyment value; read-only (dashboard sidecar, zero bot risk). Dovetails with the
-  behavioural-mob work, the heatmap, and rival-recon. (operator request 2026-08-20)
-
-- [x] **Extend the watchdog to cover the web SIDECAR** — SHIPPED 2026-08-21 as the wider
-  **always-on supervisor** (`steemer/health.py` + `tools/healthcheck.py` + `svc.sh up watch`):
-  covers bot (frame freshness), web sidecar (`intel` freshness) AND dash (port), restarts what
-  is dead with a per-service cooldown, and repairs a broken venv instead of restarting into it.
-  Prompted by the 2026-08-21 outage, where all three services were down and the bot then
-  crash-looped on an ABI-broken pyzmq while `svc.sh status` reported "up". Original text:
-  `steemer/watchdog.py` only checks the
-  BOT's frame-liveness. The `web` sidecar (`tools/web_sidecar.py`: rainbow map-color rotation +
-  rival intel/spectate + tiles) died externally on 2026-08-19 and sat dead ~1.5 days UNNOTICED
-  (stuck color, paused intel recording) — the frame-watchdog can't see it. Add a sibling
-  liveness check: `intel` table freshness (newest spectate row age) or `run/web.pid` process
-  liveness, classified like `classify_liveness`. Read-only. (surfaced fixing the stuck-color
-  report 2026-08-20; operator asked whether to build it)
-
 - [ ] **Rival-recon dashboard tab** — a dashboard tab dedicated to intelligence on the
   OTHER guilds: as much as we can learn about each rival — historical stats over time
   (size, levels, gear progression), their character movements (which worlds/maps they
@@ -219,23 +193,6 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   `STUCK_BLOCK` learned-blocked mechanism. Must expire fast because mobs move (stale
   positions would mislead). Directly targets the occlusion gap the dodge/allowlist
   can't cover. (surfaced answering the operator's LOS/spectate question) (operator request)
-
-- [x] **Comprehensive per-character stats panel on the dashboard** — SHIPPED 2026-08-20
-  (ui/server.py `/api/roster` + the "Party" tab; verified by a Playwright test in the
-  reaper gate). Per-char cards: colour-coded live HP bar + stamina bar, stats with gifts
-  flagged, level/xp, equipment slots, individual inventory, status chips (poison etc.),
-  world+pos, and the latest decision. Wishlist-scoring winner at 0.53 once risk_to_bot
-  was corrected (dashboard = separate sidecar, can't hurt the bot). Original text: — a live roster
-  view where each character is a card/row showing everything about it in real time:
-  a **live HP bar** (hp/max_hp, colour-coded, + any status like poison/burn), level
-  & XP, the six stats (str/dex/int/vit/end/agi) with gifts flagged, stamina/mana
-  bars, equipment slots (hand/offhand/outfit/trinket/boots), **the character's live
-  individual inventory** (carry used/cap + item list), current world & position, and
-  what it's doing (its latest decision/trace). Basically turn the roster into a
-  proper "party sheet" that updates as the frames stream in — the foundation the
-  Campaign-Layer idea wants, and just good visibility into who's alive/hurt/rich.
-  Data is all in the frames (`chars[].hp/max_hp/stats/equipment/inventory/carry/
-  statuses/level/xp`), streamed via the spectate/events feed. (operator request)
 
 - [ ] **Log-scale the overview-page bar charts (QoL)** — on the dashboard overview
   page, the bars at the bottom span values of wildly different magnitude (e.g. moves
@@ -357,6 +314,120 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
     per-char KPIs → (4) coordinated raids. Guardrail: an experimental per-char
     policy risks that one char underperforming — bounded (one char, not the guild),
     and that's the point (measure, keep winners).
+- [ ] **Shadow-evaluation deploy gate** — before shipping a candidate strategy,
+  replay it AND the incumbent over the last N recorded frames and compare
+  predicted KPIs. A "is this actually better?" check that would've caught the
+  0.11.0 "fix that didn't fix."
+- [ ] **In-world trash talk via `say`** — the bot posts contextual chat using the
+  unused `say` verb: taunt a rival parking its roster, celebrate a big haul, mourn
+  a death. Free personality (and doubles as campaign-layer eulogies).
+- [ ] **Band-refresh timing awareness** — the game has periodically-refreshing
+  "bands" (we log `band_refresh` events and ignore them); time embarks/retreats
+  around them instead of getting caught out.
+- [ ] **Analyze *why* a tile was impassable → hidden-opportunity discovery** — the
+  0.12.0 nav fix now records per-world "learned-blocked" tiles (things chars
+  bounced off). Feed those into the analysis loop with a two-layer read: a
+  "dummy" first pass that discards the obvious (literal rock/wall/water), leaving
+  the *interesting* blockers for interpretation — a `fence`/`bush`/`tree` that
+  **breaks after a few attacks** (docs 08), a `vein` that **drops ore when
+  broken** (feeds M3a!), or a tile that looks solid but might be a secret door.
+  Cross-reference the blocked tile's `kind` (from `tiles_seen`) against what's
+  known to be breakable, and surface "maybe break this?" candidates. Could drive
+  active game discovery (attack-the-obstacle probes) rather than just routing
+  around. (operator request)
+- [ ] **Magic / spellweaving (`cast`)** — the direct counter to the poison that
+  dominates status-damage; a whole unused mechanic (M4). Needs mana/implement +
+  attunement discovery.
+- [ ] **M3a forging** — armor is unbuyable; forging is the only route. Blocked on
+  learning a per-world `product` name (blind-forge storms `unknown_product`).
+  Path: harvest a `forged` event from a rival via `/events/spectate`, or the shop.
+- [ ] **Rival-awareness dashboard panel** — surface the spectate `intel` (us vs
+  rivals: size, levels, gear) on the web UI.
+- [ ] **Move the storage mirror off the decision hot path** — `record_frame`
+  (~11 ms on MariaDB) runs before the decision in `client._loop`; sending actions
+  first would shave latency. Low value alone (measured small) — revisit if frame
+  staleness ever proves material.
+- [ ] **Player market (`list` / `buy_listing`)** — we only use the NPC shop; the
+  guild-to-guild market is untouched.
+
+## Done
+
+Shipped items live HERE, not in Open — an "Open" section that is 40% closed items
+is misleading to scan, and the every-pass check that the score table covers every open
+item is only checkable when the two are separated. Entries below keep their full
+original text; the short `-> module (date, @ run)` lines are the older ledger format
+and are kept as-is rather than rewritten.
+
+- [x] **Cross-run KPI regression alarm** → `steemer/kpi_watch.py` (2026-08-20, @ run #88,
+  bot on explorer/0.32.0). Read-only DB analysis; `flag_regressions` is mutation-checked.
+  Selected by the operator's wishlist-scoring formula (final 0.537 > 0.5). Later fixed to
+  flag per-1k RATES not cumulative totals (run-length confound).
+- [x] **Death post-mortem taxonomy** → `steemer/postmortem.py` (2026-08-20, @ run #91, bot
+  on explorer/0.35.0). Read-only; `classify_death` is pure + mutation-checked. Shares the
+  bestiary (WILDLIFE_SAFE/THREAT_KINDS) with the strategy. Boundary wishlist pick (~0.49,
+  zero-risk). First run: most deaths are `stuck` chars pinned by wolf/delver.
+- [x] **Behavioral mob analysis (part a: monsters)** → `steemer/bestiary.py` +
+  `tests/test_bestiary.py` (2026-08-20, @ run #92, bot on explorer/0.36.0). Read-only;
+  `build_bestiary` is pure + mutation-checked (3 mutations caught). Tracks each mob by its
+  stable `eid` to measure chaser-vs-stationary behaviour, aggro range, and damage/hit.
+  Wishlist-scoring winner @ 0.578. Independently validated the strategy's predator allowlist
+  on live run #92. Part (b: rival players) folds into the Rival-recon dashboard tab item.
+- [x] **Always-on watchdog (detection half)** → `steemer/watchdog.py` +
+  `tests/test_watchdog.py` (2026-08-20, @ run #93, bot on explorer/0.36.0). Read-only frame-
+  liveness alarm; `classify_liveness` is pure + mutation-checked + self-tested both sides.
+  Wishlist-scoring winner @ 0.538. Push-alert transport + single-host guard remain open.
+- [x] **"Codex" tab — an auto-populated wiki (lands / items / monsters / mechanics)** — SHIPPED 2026-08-20 (ui/server.py api_codex + /api/codex + Codex tab, Playwright-tested). Built as a one-off on operator request (score -0.21 by the formula: just-added tc=1, but operator-directed). Reuses the bestiary (monsters), tiles_seen+events (lands), frame item-sightings (items), docs/*.md + confirmed findings (mechanics); regenerated every load. — a
+  dashboard tab that consolidates everything we've learned into one browsable reference,
+  regenerated after each run so it stays current. Most of the data already exists — this is
+  largely presentation + consolidation, not new analysis:
+  - **Monsters** — reuse `steemer/bestiary.py` (per-mob chaser/stationary behaviour, aggro
+    range, hit-rate, est damage/hit, benign-vs-predator-vs-undead classification). One page
+    per mob kind.
+  - **Lands (worlds)** — per world: terrain vocabulary (`tiles_seen` kinds), size/bounds,
+    live undead/threat level (`_world_threat`), band-refresh cadence, and the survivor-bias-
+    corrected **danger** (from the heatmap `danger` layer, deaths/time-in-tile), plus which
+    mobs rotate in.
+  - **Items** — kinds seen (from frames' `visible.items` + character inventories), their slot/
+    type (weapon/outfit/potion/tome), and gold value where known (shop prices / sale events).
+  - **Mechanics** — the game rules we've learned, drawn from `docs/*.md` + the findings
+    notebook (band refreshes, poison/DoT, coins bank instantly, forge blocked on product
+    discovery, stamina gating, etc.).
+  A build step regenerates the codex snapshot from the DB (bestiary, tiles_seen, item
+  sightings, danger) + docs + findings after each run; the tab renders it. High operator-
+  reference/enjoyment value; read-only (dashboard sidecar, zero bot risk). Dovetails with the
+  behavioural-mob work, the heatmap, and rival-recon. (operator request 2026-08-20)
+
+- [x] **Extend the watchdog to cover the web SIDECAR** — SHIPPED 2026-08-21 as the wider
+  **always-on supervisor** (`steemer/health.py` + `tools/healthcheck.py` + `svc.sh up watch`):
+  covers bot (frame freshness), web sidecar (`intel` freshness) AND dash (port), restarts what
+  is dead with a per-service cooldown, and repairs a broken venv instead of restarting into it.
+  Prompted by the 2026-08-21 outage, where all three services were down and the bot then
+  crash-looped on an ABI-broken pyzmq while `svc.sh status` reported "up". Original text:
+  `steemer/watchdog.py` only checks the
+  BOT's frame-liveness. The `web` sidecar (`tools/web_sidecar.py`: rainbow map-color rotation +
+  rival intel/spectate + tiles) died externally on 2026-08-19 and sat dead ~1.5 days UNNOTICED
+  (stuck color, paused intel recording) — the frame-watchdog can't see it. Add a sibling
+  liveness check: `intel` table freshness (newest spectate row age) or `run/web.pid` process
+  liveness, classified like `classify_liveness`. Read-only. (surfaced fixing the stuck-color
+  report 2026-08-20; operator asked whether to build it)
+
+- [x] **Comprehensive per-character stats panel on the dashboard** — SHIPPED 2026-08-20
+  (ui/server.py `/api/roster` + the "Party" tab; verified by a Playwright test in the
+  reaper gate). Per-char cards: colour-coded live HP bar + stamina bar, stats with gifts
+  flagged, level/xp, equipment slots, individual inventory, status chips (poison etc.),
+  world+pos, and the latest decision. Wishlist-scoring winner at 0.53 once risk_to_bot
+  was corrected (dashboard = separate sidecar, can't hurt the bot). Original text: — a live roster
+  view where each character is a card/row showing everything about it in real time:
+  a **live HP bar** (hp/max_hp, colour-coded, + any status like poison/burn), level
+  & XP, the six stats (str/dex/int/vit/end/agi) with gifts flagged, stamina/mana
+  bars, equipment slots (hand/offhand/outfit/trinket/boots), **the character's live
+  individual inventory** (carry used/cap + item list), current world & position, and
+  what it's doing (its latest decision/trace). Basically turn the roster into a
+  proper "party sheet" that updates as the frames stream in — the foundation the
+  Campaign-Layer idea wants, and just good visibility into who's alive/hurt/rich.
+  Data is all in the frames (`chars[].hp/max_hp/stats/equipment/inventory/carry/
+  statuses/level/xp`), streamed via the spectate/events feed. (operator request)
+
 - [x] **Cross-run KPI regression alarm** — the loop auto-flags when *any* metric
   regresses vs the prior window. The direct meta-fix for the blindness that let
   `move_failed` rot for 8 runs; never get blind-sided again. **SHIPPED 2026-08-20
@@ -372,19 +443,12 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   wishlist-scoring boundary call ~0.49, zero-risk read-only).** On run #91 it
   immediately showed most deaths are `stuck` (pinned in place, not fleeing) by
   wolf/delver — auto-characterizing the chaser residual.
-- [ ] **Shadow-evaluation deploy gate** — before shipping a candidate strategy,
-  replay it AND the incumbent over the last N recorded frames and compare
-  predicted KPIs. A "is this actually better?" check that would've caught the
-  0.11.0 "fix that didn't fix."
 - [x] **Loot & danger heatmaps per world** — SHIPPED 2026-08-20 (ui/server.py `api_heatmap`
   + `/api/heatmap` + the "Heatmap" tab; Playwright test in the reaper gate). Per-tile density
   canvas with a layer selector: Danger (all-run deaths from events), Monsters/Gold/Loot
   (sampled from recent frames). Wishlist-scoring winner @ 0.551 once enjoyment/visibility was
   credited to good_idea (operator: don't dock for "aesthetic but doesn't help the bot").
   Original: where loot, gold, monsters, and deaths cluster on each map; route toward hot zones.
-- [ ] **In-world trash talk via `say`** — the bot posts contextual chat using the
-  unused `say` verb: taunt a rival parking its roster, celebrate a big haul, mourn
-  a death. Free personality (and doubles as campaign-layer eulogies).
 - [x] **Always-on watchdog** — DETECTION HALF SHIPPED 2026-08-20 (`steemer/watchdog.py`
   + `tests/test_watchdog.py`; read-only, pure oracle mutation-checked + self-tested both
   sides). `classify_liveness(now, latest_received_at)` → ok/warn/critical from the age of
@@ -404,9 +468,6 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   with colour-coded shipped/measured tags. Wishlist-scoring winner @ 0.537 once enjoyment was
   credited to good_idea. Original: the dashboard narrates the bot's evolution: each strategy
   version's hypothesis + its measured effect as a visual timeline.
-- [ ] **Band-refresh timing awareness** — the game has periodically-refreshing
-  "bands" (we log `band_refresh` events and ignore them); time embarks/retreats
-  around them instead of getting caught out.
 - [x] **Behavioral analysis of mobs and rival players** — part (a) **monsters SHIPPED
   2026-08-20** (`steemer/bestiary.py` + `tests/test_bestiary.py`; read-only, pure core
   mutation-checked). Follows each mob by its stable `eid` across frames to infer per-kind
@@ -427,17 +488,6 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   loot, avoid us?) from `/events/spectate` + the periodic spectate roster. Both
   feed strategy: counter mob patterns, and anticipate/avoid/outcompete rivals.
   Builds on the existing intel pipeline. (operator request)
-- [ ] **Analyze *why* a tile was impassable → hidden-opportunity discovery** — the
-  0.12.0 nav fix now records per-world "learned-blocked" tiles (things chars
-  bounced off). Feed those into the analysis loop with a two-layer read: a
-  "dummy" first pass that discards the obvious (literal rock/wall/water), leaving
-  the *interesting* blockers for interpretation — a `fence`/`bush`/`tree` that
-  **breaks after a few attacks** (docs 08), a `vein` that **drops ore when
-  broken** (feeds M3a!), or a tile that looks solid but might be a secret door.
-  Cross-reference the blocked tile's `kind` (from `tiles_seen`) against what's
-  known to be breakable, and surface "maybe break this?" candidates. Could drive
-  active game discovery (attack-the-obstacle probes) rather than just routing
-  around. (operator request)
 - [x] **Dashboard "how navigation works" explainer** — SHIPPED 2026-08-21 (`ui/server.py`
   `api_nav` + `/api/nav` + the "How nav works" tab; unit + Playwright tested). Derived, not
   written down: rules from `steemer/nav.py` via inspect at request time, priority ladder from
@@ -447,42 +497,7 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   tile. Ideally *dynamic* — derived from or versioned with the actual nav/strategy
   code so it stays true every time the nav protocols change, and the operator can
   learn why characters do what they do. (operator request)
-- [ ] **Magic / spellweaving (`cast`)** — the direct counter to the poison that
-  dominates status-damage; a whole unused mechanic (M4). Needs mana/implement +
-  attunement discovery.
-- [ ] **M3a forging** — armor is unbuyable; forging is the only route. Blocked on
-  learning a per-world `product` name (blind-forge storms `unknown_product`).
-  Path: harvest a `forged` event from a rival via `/events/spectate`, or the shop.
 - [x] **Rival tracking via `/events/spectate`** — SHIPPED 2026-08-20
   (`steemer/spectate_track.py`; SSE -> `intel` table kind='track', tick-keyed, portal-resilient).
   Original: — live enemy positions/gear per
   map (currently we only poll the periodic roster). Would enable avoidance/PvP.
-- [ ] **Rival-awareness dashboard panel** — surface the spectate `intel` (us vs
-  rivals: size, levels, gear) on the web UI.
-- [ ] **Move the storage mirror off the decision hot path** — `record_frame`
-  (~11 ms on MariaDB) runs before the decision in `client._loop`; sending actions
-  first would shave latency. Low value alone (measured small) — revisit if frame
-  staleness ever proves material.
-- [ ] **Player market (`list` / `buy_listing`)** — we only use the NPC shop; the
-  guild-to-guild market is untouched.
-
-## Done
-
-- [x] **Cross-run KPI regression alarm** → `steemer/kpi_watch.py` (2026-08-20, @ run #88,
-  bot on explorer/0.32.0). Read-only DB analysis; `flag_regressions` is mutation-checked.
-  Selected by the operator's wishlist-scoring formula (final 0.537 > 0.5). Later fixed to
-  flag per-1k RATES not cumulative totals (run-length confound).
-- [x] **Death post-mortem taxonomy** → `steemer/postmortem.py` (2026-08-20, @ run #91, bot
-  on explorer/0.35.0). Read-only; `classify_death` is pure + mutation-checked. Shares the
-  bestiary (WILDLIFE_SAFE/THREAT_KINDS) with the strategy. Boundary wishlist pick (~0.49,
-  zero-risk). First run: most deaths are `stuck` chars pinned by wolf/delver.
-- [x] **Behavioral mob analysis (part a: monsters)** → `steemer/bestiary.py` +
-  `tests/test_bestiary.py` (2026-08-20, @ run #92, bot on explorer/0.36.0). Read-only;
-  `build_bestiary` is pure + mutation-checked (3 mutations caught). Tracks each mob by its
-  stable `eid` to measure chaser-vs-stationary behaviour, aggro range, and damage/hit.
-  Wishlist-scoring winner @ 0.578. Independently validated the strategy's predator allowlist
-  on live run #92. Part (b: rival players) folds into the Rival-recon dashboard tab item.
-- [x] **Always-on watchdog (detection half)** → `steemer/watchdog.py` +
-  `tests/test_watchdog.py` (2026-08-20, @ run #93, bot on explorer/0.36.0). Read-only frame-
-  liveness alarm; `classify_liveness` is pure + mutation-checked + self-tested both sides.
-  Wishlist-scoring winner @ 0.538. Push-alert transport + single-host guard remain open.
