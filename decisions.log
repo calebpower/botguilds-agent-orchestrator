@@ -2345,3 +2345,35 @@ it). Nothing >0.5; none auto-built.
 READY ON OPERATOR GO: 0.41 combat-seek (turn arm-up into leveling; use the mob-predictor); rival-recon
 analysis/dashboard on the track feed; sidecar-watchdog (track feed depends on the sidecar).
 NEXT: measure arm-up's effect on a matured #98 (does survival hold with armed chars? do kills/XP rise?).
+
+ITER 50 (2026-08-20) — BUILD + DEPLOY 0.41 combat-SEEK (operator greenlit "yes, build 0.41").
+The leveling lever: turn the 0.40 arm-up into actual XP. A DEVELOP-mode char (armed + hp>=70% +
+stamina>=15) fights beatable mobs instead of always fleeing — reversing the 0.24 no-chase now that
+gear exists. Two SAFE engagements only: (A) fight a LONE melee predator that comes ADJACENT (override
+the dodge — it was going to be adjacent anyway; armed+healthy it wins the trade, hurt-block still bails
+it below 60% HP); (B) actively SEEK benign wildlife (0-dmg) to farm free XP (score 3.5: below gather,
+above frontier). NEVER fought: undead (DoT, flee wins above) or a SWARM (>=2 melee preds within
+COMBAT_SEEK_RADIUS 5). Predators are NOT chased into (their strike-range tiles stay blocked); only the
+lone ones that reach us are fought. Gold FLOOR enforced INDIRECTLY: develop needs a weapon, weapon-buy
+is gold-floor-gated, so a poor guild can't arm -> not develop -> harvest/survive (no per-tick treasury
+read in the field). All survival nets (hurt-retreat, undead-flee, swarm-dodge, spacing) intact.
+TESTS: 6 new decision-engine cases, each MUTATION-CHECKED (DEVELOP_HP=0 -> lightly-hurt fights [fails];
+COMBAT_SWARM=99 -> swarm fights [fails]; block-B disabled -> no wildlife seek [fails]). Full suite 292
+local / 298 reaper green. Bounded replay over 4000 REAL frames: clean (exit 0, 0 tracebacks), lever
+FIRES — 103 predator-fight + 197 wildlife-seek decisions; spot-check sane (full-HP armed char attacks
+a lone spider; a separate hurt char at 12/30 still disengages).
+DEPLOY: run 99, git_sha 7349675, strategy explorer/0.41.0, writing frames (~12/s, staleness 0.3s). The
+"kicked: another session hello'd — exiting" in steemer-live.log was the GRACEFUL supersession of the
+old 0.40 session (run 98), NOT a kick-war: locally exactly one bot (75057/75060/75061); dash+sidecar+
+reaper-heartbeat are the other three procs; DB confirms run 99 alone is live. (An early 40s-staleness
+reading was a stale MariaDB read-snapshot from a reused connection, not the bot — a fresh connect showed
+0.3s. Lesson: reconnect before trusting a MAX(received_at) freshness check.)
+WISHLIST (minor=41, tc=41-add_minor): how-nav 0.72*0.97*(0.75-1/28)=0.499; rival-awareness 0.484;
+rival-recon-tab 0.90*0.97*(0.75-1/5)=0.480 (operator-prioritized, climbing as tc grows); move-pred(b)
+rivals 0.364; watchdog->sidecar 0.170; short-TTL predator memory 0.150. Nothing >0.5; none built. Did
+NOT inflate rival-recon good past 0.9 to clear the bar. FLAG: rival-recon (operator's reverse-engineering
+priority) and how-nav are both near-boundary; either may warrant an explicit greenlight (like codex).
+NEXT: measure 0.41's effect on a matured run 99/100 — the leveling test: do KILLS/XP rise (avg level
+climbing?) WITHOUT a death spike (our-death/1k holding ~0.4)? Is move_failed steady? Watch the KPI
+death alarm closely (this is the first pro-combat lever). If deaths spike, tighten DEVELOP_HP / drop
+block A. Rival-recon + move-pred(b) still ready on operator go.

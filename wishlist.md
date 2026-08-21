@@ -10,7 +10,11 @@ top of **Open**.
 
 ## Open
 
-- [ ] **Move-prediction model — mobs AND rival players** — turn the behaviour data we log into
+- [ ] **Move-prediction model — mobs AND rival players** — (a) MOBS: SHIPPED 2026-08-20
+  (steemer/mob_predict.py — rule-based predict()/evaluate(), validated live #97: exact 0.81,
+  chaser toward-when-moved 0.892; NOT yet wired into the strategy — 0.41 combat-seek uses simple
+  adjacency, not the predictor yet). (b) RIVALS still OPEN (needs accumulated spectate-track data).
+  turn the behaviour data we log into
   a *predictor* of the next tick's positions. (a) **Mobs** (build FIRST — practical + feasible):
   extend the bestiary from a behaviour CLASS to a next-tile predictor (a chaser steps toward the
   nearest char at ~move_rate; stationary don't; wanderers ~random). Feeds survival AND the leveling
