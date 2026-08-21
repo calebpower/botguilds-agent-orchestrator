@@ -192,6 +192,24 @@ def test_codex_tab_populates_its_sections(dashboard_with_heatmap, page: Page):
     assert crashes == [], f"uncaught JS errors: {crashes}"
 
 
+def test_nav_tab_explains_the_rules_and_the_recorded_ladder(dashboard, page: Page):
+    # The explainer is DERIVED, so this asserts both derivations reach the page: the map
+    # rules come out of steemer/nav.py (its SOLID vocabulary and a real docstring), and
+    # the empty-DB case still renders them -- a fresh checkout with no history must still
+    # be able to explain how navigation works. The ladder half is unit-tested against
+    # seeded traces in tests/test_nav_explainer.py; here it must merely not crash.
+    crashes = []
+    page.on("pageerror", lambda e: crashes.append(str(e)))
+    page.goto(dashboard, wait_until="domcontentloaded")
+    page.locator("button[data-tab='nav']").click()
+    expect(page.locator("#tab-nav")).to_be_visible()
+    expect(page.locator("#nav-rules")).to_contain_text("Blocking tiles")
+    expect(page.locator("#nav-rules")).to_contain_text("vein")        # from nav.SOLID
+    expect(page.locator("#nav-rules")).to_contain_text("walkable")    # from a real docstring
+    expect(page.locator("#nav-ladder")).to_contain_text("priority ladder")
+    assert crashes == [], f"uncaught JS errors: {crashes}"
+
+
 def test_map_danger_overlay_is_survivor_bias_corrected(dashboard_with_heatmap, page: Page):
     # the heatmap is now a MAP OVERLAY. Selecting the Danger layer fetches /api/heatmap and
     # paints it over the map; #hm-info reports the corrected 'danger = deaths/time' metric

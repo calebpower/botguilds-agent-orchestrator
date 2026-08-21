@@ -2576,3 +2576,76 @@ lumber/ore accumulation rate. (3) FORGE + discover the hafted-weapon product nam
 "forge needs an unpublished product name") — probe the forge event's product/tells. (4) wire forge-a-weapon
 into the arming loop to break the gold/arm-throttle. MEASURE before each: material stock, deaths flat, does
 avg move_failed stay low.
+
+ITER 58 (2026-08-21) — OUTAGE recovery + the supervision lever (no strategy change; how-nav shipped).
+FOUND EVERYTHING DOWN at 01:49. bot/web/dash all stopped (run/ emptied ~01:45); restarting the bot put it in
+a SILENT crash-loop: exit 139 (SIGSEGV) every start, run-live.sh respawning forever while `svc.sh status`
+would have said "bot up". ROOT CAUSE (operator confirmed mid-pass: "I just did a freebsd update"): the FreeBSD
+update replaced /usr/local/bin/python3.15 (3.15.0rc1, built Aug 18); uv noticed the interpreter changed,
+DELETED and rebuilt .venv, and reinstalled its CACHED pyzmq wheel — a local scikit-build-core build compiled
+against the OLDER 3.15 prerelease. Bisected to zmq_getsockopt(ZMQ_TYPE): `import zmq` fine, Context fine,
+backend Socket fine, `s.get(zmq.TYPE)` SEGV. FIX: rebuilt pyzmq from source against the live interpreter
+(uv pip install --no-cache --no-binary pyzmq --force-reinstall) and PURGED the poisoned cache entry
+(uv cache clean pyzmq --force; the running services hold a shared cache lock, so --force was needed).
+Bot back up on run #113 at 02:0x, ~12 frames/s, staleness 0.2s. Full local suite 341 green afterwards —
+nothing else in the FreeBSD update broke (mysql-connector is pure-python).
+WHY IT LASTED: nothing was watching. steemer/watchdog.py has always been able to answer "are frames
+flowing?" but had NO CALLER (the cron gap flagged in HANDOFF); `svc.sh status` answers "is a pid alive?",
+which a crash-loop satisfies. That is the lever this pass.
+SHIPPED (infrastructure only — explorer.py UNTOUCHED, version deliberately NOT bumped so run #113 keeps
+accumulating a clean 0.45 window and attribution stays honest; no redeploy needed):
+ * steemer/health.py — PURE plan_action/plan/overall_level with an explicit clock (mirrors
+   watchdog.classify_liveness) + thin IO. Precedence is the design: ok->none; warn->HOLD (a gap under the
+   dead threshold is a hiccup; restarting costs a run window for nothing); broken venv->REPAIR, outranking
+   restart (restarting is exactly what run-live.sh already does forever, to no effect); within cooldown->
+   HOLD (no storms); else restart. Sidecar gets its OWN looser thresholds (it writes intel ~30s; the bot
+   writes many frames/s — one shared threshold would either cry wolf on web or go blind on bot). The zmq
+   smoke test runs OUT OF PROCESS on purpose: the failure being detected is a segfault, so an in-process
+   check would take the supervisor down with it.
+ * tools/healthcheck.py — the caller the watchdog never had. One-shot JSON + exit code (0/1/2) for a cron,
+   or --watch/--fix as a service. NOW RUNNING: `./svc.sh up watch` (4th service, 60s cadence).
+ * svc.sh — ROOT CAUSE of the long-standing "svc.sh down bot leaves steemer.runner alive" gotcha, finally
+   named: daemon(8) records the CHILD pid in the pidfile but the group LEADER is daemon itself, so
+   `kill -TERM -$pid` signalled a NONEXISTENT group and the `|| kill $pid` fallback killed only run-live.sh,
+   orphaning uv+python (live proof: bot pid 2510, pgid 2508). Now resolves the real pgid, kills the
+   descendant tree, and REPORTS survivors instead of swallowing them. Three guards, each earned: (a) stale/
+   recycled pidfile refused via a per-service cmdline marker; (b) refuses to signal its OWN process group —
+   found for real when mutation-testing (a) made svc.sh kill the pytest runner; (c) existence now comes from
+   POSIX `kill -0`, not ps — the reaper gate (slim image, no procps) caught the old check reporting a LIVE
+   service "stale" and exiting 0, a stop command failing OPEN. status now reports health, not just a pid.
+ * run-live.sh — still restarts forever (the game must keep playing) but writes run/bot.crashloop after N
+   consecutive sub-FAST_FAIL_S failures, and RESETS both the tally and the backoff after a run that really
+   played (the backoff previously stayed pinned at 30s for the process's life).
+ * .reaper.toml — installs procps in [run] so the gate exercises the above instead of skipping it.
+ALSO SHIPPED (wishlist top item, 0.5026 — see table): the "How nav works" tab. Deliberately DERIVED, not
+written down, which was the operator's actual ask: the map rules come from steemer/nav.py at request time
+(live DIRS/SOLID + inspect.getdoc of the functions the planner calls), and the priority ladder comes from the
+bot's OWN recorded decision traces (decisions.alternatives_json score/why/chosen), so a re-scored branch
+appears with no dashboard edit. Honest limit, stated on the page: a branch that never fired in the sampled
+window is ABSENT, not zero — so the sample size is shown beside it. Live: 11 rungs over 4000 decisions.
+Also added escHtml (esc() only stringified; the nav tab renders game-authored names into innerHTML) — NOT
+applied to the other 46 esc() sites, because they are a mix of innerHTML and textContent and escaping the
+textContent ones would render a literal &amp;. Recorded as a finding for its own pass.
+MEASURED 0.44+0.45 on the matured run #103 (28.5k frames) with CORRECTED attribution — the previous
+event-count reads were wrong: `eid` (numeric) and `char_uid` (string) are different namespaces, so an
+eid-in-roster filter matched NOTHING. Our chars' eids come from frames[].chars[].eid; our deaths are
+kind_name=='char' AND guild_id in ours. Redone properly:
+ * HARVEST is entirely ours: 544/544 terrain_hit and 133/133 terrain_destroyed on #103 carry our eids, at
+   4.1 hits per destroy — exactly the docs' "breaks after a few attacks". NO PINNING: the worst single
+   (eid,tile) pair is 4 hits, so the "char stuck chopping a tree that won't break" risk did not materialise
+   and no per-tile give-up is needed yet.
+ * Rivals harvest too: run #100 (0.42, no harvest code) logged 187 terrain_hit / 46 destroyed, NONE ours.
+ * YIELD IS THE OPEN QUESTION: 133 destroys produced only 8 `drop` lumber (~6%). Either most drops are being
+   picked up without a drop event, or breakables mostly yield nothing. Slice 2 must measure stock, not swings.
+ * DEATHS on #103 were 5 (0.175/1k) vs 1 (0.019/1k) on #100 — and they are NOT the harvester's fault: 4 of
+   the 5 never hit terrain at all, the 5th last chopped 652 ticks before dying, and 12 chars harvested with
+   1 death. All 5 fall inside the final ~1200 ticks — the reconnect storm at the end of the run, i.e. the
+   OUTAGE window. Attribute them to the outage, not to 0.45.
+GATE: 40 new tests (20 health, 9 supervision, 11 nav explainer) + a Playwright nav-tab test; 23 mutants cut,
+all killed. Three initially SURVIVED and each was worth it: one test never exercised the reset it claimed to
+cover; one exposed the self-process-group kill; one showed a uid-normalisation claim that number-blanking
+already covered (test retargeted to what the regex actually buys — legibility). Submodule check: up-to-date
+at 588702a. Local 352/3; reaper gate green.
+NEXT: forge-to-arm SLICE 2 (seek resources + prefer axe/pickaxe) — but measure the yield question first:
+does material STOCK actually accumulate? Then slice 3 (forge + product-name discovery). Watch #113 for a
+long clean 0.45 window now that the supervisor is running.

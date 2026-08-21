@@ -623,6 +623,106 @@ def _codex_latest_run(db_path: str):
         return None
 
 
+# --------------------------------------------------------------------------- #
+# "How navigation works" — the explainer, DERIVED rather than written down
+# --------------------------------------------------------------------------- #
+# The wishlist asked for this to stay true as the nav protocols change, so nothing
+# here restates the algorithm in prose that could rot. Both halves are pulled from
+# the source of truth at request time:
+#
+#   * the RULES come from steemer.nav itself — its live DIRS/SOLID values and the
+#     docstrings of the functions the planner actually calls (inspect.getdoc). Edit
+#     nav.py and this page changes with it; delete a function and it disappears.
+#   * the PRIORITY LADDER comes from the bot's own recorded decision traces, not
+#     from reading the strategy's literals. Every candidate the strategy `offer`s
+#     lands in `decisions.alternatives_json` with its score, its reason and whether
+#     it won — so the ladder shown is the one that actually ran, and a re-scored
+#     branch shows up here without anyone editing the dashboard.
+#
+# The cost of that fidelity: the ladder can only show rungs the bot has REACHED in
+# the sampled window. A branch that never fired is absent rather than listed at
+# zero — which is itself worth seeing, so the sample size is reported alongside.
+
+_NAV_RUNG_SPLIT = re.compile(r"\s+[—–-]\s+|[;:(]")
+# character uids first: they are hex+digits, so blanking numbers alone would leave a
+# different mangled uid per character and shatter one rung into dozens.
+_NAV_UID = re.compile(r"g_[0-9a-f]+_c\d+")
+_NAV_NUMS = re.compile(r"\d+(\.\d+)?%?")
+
+
+def _nav_rung_label(why: str) -> str:
+    """Collapse one candidate's reason to the branch it came from.
+
+    Reasons carry specifics ("a wolf is 2 away", "selling meat (tier 1)"); the rung
+    is the phrase before the first dash/colon/paren, with numbers blanked, so the
+    same branch groups across characters and ticks.
+    """
+    head = _NAV_RUNG_SPLIT.split(why or "", 1)[0]
+    head = _NAV_UID.sub("a char", head)
+    return _NAV_NUMS.sub("#", head).strip().rstrip(",") or "(unlabelled)"
+
+
+def api_nav(db_path: str, sample: int = 4000) -> dict:
+    """The nav explainer: live nav rules + the ladder the bot actually weighed."""
+    import inspect
+
+    from steemer import nav as _nav
+
+    rules = {
+        "dirs": dict(_nav.DIRS),
+        "solid": sorted(_nav.SOLID),
+        "functions": [
+            {"name": fn.__name__, "doc": inspect.getdoc(fn) or ""}
+            for fn in (_nav.is_walkable, _nav.bfs_step, _nav.frontier,
+                       _nav.step_dir, _nav.neighbors)
+        ],
+        "module_doc": inspect.getdoc(_nav) or "",
+    }
+
+    rungs: dict = {}
+    considered = chosen_total = rows = 0
+    version = None
+    if _db_ready(db_path):
+        conn = _ro(db_path)
+        try:
+            cur = conn.execute(
+                "SELECT alternatives_json, strategy_version FROM decisions "
+                "ORDER BY seq DESC LIMIT ?", (int(sample),))
+            for row in cur.fetchall():
+                alts_json = row["alternatives_json"] if hasattr(row, "keys") else row[0]
+                version = version or (row["strategy_version"] if hasattr(row, "keys") else row[1])
+                try:
+                    alts = json.loads(alts_json) if alts_json else []
+                except (TypeError, ValueError):
+                    continue
+                rows += 1
+                for alt in alts:
+                    score = alt.get("score")
+                    if score is None:
+                        continue
+                    label = _nav_rung_label(alt.get("why", ""))
+                    key = (round(float(score), 2), label)
+                    r = rungs.setdefault(key, {"score": key[0], "label": label,
+                                               "considered": 0, "chosen": 0,
+                                               "example": alt.get("why", "")})
+                    r["considered"] += 1
+                    considered += 1
+                    if alt.get("chosen"):
+                        r["chosen"] += 1
+                        chosen_total += 1
+        except _db.Error:
+            pass
+        finally:
+            conn.close()
+
+    ladder = sorted(rungs.values(), key=lambda r: (-r["score"], -r["considered"]))
+    for r in ladder:
+        r["win_rate"] = round(r["chosen"] / r["considered"], 3) if r["considered"] else 0.0
+    return {"rules": rules, "ladder": ladder, "strategy_version": version,
+            "sampled_decisions": rows, "sampled_candidates": considered,
+            "sampled_chosen": chosen_total}
+
+
 def api_codex(db_path: str) -> dict:
     """Serve the codex WITHOUT blocking the request thread. The heavy frame decode in
     _codex_build (~15s over MariaDB) runs at most once per run in a background thread;
@@ -1336,6 +1436,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(api_story())
             elif path == "/api/codex":
                 self._json(api_codex(self.db_config))
+            elif path == "/api/nav":
+                self._json(api_nav(self.db_config))
             elif path == "/api/log":
                 kind, text, size = api_log(one("name", "decisions"))
                 # ``size`` is the byte cursor the page subscribes with for the tail.
@@ -1520,6 +1622,8 @@ label.chk{display:flex;align-items:center;gap:6px;color:var(--ink2);font-size:13
 .sv-tag.eff{background:color-mix(in srgb,var(--good) 20%,transparent);color:var(--good)}
 .sv-tag.note{background:var(--plane);color:var(--ink2)}
 .sv-title{color:var(--ink)}
+pre.doc{white-space:pre-wrap;background:#11161c;border:1px solid #223;border-radius:6px;padding:.6em .8em;font-size:12px;line-height:1.45;overflow-x:auto}
+#tab-nav h3{margin:1.2em 0 .3em}#tab-nav h4{margin:1em 0 .2em}
 /* codex — the auto-populated wiki */
 .cx-nav{display:flex;gap:6px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
 .cx-btn{background:transparent;border:1px solid var(--border);color:var(--ink2);
@@ -1641,6 +1745,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     <button data-tab="decisions">Decisions</button>
     <button data-tab="map">Map</button>
     <button data-tab="codex">Codex</button>
+    <button data-tab="nav">How nav works</button>
     <button data-tab="timeline">Timeline</button>
     <button data-tab="findings">Findings</button>
     <button data-tab="logs">Logs</button>
@@ -1722,6 +1827,12 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   </section>
 
   <!-- CODEX -->
+  <section class="tab" id="tab-nav">
+    <div class="small" id="nav-info"></div>
+    <div id="nav-ladder"></div>
+    <div id="nav-rules"></div>
+  </section>
+
   <section class="tab" id="tab-codex">
     <div class="cx-nav">
       <button class="cx-btn active" data-cx="monsters">Monsters</button>
@@ -1808,6 +1919,14 @@ const el = (t, cls, txt) => { const e=document.createElement(t);
   if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
 const fmtNum = n => (n==null?"—":Number(n).toLocaleString());
 const esc = s => (s==null?"":String(s));
+// esc() only stringifies, and its call sites are a MIX: some feed textContent (where
+// escaping would render a literal &amp;) and some feed innerHTML template strings (where
+// not escaping lets server-authored text inject markup — item and mob names come from
+// the game, which is an evolving target). Splitting the 46 existing call sites by context
+// is its own change; escHtml is the correct helper for innerHTML and is what the nav tab
+// uses. The mixed use elsewhere is recorded in findings.jsonl.
+const escMap = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
+const escHtml = s => (s==null?"":String(s).replace(/[&<>"']/g, c => escMap[c]));
 
 async function getJSON(url, timeoutMs){
   // Bound every request: a browser caps ~6 connections per host, so an endpoint
@@ -1849,6 +1968,7 @@ function loadActive(){
   else if(active==="decisions") loadDecisions();
   else if(active==="map") loadMap();
   else if(active==="codex") loadCodex();
+  else if(active==="nav") loadNav();
   else if(active==="timeline") loadTimeline();
   else if(active==="findings") loadFindings();
   else if(active==="logs") loadLogs();
@@ -2382,6 +2502,45 @@ function applyMap(msg){
 }
 
 /* ---- CODEX ---- */
+async function loadNav(){
+  const d=await getJSON("/api/nav"); if(!d) return;
+  const info=$("#nav-info");
+  if(info) info.textContent =
+    `every rung below was weighed by ${d.strategy_version||"the strategy"} in the last `+
+    `${d.sampled_decisions} decisions (${d.sampled_candidates} candidates, `+
+    `${d.sampled_chosen} winners). Branches that never fired in that window are absent, not zero.`;
+  const lad=$("#nav-ladder");
+  if(lad){
+    const rows=(d.ladder||[]).map(r=>{
+      const pct=Math.round((r.win_rate||0)*100);
+      return `<tr><td class="num">${r.score.toFixed(1)}</td><td>${escHtml(r.label)}</td>`+
+             `<td class="num">${r.considered}</td><td class="num">${pct}%</td>`+
+             `<td class="small">${escHtml(r.example||"")}</td></tr>`;
+    }).join("");
+    lad.innerHTML = `<h3>The priority ladder — what a character weighs each tick</h3>`+
+      `<p class="small">A character scores every legal move it can see and takes the highest. `+
+      `Higher rungs are survival (retreat, fight what is on top of it); the low rungs are what `+
+      `it does when nothing urgent is happening (push a frontier, scout, rest). "Won" is how `+
+      `often that candidate beat everything else it was up against.</p>`+
+      `<table class="grid"><thead><tr><th>score</th><th>branch</th><th>weighed</th>`+
+      `<th>won</th><th>example reason</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  const ru=$("#nav-rules");
+  if(ru){
+    const rules=d.rules||{};
+    const dirs=Object.entries(rules.dirs||{}).map(([k,v])=>`${k} = (${v[0]}, ${v[1]})`).join(" · ");
+    const solid=(rules.solid||[]).map(s=>`<code>${escHtml(s)}</code>`).join(" ");
+    const fns=(rules.functions||[]).map(f=>
+      `<h4><code>${escHtml(f.name)}()</code></h4><pre class="doc">${escHtml(f.doc)}</pre>`).join("");
+    ru.innerHTML = `<h3>The map rules</h3>`+
+      `<p class="small">Read live out of <code>steemer/nav.py</code> at page load — these are the `+
+      `values and the wording the running planner uses, not a copy that can drift.</p>`+
+      `<p><b>Steps</b> (cardinal only; diagonals are gear-gated): ${escHtml(dirs)}</p>`+
+      `<p><b>Blocking tiles</b>: ${solid}</p>`+
+      `<pre class="doc">${escHtml(rules.module_doc||"")}</pre>${fns}`;
+  }
+}
+
 let codexData=null, codexWired=false;
 async function loadCodex(){
   if(!codexWired){ codexWired=true;
