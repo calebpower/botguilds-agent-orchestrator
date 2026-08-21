@@ -573,7 +573,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.39.0"
+    version = "explorer/0.39.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1019,16 +1019,24 @@ class Explorer:
                     # v0.39.0: the char's ROLE biases the threshold — a Guardian (veteran)
                     # disengages early; a Forager (recruit) works a denser band for income.
                     undead_frac = (len(threats) / len(ctx.enemies)) if ctx.enemies else 0.0
+                    # v0.39.1: a Forager only EARNS its bold thresholds when there is value to
+                    # gather in view (gold/loot/chest). In a coin-dry band there's no income
+                    # upside to the risk, so it reverts to the cautious (Guardian) thresholds and
+                    # plays safe — fixing the 0.39 flaw where bold foragers died for nothing in
+                    # barren bands (re-feeding the death->recruit drain). Guardians are always
+                    # cautious (protect the XP investment).
                     role = role_of(char)
-                    if role == "guardian":
-                        uf, dn = UNDEAD_SEVERE_GUARDIAN, MELEE_DENSE_GUARDIAN
-                    else:
+                    has_value = bool(ctx.gold or ctx.loot or ctx.containers)
+                    if role == "forager" and has_value:
                         uf, dn = UNDEAD_SEVERE_FORAGER, MELEE_DENSE_FORAGER
+                    else:
+                        uf, dn = UNDEAD_SEVERE_GUARDIAN, MELEE_DENSE_GUARDIAN
                     severe = undead_frac >= uf or len(preds) >= dn
                     score = SPACE_SCORE_SEVERE if severe else SPACE_SCORE_CALM
                     band = "severe" if severe else "calm"
+                    label = role if (role == "guardian" or has_value) else "forager(barren)"
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, best)},
-                          score, f"{role}: a {kind} is {_sp_dist(pos)} away ({band} band) — spacing off",
+                          score, f"{label}: a {kind} is {_sp_dist(pos)} away ({band} band) — spacing off",
                           urgent=True)
 
         # --- Healthy: fight / gather / explore. ---

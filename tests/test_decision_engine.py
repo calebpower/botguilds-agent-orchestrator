@@ -189,23 +189,30 @@ def test_role_of_is_derived_from_level():
     assert role_of({}) == "forager"
 
 
-def test_guardian_disengages_where_a_forager_keeps_working():
-    # v0.39.0 the role split: in the SAME band (two melee predators, no undead), a GUARDIAN
-    # (MELEE_DENSE_GUARDIAN==2) calls it severe and spaces off SOUTH, while a FORAGER
-    # (MELEE_DENSE_FORAGER==4) calls it calm and keeps working — same threat, different risk
-    # appetite by role, exactly the per-char-mode diversification.
+def test_barren_forager_disengages_like_a_guardian():
+    # v0.39.1: a forager only earns its BOLD thresholds when there's value to gather. With
+    # NOTHING in view (a coin-dry band) it reverts to the cautious (Guardian) thresholds, so
+    # a lone recruit spaces off from a 2-predator band exactly like a veteran does — no
+    # taking predator risk for zero income (the 0.39 flaw that re-fed the death->recruit drain).
     from steemer.strategy.explorer import GUARDIAN_LEVEL
-    bot = _bot()
     ents = [{"pos": [0, 4], "faction": "monster", "kind": "wolf"},    # near (dist 2)
             {"pos": [0, 8], "faction": "monster", "kind": "boar"}]    # far -> 2 preds total
-    guardian = _field_char(pos=[0, 2], stamina=40, level=GUARDIAN_LEVEL + 1)
-    g_acts = bot.on_frame(_field_frame(guardian, _SPACE_TILES, entities=ents))
-    assert {"char_uid": "c1", "action": "move", "dir": "S"} in g_acts     # veteran disengages
+    for level in (2, GUARDIAN_LEVEL + 1):        # barren forager AND guardian both disengage
+        acts = _bot().on_frame(_field_frame(       # fresh bot per char: no cross-char state bleed
+            _field_char(pos=[0, 2], stamina=40, level=level), _SPACE_TILES, entities=ents))
+        assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts   # spaced off (cautious)
 
-    forager = _field_char(pos=[0, 2], stamina=40, level=2)
-    f_acts = bot.on_frame(_field_frame(forager, _SPACE_TILES, entities=ents))
-    assert any(a.get("action") == "move" for a in f_acts)                 # recruit keeps moving
-    assert all(not (a.get("action") == "move" and a.get("dir") == "S") for a in f_acts)  # not fleeing
+
+def test_forager_works_toward_value_instead_of_fleeing():
+    # v0.39.1: WITH value in view (a gold coin), a forager does not flee the 2-predator band —
+    # it works toward the coin (gather beats spacing). The income upside earns the risk.
+    ents = [{"pos": [0, 4], "faction": "monster", "kind": "wolf"},
+            {"pos": [0, 8], "faction": "monster", "kind": "boar"}]
+    acts = _bot().on_frame(_field_frame(
+        _field_char(pos=[0, 2], stamina=40, level=2), _SPACE_TILES,
+        entities=ents, gold=[{"pos": [1, 2]}]))         # a coin one tile east
+    assert any(a.get("action") == "move" for a in acts)
+    assert all(not (a.get("action") == "move" and a.get("dir") == "S") for a in acts)  # not fleeing
 
 
 def test_full_char_does_not_pick_up_more_loot():
