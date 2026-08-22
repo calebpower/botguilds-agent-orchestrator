@@ -21,12 +21,15 @@ from steemer.strategy.explorer import (Explorer, BOTTLE_KEEP, WEAPON_BUY_FLOOR,
                                        POTION_RESERVE)
 
 
-class _Bot:
-    tick = 500
-    config: dict = {}
-
-    def __init__(self):
-        self.storage = None
+def _Bot(tick=500):
+    """The REAL GuildBot, not a stub. Three times now a hand-rolled double has drifted from
+    the interface `village()` actually calls (a missing `observe`, then a missing
+    `recently_forged`), and each time the test failed for a reason that had nothing to do
+    with what it was testing. A double that has to track the original is a liability."""
+    from steemer.bot import GuildBot
+    bot = GuildBot("explorer")
+    bot.tick = tick
+    return bot
 
 
 def _herb(kind="sungrass", i=0):

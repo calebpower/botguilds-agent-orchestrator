@@ -550,7 +550,12 @@ FORGE_PRODUCTS = ("shield_iron", "spear", "shortsword", "dagger")
 # action_error here is INFORMATION, the same stance the exploration matrix takes. Cheapest
 # combinations first so a failure costs the least stamina.
 FORGE_RECIPES = ((1, 1), (2, 1), (1, 2), (2, 2), (3, 1))
-FORGE_STAMINA = 15          # docs/07: brew/forge cost 15, paid once up front
+FORGE_STAMINA = 15
+# v0.64.0: refusals needed before a never-proven recipe is abandoned. More than one,
+# because `wrong_materials` is not deterministic in what we key on (see _forge_proven);
+# still small, because an unlimited retry is the storm every latch in this file exists to
+# stop.
+FORGE_FAIL_LIMIT = 3          # docs/07: brew/forge cost 15, paid once up front
 # Medicinal drinks we keep rather than sell (potions, vials, elixirs, tonics). Raw
 # FOOD is also `uses:['drink']` but is NOT kept — the guild never eats it, so
 # hoarding it just fills the pack and strands chars homing (v0.19.0: the stuck-gold
@@ -819,7 +824,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.63.0"
+    version = "explorer/0.64.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -849,6 +854,20 @@ class Explorer:
         # uid -> the (product, n_ingot, n_lumber) most recently attempted, so
         # on_action_error can attribute a rejection to the recipe that earned it.
         self._forge_attempt: dict[str, tuple[str, int, int]] = {}
+        # v0.64.0: recipes a `forged` event has PROVEN, and a per-recipe failure tally.
+        #
+        # v0.52.0 blacklisted a recipe on its FIRST `wrong_materials`, which assumed the
+        # server's refusal is a function of (product, ingots, lumber). Run #140 shows it is
+        # not: the identical product, material KINDS and quantities both succeeded and
+        # failed within one run. Against a non-deterministic signal, a one-strike permanent
+        # blacklist is a ratchet -- it only ever removes options -- and it had condemned ALL
+        # FIVE spear recipes and ALL FIVE shield_iron recipes, including `(spear, 1, 1)`,
+        # which produced `forged` events on runs #129 AND #140.
+        #
+        # So: proof outranks refusal. A recipe that has ever worked is never blacklisted,
+        # and one that has not needs FORGE_FAIL_LIMIT refusals before we give up on it.
+        self._forge_proven: set[tuple[str, int, int]] = set()
+        self._forge_fails: dict[tuple[str, int, int], int] = defaultdict(int)
         # v0.63.0: (uid, tome_kind) the server refused -- INT gates which tomes a character
         # may use, so a refusal is durable information about that character.
         self._tome_failed: set[tuple[str, str]] = set()
@@ -898,8 +917,10 @@ class Explorer:
         # quantities are undocumented, so the server's rejection IS the documentation.
         if message.get("action") == "forge" and uid is not None:
             pend = self._forge_attempt.pop(uid, None)
-            if pend is not None:
-                self._forge_failed.add(pend)
+            if pend is not None and pend not in self._forge_proven:
+                self._forge_fails[pend] += 1
+                if self._forge_fails[pend] >= FORGE_FAIL_LIMIT:
+                    self._forge_failed.add(pend)
         # v0.63.0: a refused `use` of a tome is durable information about this character.
         if message.get("action") == "use" and uid is not None:
             kind = self._using.pop(uid, None)
@@ -1084,6 +1105,16 @@ class Explorer:
             # 4d) FORGE (v0.52.0) — ingots + lumber into gear the shop will not sell.
             #     Placed after smelting so ore becomes an ingot first, and before the XP
             #     spend so a forge-ready character does not idle its materials.
+            # v0.64.0: a completed forge PROVES the recipe that character last attempted.
+            # Credited here, where we have both the bot's event view and our own pending
+            # attempt -- proof is the only positive evidence this ladder ever receives, and
+            # without it failures ratchet the options away one by one.
+            if bot.recently_forged(uid):
+                proven = self._forge_attempt.pop(uid, None)
+                if proven is not None:
+                    self._forge_proven.add(proven)
+                    self._forge_failed.discard(proven)
+                    self._forge_fails.pop(proven, None)
             forge = self._choose_forge(inv, eqp, char.get("stamina", 0))
             if forge is not None:
                 recipe, item_ids, why = forge

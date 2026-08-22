@@ -20,12 +20,14 @@ character's head.
 from steemer.strategy.explorer import Explorer, TOME_PREFIX
 
 
-class _Bot:
-    config: dict = {}
-
-    def __init__(self, tick=500):
-        self.tick = tick
-        self.storage = None
+def _Bot(tick=500):
+    """The REAL GuildBot — see the note in tests/test_bottle_buy.py. `village()` calls into
+    the bot for learned state (`recently_forged`, `recently_overburdened`), and a stub only
+    stays correct until the next thing it forgets to grow."""
+    from steemer.bot import GuildBot
+    bot = GuildBot("explorer")
+    bot.tick = tick
+    return bot
 
 
 def _tome(kind="tome_bolt", i=0):

@@ -32,6 +32,11 @@ STUCK_BLOCK_TTL = 150
 # re-asserts it on the very next attempt if it has not.
 OVERBURDENED_TTL = 60
 
+# v0.64.0: how long a `forged` event stays fresh enough to credit the recipe that
+# character last attempted. A forge takes 10-14 ticks by its own `forge_started` event,
+# so this only has to outlive the craft, not the run.
+FORGED_TTL = 40
+
 
 class GuildBot:
     def __init__(self, strategy: Strategy | str = "explorer", storage: Storage | None = None):
@@ -73,6 +78,8 @@ class GuildBot:
         # BULK, so a character with two free could not take a bulk-3 item, was not "full"
         # by our rule (needs 20), and was not shedding either (needs 21). It sat in the gap.
         self._overburdened: dict[str, int] = {}
+        # uid -> tick of the most recent `forged` event for that character (v0.64.0).
+        self._forged: dict[str, int] = {}
         # Tiles worth RE-CHECKING because a refresh has happened since we last looked at
         # them. Kept apart from `known` on purpose: `known` records what we have OBSERVED,
         # and this is a HYPOTHESIS about what a refresh did. Conflating the two would put
@@ -122,6 +129,12 @@ class GuildBot:
         """
         at = self._overburdened.get(uid)
         return at is not None and self.tick - at < OVERBURDENED_TTL
+
+    def recently_forged(self, uid: str) -> bool:
+        """Did this character just complete a forge? Proof that its last attempted recipe
+        is real, which is the only positive evidence the forge ladder ever gets."""
+        at = self._forged.get(uid)
+        return at is not None and self.tick - at < FORGED_TTL
 
     def _band_refreshed(self, world: str, frame: dict[str, Any]) -> bool:
         """Did this world just refresh? Compares the frame's `next_refresh` to the last one
@@ -260,6 +273,13 @@ class GuildBot:
             # every action_error query came back clean while 1,164 pickups died on it.
             if ev.get("kind") == "overburdened" and ev.get("eid") in our_eids:
                 self._overburdened[our_eids[ev["eid"]]] = self.tick
+            # v0.64.0: a `forged` event is PROOF that whatever recipe that character last
+            # attempted actually works. The strategy needs it because `wrong_materials` is
+            # not deterministic in the variables we key on -- run #140 shows the identical
+            # (product, kinds, quantities) both succeeding and failing -- so failures alone
+            # progressively condemned recipes we had already seen work.
+            if ev.get("kind") == "forged" and ev.get("eid") in our_eids:
+                self._forged[our_eids[ev["eid"]]] = self.tick
             if ev.get("kind") != "move_failed" or ev.get("eid") not in our_eids:
                 continue
             to = ev.get("to")
