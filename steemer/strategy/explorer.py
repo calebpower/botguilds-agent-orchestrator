@@ -644,6 +644,21 @@ POTION_MIN_GOLD = 20       # buy a potion once we can afford one (its shop price
 #   one-potion reserve; it REGRESSED income/engagement and is removed in v0.18.0 —
 #   arm a bare char whenever affordable, as before.)
 XP_PRIORITY = ("vit", "end", "str")   # survival first: HP, then stamina, then damage
+# v0.67.0: INT is deliberately ABSENT from the list above, and that quietly locked magic out
+# of the game for us. INT gates which tomes a character may use (docs/06), `max_mana`,
+# `spell_cap` AND `essence_cap` — so with INT stuck at its starting 1-2 there is no route to
+# a spell at all, however many tomes we keep.
+#
+# Run #145 finally showed the whole chain: two tomes DROPPED, we picked them up and kept them
+# (0.63.0 — zero sold, against 74 sold historically), we issued `use` on exactly those
+# item_ids, and the server answered `stat_requirement` five times. Every link works except
+# the stat.
+#
+# Raised for the character that DEMONSTRABLY needs it rather than by reordering the survival
+# priority for everyone: a character holding a tome it has been refused. That refusal is
+# already recorded, the retry on growth is already built (v0.65.1), so this closes the loop
+# with no new machinery and no cost to any character that is not carrying a tome.
+XP_PRIORITY_CASTER = ("int",) + XP_PRIORITY
 XP_STAT_TARGET = 8         # grow each toward the full-rate effective-bonus cap
 EQUIP_SLOTS = ("hand", "offhand", "outfit", "trinket", "boots")
 # v0.53.0: how many distinct (kind, slot) swap refusals before we conclude the server has
@@ -824,7 +839,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.66.1"
+    version = "explorer/0.67.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1148,7 +1163,7 @@ class Explorer:
                     bot, uid, {"char_uid": uid, "action": "forge",
                                "product": recipe[0], "item_ids": item_ids}, why)]
             # 5) spend banked XP on durability (safe in the village).
-            stat = self._pick_xp_stat(char)
+            stat = self._pick_xp_stat(char, wants_int=self._needs_int(uid, inv))
             if stat is not None:
                 v = char.get("stats", {}).get(stat, 1)
                 gifted = stat in set(char.get("gifts", []))
@@ -2402,8 +2417,18 @@ class Explorer:
         pool = clutter or [i for i in inv if droppable(i)]
         return pool[0]["item_id"] if pool else None
 
+    def _needs_int(self, uid: str, inv: list[dict[str, Any]]) -> bool:
+        """Is this character carrying a tome the server has already refused it on stats?
+
+        Deliberately narrow. Not "holds a tome" — an unrefused tome may simply not have been
+        tried yet, and the next village visit will try it. Only a character we have WATCHED
+        be turned away has demonstrated that INT is what stands between it and a spell.
+        """
+        return any((uid, item.get("kind")) in self._tome_failed
+                   for item in inv if str(item.get("kind", "")).startswith(TOME_PREFIX))
+
     @staticmethod
-    def _pick_xp_stat(char: dict[str, Any]) -> str | None:
+    def _pick_xp_stat(char: dict[str, Any], wants_int: bool = False) -> str | None:
         """The stat to raise next: the highest survival-priority stat (VIT>END>STR)
         that is BOTH below the cap AND affordable with the character's banked XP.
 
@@ -2416,7 +2441,7 @@ class Explorer:
         stats = char.get("stats", {})
         gifts = set(char.get("gifts", []))
         xp = char.get("xp", 0)
-        for s in XP_PRIORITY:
+        for s in (XP_PRIORITY_CASTER if wants_int else XP_PRIORITY):
             v = stats.get(s, 0)
             if v < XP_STAT_TARGET and Explorer._xp_cost(v, s in gifts) <= xp:
                 return s
