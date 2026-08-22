@@ -4120,3 +4120,55 @@ OPERATOR: replaced /usr/local/bin/reaper with the new build. The first binary st
 the linux-gnu one and this workstation is FreeBSD 15.1; it ran under the linuxulator and
 passed a full gate, then the FreeBSD build replaced it. Old binary kept in the scratchpad.
 GATE 874 reaper / 865 local.
+
+================================================================================
+iter 89 (2026-08-22) — explorer/0.76.0 — the heal is the passport north
+================================================================================
+MEASURED 0.73.0's bounded rally on #157 (33k frames, mature): cohesion's chosen share
+18.2% -> 1.02%. The bound works. But the group is NO tighter (spread median 38 -> 44, tight
+1.9% -> 1.2%), so across three implementations cohesion has never produced a formation. It
+now costs 1% instead of 18%, which is the win available; keeping it is defensible only at
+that price.
+
+*** THE LARGEST FINDING OF THE PROJECT SO FAR. *** Chasing where the freed 17% went turned
+up "world looted-out — home to re-embark" at 30.9% of ALL chosen decisions (13.3% on #151).
+Following that down:
+  * 62.8% of fielded char-frames sit at y 0-4; 94% below y=15; the map runs to y=199.
+  * this run visited 18-41% of the map WE ALREADY KNOW (spire: 4,545 tiles known, never
+    above y=17).
+  * 30% of field visits lasted <=5 ticks — embark, see nothing, walk home, repeat.
+  * only 4.6% of looted-out ticks had ANY loot visible, so the depletion judgment is sound;
+    the spawn strip really is stripped, because we never leave it.
+CAUSE, and it is one line: characters carrying a heal run to a median y of ~50 and range
+past 70. Characters without one have a median y of 0, with 79% at y 0-9. 99.5% of fielded
+char-frames carry no heal. POISON_SAFE_DEPTH pulls an un-healed character home from y>=12
+exactly as designed — so the whole roster is confined to the bottom 12 rows, and the
+content carrying the XP is north of that line.
+
+0.76.0 — THE ORDERING WAS THE BUG. v0.69.0 set POTION_RESERVE equal to WEAPON_BUY_FLOOR so
+the heal would "rank WITH arming". The arithmetic made it strictly worse: the weapon fires
+at gold > 150 while _afford_potion needs gold - 20 >= 150, i.e. 170 — the heal was HARDER
+to afford than the weapon AND checked after it. With a bare bench there is always someone
+to arm, so the surplus went at 151 every time. #157: 0 bought, 0 brewed, gold at 149. One
+coin under the floor that unlocks the map. Heal now checked FIRST, floor 100 (below the arm
+floor). Bounded by POTION_KEEP=1, and a test proves a HEALED char then gets armed.
+EARLY (5.3k frames): 4 potion buys, no errors, healed share 0.5% -> 2.7%, gold 102.
+FALSIFICATION stated before deploy: buys > 0, healed share >> 0.5%, median fielded y > 0,
+looted-out share falling from 31%. If buys happen and y does not move, the cap was not the
+only pin.
+
+MUTATION: the potion-floor test was sized from POTION_RESERVE, so mutating the reserve to
+ZERO — precisely the 0.24.0 drain — left it green. Numbers written out.
+
+OPERATOR ASKED: do rivals use magic? NO — AND NOBODY DOES. Across 6,484 spectate snapshots
+and ~340k character observations covering all five guilds, ZERO implements (wand/scepter/
+staff/rod) have ever been equipped, and only 9 bow sightings. WillMorr (the dev's own
+guild, max level 38) is 73% bare-handed and otherwise dagger/club/spear. The shop sells
+tome_veil 120g and tome_bolt 150g but NO implements, so those must drop or be forged and
+no one has found one. Our own blocker is INT: `use` on a tome is refused `stat_requirement`
+(40 times). Magic is an entirely uncontested mechanic on this server.
+WISHLIST: magic tops the table at 0.535 and was NOT built — with zero spells in existence
+anywhere, casting code would be written against an unobserved mechanic (the shape that
+shipped inert four times). The buildable slice is raising one tome-holder's INT until the
+refusal stops.
+GATE 876 reaper / 867 local.
