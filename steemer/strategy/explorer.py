@@ -896,7 +896,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.74.0"
+    version = "explorer/0.74.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1054,6 +1054,57 @@ class Explorer:
     # -- village: gear + economy + healing supply + discovery-first deployment --
 
     def village(self, bot: "Any", frame: dict[str, Any]) -> list[dict[str, Any]]:
+        """The village loop, plus flavour text riding along on a spare character.
+
+        v0.74.1 — 0.74.0 put the `say` at the END of the loop, on a tick where nothing else
+        happened, and it shipped STARVED: 429 of run #153's first 541 village ticks were
+        taken by an embark, and the rest had nobody home. The free tick it was waiting for
+        essentially does not exist while the field is filling.
+
+        Riding along is free in a stronger sense than "last in the ladder" ever was. The
+        loop's own action goes out unchanged, and the speaker is a DIFFERENT character that
+        is doing nothing this tick — so there is no ordering in which the guild loses
+        anything, rather than merely no ordering we happened to test. A second character is
+        home 56% of village ticks on #153 (15.5% on #151, when the roster was mostly
+        fielded), which is the difference between rare and never.
+        """
+        actions = self._village_core(bot, frame) or []
+        say = self._maybe_say(bot, frame, actions)
+        return actions + ([say] if say is not None else [])
+
+    def _maybe_say(self, bot: "Any", frame: dict[str, Any],
+                   taken: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """A `say` from a character with nothing else to do this tick, or None."""
+        # NO "did this character get an action this tick" check, deliberately. The first
+        # draft had one, and mutation testing removed it with the entire suite still green:
+        # every character the village loop commands is already excluded by one of the two
+        # guards below — `_village_acted` for per-character actions, `_embark_at` for
+        # embarks, which stamp their subject before this runs. A third guard that cannot
+        # be observed failing is not defence in depth, it is a claim about which check is
+        # load-bearing that happens to be false, and it would have sent the next reader
+        # to the wrong line.
+        tick = bot.tick
+        for char in frame.get("chars", []) or []:
+            uid = char.get("char_uid")
+            if uid is None or char.get("craft"):
+                continue
+            if tick - self._village_acted.get(uid, -10 ** 9) < VILLAGE_ACTION_COOLDOWN:
+                continue
+            if uid in self._village_intent:
+                continue
+            if tick - self._embark_at.get(uid, -10 ** 9) < EMBARK_COOLDOWN:
+                continue        # embark already commanded; it is leaving, not loitering
+            guild = frame.get("guild", {}) or {}
+            text = bot.chatter.line(tick, gold=guild.get("gold", 0),
+                                    roster=len(frame.get("chars", []) or []))
+            if text is None:
+                return None
+            return self._village_act(
+                bot, None, {"char_uid": uid, "action": "say", "text": text},
+                f"idle tick — saying {text!r} (flavour text only)")
+        return None
+
+    def _village_core(self, bot: "Any", frame: dict[str, Any]) -> list[dict[str, Any]]:
         guild = frame.get("guild", {})
         cfg = bot.config
         chars = frame.get("chars", [])

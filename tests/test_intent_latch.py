@@ -166,6 +166,12 @@ def test_an_abandoned_intent_is_cleared_even_when_the_char_has_NOTHING_to_do():
     linger, telling any later reader that a purchase is still in flight when we gave up on
     it long ago."""
     bot = _bot()
+    # Silence flavour text (v0.74.1). It rides along on any character with nothing else to
+    # do, which is precisely the character this test constructs — so an unrelated feature
+    # would otherwise appear in `acts` and the assertion below would have to be loosened to
+    # accommodate it. Silencing the noise keeps the assertion exact: NO action for c1.
+    for _ in range(3):                       # steemer.chatter.FAIL_LIMIT
+        bot.chatter.note_rejected()
     char = _char()
     bot.on_frame(_vframe(char, tick=3))
     assert "c1" in bot.strategy._village_intent
