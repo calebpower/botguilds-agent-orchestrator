@@ -27,6 +27,11 @@ CONTAINER_KINDS = frozenset({"chest", "safe"})
 # nothing re-blocks it.
 STUCK_BLOCK_TTL = 150
 
+# v0.62.0: how long the server's `overburdened` refusal keeps a character out of the
+# looting branches. Short, because shedding one item ends the condition and the server
+# re-asserts it on the very next attempt if it has not.
+OVERBURDENED_TTL = 60
+
 
 class GuildBot:
     def __init__(self, strategy: Strategy | str = "explorer", storage: Storage | None = None):
@@ -60,6 +65,14 @@ class GuildBot:
         # collapsed ground loot 18x and a starving band was indistinguishable from a broken
         # bot. Per world: the last (band, in_ticks) we saw.
         self._band: dict[str, tuple[Any, Any]] = {}
+        # v0.62.0: characters the SERVER has told us are overburdened, and the tick it last
+        # said so. Found by the v0.61.0 expectation detector: `pickup` confirmed 90 times
+        # against 811 violations, and every one of the 1,164 `overburdened` events was the
+        # same character in the same state -- carry (19, 21), two free -- retrying forever.
+        # Our fullness test counts SLOTS (`used >= cap - 1`) while capacity is spent in
+        # BULK, so a character with two free could not take a bulk-3 item, was not "full"
+        # by our rule (needs 20), and was not shedding either (needs 21). It sat in the gap.
+        self._overburdened: dict[str, int] = {}
         # Tiles worth RE-CHECKING because a refresh has happened since we last looked at
         # them. Kept apart from `known` on purpose: `known` records what we have OBSERVED,
         # and this is a HYPOTHESIS about what a refresh did. Conflating the two would put
@@ -98,6 +111,17 @@ class GuildBot:
         if frame.get("world") == "village":
             return self.strategy.village(self, frame) or []
         return self._field(frame)
+
+    def recently_overburdened(self, uid: str) -> bool:
+        """Has the server refused this character a pickup for weight, recently?
+
+        A TTL rather than a latch: once the character sheds something the condition is
+        gone, and a permanent flag would suppress looting for the rest of the run. The
+        server re-asserts it immediately if it is still true, exactly as a real wall
+        re-bounces a move (v0.42.0's STUCK_BLOCK reasoning).
+        """
+        at = self._overburdened.get(uid)
+        return at is not None and self.tick - at < OVERBURDENED_TTL
 
     def _band_refreshed(self, world: str, frame: dict[str, Any]) -> bool:
         """Did this world just refresh? Compares the frame's `next_refresh` to the last one
@@ -231,6 +255,11 @@ class GuildBot:
         our_eids = {c["eid"]: c["char_uid"] for c in frame.get("chars", [])
                     if c.get("eid") is not None}
         for ev in frame.get("events") or []:
+            # v0.62.0: the server refuses through TWO channels -- action_errors AND events --
+            # and we had only ever watched one. `overburdened` is an EVENT, which is why
+            # every action_error query came back clean while 1,164 pickups died on it.
+            if ev.get("kind") == "overburdened" and ev.get("eid") in our_eids:
+                self._overburdened[our_eids[ev["eid"]]] = self.tick
             if ev.get("kind") != "move_failed" or ev.get("eid") not in our_eids:
                 continue
             to = ev.get("to")

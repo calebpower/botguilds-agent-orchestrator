@@ -807,7 +807,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.61.0"
+    version = "explorer/0.62.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1194,7 +1194,14 @@ class Explorer:
         statuses = char.get("statuses", []) or []
         dot = any(s.get("kind") in DOT_KINDS for s in statuses)
         hurt = hp < max_hp * RETREAT_HP or dot
-        full = carry["used"] >= carry["cap"] - 1
+        # v0.62.0: OR the server's own verdict. Our test counts SLOTS while capacity is
+        # spent in BULK, so a character with two free slots that cannot take a bulk-3 item
+        # is refused by the server while reading as "not full" here -- run #137 lost 1,164
+        # pickups to exactly that gap, all in carry state (19, 21). `overburdened` arrives
+        # as an EVENT rather than an action_error, which is why no error query ever showed
+        # it. Trust the refusal over the arithmetic.
+        server_full = bot.recently_overburdened(uid)
+        full = carry["used"] >= carry["cap"] - 1 or server_full
         # Heading-home latch (v0.16.0): a full char commits to walking home and
         # stays committed — looting suppressed — until it is light again, so it
         # never re-grabs a shed item off its own tile. Hysteresis: enter at full
@@ -1479,7 +1486,11 @@ class Explorer:
         # loot to get back under cap and regain mobility — above the full-retreat
         # so it drops before it tries (and fails) to step, and pickup is suppressed
         # below since `full` is necessarily true here.
-        if carry["used"] >= carry["cap"]:
+        # v0.62.0: shed on the SERVER's refusal too, not only when our slot arithmetic says
+        # the pack is full. Without this a refused character stops looting (via `full`) but
+        # never lightens, so it walks home carrying the load that caused the refusal instead
+        # of dropping the least-useful thing and carrying on.
+        if carry["used"] >= carry["cap"] or server_full:
             shed = self._shed_item(char)
             if shed is not None:
                 offer({"char_uid": uid, "action": "drop", "item_id": shed}, 8.0,
