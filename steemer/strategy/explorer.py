@@ -934,7 +934,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.75.0"
+    version = "explorer/0.75.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1517,7 +1517,7 @@ class Explorer:
         max_sta = char.get("max_stamina")
         rested = (max_sta is not None and stamina >= SAY_READY_FRAC * max_sta
                   and hp >= max_hp)
-        chat = bot.chatter.peek(bot.tick, gold=getattr(bot, "gold", 0) or 0,
+        chat = bot.chatter.peek(bot.tick, gold=getattr(bot, "guild_gold", None),
                                 roster=len(frame.get("chars", []) or [])) if rested else None
         if chat is not None:
             offer({"char_uid": uid, "action": "say", "text": chat}, SAY_SCORE,

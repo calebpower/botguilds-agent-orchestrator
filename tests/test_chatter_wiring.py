@@ -143,3 +143,21 @@ def test_an_offer_that_LOSES_does_not_spend_the_line():
     assert said, "the line was consumed by an offer that never went out"
     assert "spear" in said[0]["text"], \
         f"the event was spent while losing; got {said[0]['text']!r}"
+
+
+def test_the_treasury_is_LEARNED_in_the_village_and_carried_into_the_field():
+    """Guild gold appears only on village frames; the say happens only in the field. So the
+    figure has to survive the trip, and nothing tested that it did — the mutant that never
+    learns it left the whole suite green."""
+    bot = _bot()
+    assert bot.guild_gold is None, "we start out not knowing the treasury"
+    bot.on_frame({"world": "village", "tick": 1, "events": [],
+                  "guild": {"gold": 139, "chars_here": [], "chars_by_world": {}},
+                  "chars": []})
+    assert bot.guild_gold == 139, "the village told us and we did not listen"
+
+    said = []
+    for tick in range(2, 12 * SILENT_FOR, 11):
+        said += [a["text"] for a in _says(bot.on_frame(_frame(tick)))]
+    assert any("139" in t for t in said), \
+        f"the treasury never reached the field: {said}"

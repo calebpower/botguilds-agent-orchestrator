@@ -84,6 +84,10 @@ class GuildBot:
         # Flavour text (v0.74.0). Lives on the bot because the bot is where
         # events arrive already attributed to us.
         self.chatter = Chatter()
+        # Last treasury figure the server told us. Only VILLAGE frames carry it, so a
+        # character in the field has none — and None must stay None rather than becoming a
+        # zero we would then broadcast as fact (v0.75.1).
+        self.guild_gold: int | None = None
         # Tiles worth RE-CHECKING because a refresh has happened since we last looked at
         # them. Kept apart from `known` on purpose: `known` records what we have OBSERVED,
         # and this is a HYPOTHESIS about what a refresh did. Conflating the two would put
@@ -127,6 +131,9 @@ class GuildBot:
         # `_forged` stayed empty, `recently_forged` was always False, and v0.64.0's
         # proof-outranks-refusal rule NEVER FIRED LIVE. That is why the corrected forge
         # success rate showed no improvement from it -- the fix was not running.
+        guild = frame.get("guild") or {}
+        if "gold" in guild:
+            self.guild_gold = guild["gold"]
         self._learn_from_events(frame)
         if frame.get("world") == "village":
             return self.strategy.village(self, frame) or []

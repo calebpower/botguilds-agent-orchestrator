@@ -131,3 +131,25 @@ def test_an_accepted_say_clears_the_failure_count():
     for _ in range(GIVE_UP_AFTER - 1):
         c.note_rejected()
     assert not c.disabled, "transient rejections must not permanently silence the guild"
+
+
+# ---- v0.75.1: never state a number we do not have ----------------------------
+
+def test_no_gold_figure_is_broadcast_when_the_treasury_is_UNKNOWN():
+    """v0.75.0 said "5 of us, 0g banked." while the guild held 139. Guild gold arrives on
+    VILLAGE frames and a character in the field has none, so the default was standing in
+    for a fact — published under our name, from the module whose one rule is that it says
+    only what happened."""
+    c = Chatter()
+    for i in range(1, 12):
+        line = c.line(tick=SILENT_FOR * i, gold=None, roster=5)
+        assert line is not None
+        assert "g banked" not in line and "vault" not in line, \
+            f"quoted a treasury we cannot see: {line!r}"
+
+
+def test_a_KNOWN_treasury_is_quoted():
+    """The other side: the guard must not silence the gold lines permanently."""
+    c = Chatter()
+    said = {c.line(tick=SILENT_FOR * i, gold=139, roster=5) for i in range(1, 12)}
+    assert any("139" in (s or "") for s in said), f"never quoted a known treasury: {said}"

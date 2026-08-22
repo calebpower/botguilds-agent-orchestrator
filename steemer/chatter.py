@@ -55,8 +55,13 @@ _LINES: dict[str, tuple[str, ...]] = {
     "death":     ("we lost one in the {world}.", "the {world} took one of ours."),
 }
 
-_IDLE = ("{roster} of us, {gold}g banked.", "stanley steemer, still standing.",
-         "{gold}g in the vault and counting.")
+# Split by what they need to be TRUE. The gold lines are only sayable when we actually
+# know the treasury: guild gold arrives on VILLAGE frames, and a character in the field has
+# no idea. v0.75.0 broadcast "5 of us, 0g banked." while the guild held 139 — a false
+# statement, published under our name, from the one module whose whole rule is that it only
+# says things that happened.
+_IDLE_ALWAYS = ("stanley steemer, still standing.", "{roster} of us, still out here.")
+_IDLE_WITH_GOLD = ("{roster} of us, {gold}g banked.", "{gold}g in the vault and counting.")
 
 
 class Chatter:
@@ -94,7 +99,7 @@ class Chatter:
 
     # -- output ------------------------------------------------------------------
 
-    def peek(self, tick: int, gold: int = 0, roster: int = 0) -> str | None:
+    def peek(self, tick: int, gold: int | None = None, roster: int = 0) -> str | None:
         """The line we WOULD say, with no side effects. None is the common answer.
 
         Split from `commit` in v0.75.0, when the say moved into the field ladder. There an
@@ -104,13 +109,14 @@ class Chatter:
         """
         if self.disabled or tick - self._last_said < COOLDOWN:
             return None
-        variants, fields = _IDLE, {}
+        variants = _IDLE_ALWAYS + (_IDLE_WITH_GOLD if gold is not None else ())
+        fields: dict = {}
         if self._recent is not None:
             kind, ev = self._recent
             variants = _LINES[kind]
             fields = {"item": _clean(ev.get("item") or ev.get("kind_name") or "thing"),
                       "world": _clean(ev.get("world") or "field")}
-        fields.setdefault("gold", int(gold))
+        fields.setdefault("gold", int(gold) if gold is not None else 0)
         fields.setdefault("roster", int(roster))
         # Rotate deterministically. Randomness here would be untestable and unreplayable
         # for no benefit — the tick already varies.
@@ -127,7 +133,7 @@ class Chatter:
         self._last_said = tick
         self._recent = None      # say each thing once
 
-    def line(self, tick: int, gold: int = 0, roster: int = 0) -> str | None:
+    def line(self, tick: int, gold: int | None = None, roster: int = 0) -> str | None:
         """peek + commit, for callers that send whatever they are given."""
         text = self.peek(tick, gold=gold, roster=roster)
         if text is not None:
