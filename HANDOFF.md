@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.71.0` on **run #150**, repo HEAD `eb28a26`, branch `main` (pushed).
+- **Live:** `explorer/0.72.0` on **run #151**, repo HEAD `6feddb7`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -64,6 +64,19 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   6→3, and the rest share **fell** 53.9%→47.0% (I had warned it might rise). Removing the fake
   attractor let v0.36's depletion-aware world-hopping win — embarks/returns doubled, attacks
   nearly tripled. Depth p90 6→12.
+- **🌀 COHESION WAS 25% OF ALL DECISIONS AND CONVERGED NEVER (0.72.0).** Closing on the
+  NEAREST ALLY is mutual pursuit — everyone chasing a target that is itself chasing someone.
+  Run #150: 31,540 of 125,971 decisions; one character logged **482 consecutive** cohesion
+  decisions with the ally distance reading 13,9,8,7,6,8,8,6,8; at one tick four characters
+  were all "closing" at distance 7, two north and two south. With rest at ~47%, **~72% of
+  decisions produced no progress** — and cohesion (2.8) outranks vein-seek (2.7), so a
+  "dangerous" world suppressed ore-seeking entirely. Now rallies to the group's **centre**, a
+  fixed point, so the spread shrinks monotonically.
+  **Rule: any "move toward the nearest X" where X also moves is a chase, not a convergence.**
+- **⚠ SIZE AN ERRAND AGAINST THE UNINTERRUPTED TIME AVAILABLE, NOT THE DISTANCE TO THE
+  TARGET.** Field stints have a **median of 9–10 ticks**; only 1.6–3.4% last the ~60 ticks a
+  30-tile walk needs. This indicts `VEIN_SEEK_RANGE=14` (~28 ticks) as well as the healed 32,
+  and is why vein-seek has never converted in ANY version. Next thing to fix.
 - **🪨 THE ORE ERRAND WAS SIZED NEVER TO REACH THE ORE (0.71.0).** Veins: median depth 88,
   shallowest 24. Median character-to-vein distance: **30**. `VEIN_SEEK_RANGE` was **14**, so
   only 4.72% of mines char-frames were ever in reach — 3 veins broken against 193 trees. A

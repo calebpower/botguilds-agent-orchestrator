@@ -3966,3 +3966,38 @@ when UNBOUNDED over a hydrated map; this is a bound raised deliberately, and a t
 even a healed character will not cross the map.
 GATE 801 reaper / 792 local; 5 tests, 6 mutants killed — TWO ON THE CALL SITE, because every
 other test here passes `reach` itself and would be happy with the gate deleted.
+
+================================================================================
+iter 85 — 2026-08-22 — cohesion was 25% of decisions and achieved NOTHING (0.72.0, #151)
+================================================================================
+Set out to measure 0.71.0's longer ore errand. It fires 2.3x more (296 -> 676 vein-seek
+decisions/10k) and moved the median char-to-vein distance NOT AT ALL — 30 on both runs.
+Tracing one seek streak showed a char walking north, then south, then north; every trace line
+read `closing on the nearest ally`. The ore errand was never the thing failing. It was being
+outbid by a behaviour that CANNOT FINISH.
+
+THE LARGEST SINGLE WASTE THIS PROJECT HAS MEASURED. v0.48.0's cohesion closes on the NEAREST
+ALLY = mutual pursuit, everyone chasing a target that is itself chasing someone else. Run
+#150: cohesion was 25% OF ALL DECISIONS (31,540/125,971); one char logged 482 CONSECUTIVE
+cohesion decisions with the ally distance reading 13,9,8,7,6,8,8,6,8 — never reaching
+COHESION_HOLD=2; at tick 1769538 four chars were all "closing" at distance 7, two walking
+north and two south; another chased an ally 19 away: 19,18,17,19,19,17.
+With rest ~47%, ~72% of decisions were producing NO PROGRESS. And cohesion (2.8) outranks
+vein-seek (2.7), so a "dangerous" world — the mines always is — suppressed ore-seeking for the
+whole run while the chase went nowhere.
+0.72.0 rallies to the group's CENTRE: a fixed point for the tick, so everyone targets the same
+place and the spread shrinks monotonically. Simulated from the observed configuration, two
+clusters 40 apart now meet at x=19.5 (midpoint), each side walking half, and SETTLE.
+
+I NEARLY MISREAD 0.71.0 AS A REGRESSION: veins 7->2, trees 193->137 on #150 — until
+items/frame turned out to be 0.444 -> 0.162, a much poorer band. Confounded, so not
+attributable, and I left 0.71.0 in place rather than reverting on that evidence.
+BAND-INDEPENDENT AND IMPORTANT: field stints have a MEDIAN OF 9-10 TICKS, and only 1.6-3.4%
+last the ~60 ticks a 30-tile walk needs. **THE ERRAND RANGE MUST BE SIZED AGAINST THE STINT
+LENGTH, NOT THE DISTANCE TO THE TARGET.** That indicts the old 14-tile range too (~28 ticks),
+and is the next thing to fix.
+GATE 811 reaper / 802 local; 10 tests, 8 mutants killed.
+TEST-CRAFT: two survivors were instructive, not fixable. A TWO-character fixture cannot show
+mutual pursuit — a pair DOES converge; the failure needs three or more. And "converges" cannot
+tell a rally from a pile-on, since walking to one arbitrary member also converges; the
+distinguishing claim is WHERE they meet.

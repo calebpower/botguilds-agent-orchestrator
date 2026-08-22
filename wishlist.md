@@ -55,21 +55,21 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| In-world trash talk (`say`) | 0.75 | 0.95 | 60 | **0.522** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 61 | **0.515** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 48 | **0.514** | 0.529 | **qualifies** |
-| Magic — CASTING (chain sound, awaiting XP) | 0.90 | 0.85 | 12 | **0.510** | 0.574 | **qualifies** |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 28 | 0.460 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 59 | 0.441 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 61 | 0.440 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 33 | 0.389 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 43 | 0.327 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 60 | 0.323 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 61 | **0.523** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 62 | **0.515** | 0.527 | **qualifies** |
+| Magic — CASTING (chain sound, awaiting XP) | 0.90 | 0.85 | 13 | **0.515** | 0.574 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 49 | **0.515** | 0.529 | **qualifies** |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 29 | 0.461 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 60 | 0.441 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 62 | 0.440 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 34 | 0.389 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 44 | 0.327 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 61 | 0.323 | 0.330 | INELIGIBLE — ceiling<0.5 |
 
-_Scored 2026-08-22 (iter 84). `tc` +1 (0.71.0 deployed). Magic CASTING qualifies at 0.585 but
-stays UNBUILT by choice: no `learned` event has ever fired, so a casting slice would have nothing to
-cast — that would be the fifth correct-but-unreachable link in this chain. Tomes keep dropping
-(two more `tome_veil` on #149), so the prerequisite is live; it waits on the holder's INT._
+_Scored 2026-08-22 (iter 85). `tc` +1 (0.72.0 deployed). Lever from measurement again — and this
+one was found by TRACING ONE CHARACTER'S CONSECUTIVE DECISIONS, which no aggregate would have shown:
+cohesion looked like a normal 25% slice until you watched it fail to converge. Worth repeating as a
+technique when a metric is flat despite activity._
 
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
