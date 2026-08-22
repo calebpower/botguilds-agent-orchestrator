@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.69.0` on **run #148**, repo HEAD `2bcf53a`, branch `main` (pushed).
+- **Live:** `explorer/0.70.0` on **run #149**, repo HEAD `c32eb01`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -55,6 +55,23 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   it never learned AND never earned the refusal 0.67.0 keys on. Learning is now offered in the
   FIELD too. Verified live on #147: 2 learn decisions → 2 `use` → 2 refusals EARNED.
   **Watch for: INT rising on that character, then a `learned` event, then casting.**
+- **🕳 THE MAP EDGE WAS A FAKE FRONTIER, AND IT PINNED US SHALLOW (0.70.0).** `nav.frontier`
+  counted any neighbour absent from `known` as unexplored — and beyond the map edge nothing
+  ever is. **58 of the mines' 126 "frontier" tiles sat at y=0**, and `bfs_step` returns the
+  NEAREST goal, so characters at median depth 2 chased the rim forever while the real frontier
+  (depth 89–126) and the veins (median 88) went untouched. Self-reinforcing: staying shallow
+  kept the fake frontier closest. Fixed by plumbing the frame's `bounds` through; 572 false
+  frontiers removed (mines 126→68, vale 526→12).
+  **NOT a win on its own:** the genuine frontier is far outside `FIELD_GOAL_RANGE=20`, so
+  characters now find NO frontier rather than a fake one. **Watch the rest/idle share (55%).**
+  Sized follow-on: the shallowest vein is depth **24** against `VEIN_SEEK_RANGE=14`, and 27%
+  of characters now carry a heal — a longer ore errand is newly defensible.
+- **0.69.0 worked:** `potion_red` coverage 4.1% → **27.34%**, depth-retreat decisions
+  10.2% → 7.3%. Depth itself did not move, which is what exposed the frontier trap.
+- **NEGATIVE RESULT — do not re-litigate `MOVE_STAMINA_SAFETY`.** 55% of decisions are `rest`
+  and the traces read "wanted move but stamina 18 < ~30", which looks wasteful. It is not:
+  moves still fail at shown-stamina up to 29–30 (median 26–28), a move costs ~15, resting
+  regenerates 10–12/tick. Resting most ticks is inherent to the stamina economy.
 - **⚠ A CONSTANT'S JUSTIFICATION IS A CLAIM ABOUT THE WORLD, AND CLAIMS EXPIRE.** Twice now a
   well-reasoned constant has outlived its evidence: `POTION_RESERVE=600` (set in v0.35.0
   because heals were "99.6% free-brewed" — we now brew **seven** `potion_red` per ~180k

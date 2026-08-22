@@ -3897,3 +3897,42 @@ for abundant items and wrong for scarce chain inputs). Both were correct when wr
 were justified in comments that read persuasively years later, and neither had anything
 watching whether the premise still held. WHEN A CONSTANT CARRIES A JUSTIFICATION, THE
 JUSTIFICATION IS A CLAIM ABOUT THE WORLD — and claims about the world expire.
+
+================================================================================
+iter 83 — 2026-08-22 — the map edge is not a frontier (0.70.0, run #149)
+================================================================================
+0.69.0 CONFIRMED: potion_red coverage 4.1% -> 27.34% (9 bought), and the "no heal past the
+safe depth" retreat fell 10.2% -> 7.3% of decisions. AND DEPTH DID NOT MOVE — mines median
+still 2, p90 6. Chasing that found the trap.
+
+`nav.frontier` counted any neighbour absent from `known` as unexplored. Beyond the map edge
+nothing is EVER in `known`, so every rim tile called itself a permanent frontier — and
+`bfs_step` returns the NEAREST goal. On the real map:
+    mines: 126 "frontier" tiles, 58 OF THEM AT y=0 (the home row)
+    genuine frontier at depth 89-126; veins at median depth 88; OUR CHARS at median depth 2
+A character at depth 2 always found a fake frontier one tile away, stepped along the rim, and
+repeated. The behaviour meant to push characters OUTWARD was pinning them in place, and it
+fed itself: staying shallow kept the false frontier nearest.
+0.70.0 plumbs the frame's `bounds` into nav.frontier. Optional throughout, so village frames,
+replays and older shapes keep the old behaviour rather than raising. Live effect: mines
+126 -> 68 frontier tiles (remaining median depth 118), vale 526 -> 12 (depth 197). 572 false
+frontiers gone.
+I FLAGGED THIS IN ITER 69 AND DEFERRED IT AS SMALLER. It was the binding constraint on depth.
+
+STATED PLAINLY, NOT BURIED: removing a false attractor is not adding a true one. The genuine
+frontier at depth 89+ is far outside FIELD_GOAL_RANGE=20, so characters now find NO frontier
+rather than a fake one. Honest, and it stops wasted motion, but it may simply raise the
+already-high rest share (55%). WATCH: idle share. The sized follow-on is ready — the
+SHALLOWEST vein is depth 24 against VEIN_SEEK_RANGE=14, so the nearest ore is just out of
+reach of a char at depth 2, and with 27% now carrying a heal a longer ore errand is
+defensible in a way it was not last week.
+
+A NEGATIVE RESULT WORTH KEEPING — I did not change MOVE_STAMINA_SAFETY. 55% of decisions are
+`rest`, and the trace says "wanted move ... but stamina 18 < ~30: resting", which looked like
+a 1.5x margin wasting half our ticks. It is correctly calibrated: moves STILL fail
+not_enough_stamina at shown-stamina up to 29-30 (median 26-28) on #147/#148, exactly as
+v0.9.0 measured. A move costs ~15 and resting regenerates 10-12/tick, so resting most ticks is
+INHERENT to the stamina economy. The constant stays, with fresh evidence attached. Two
+constants re-tested this week: one had expired (POTION_RESERVE), one had not. Re-testing is
+worth it precisely because you cannot tell which without looking.
+GATE 796 reaper / 787 local; 10 tests, 8 mutants killed (two on the PLUMBING).
