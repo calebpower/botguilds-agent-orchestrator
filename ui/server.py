@@ -662,6 +662,110 @@ def _nav_rung_label(why: str) -> str:
     return _NAV_NUMS.sub("#", head).strip().rstrip(",") or "(unlabelled)"
 
 
+def api_recon(db_path: str, track_rows: int = 600) -> dict:
+    """RIVAL RECON: us against every other guild, from the two intel feeds we already keep.
+
+    `spectate` carries a full roster per guild (level, world, equipment) and `track` carries
+    live rival positions with what each one is holding. Both were being written and only
+    ever read back as raw rows; this is the comparison they were collected for.
+
+    Deliberately CROSS-GUILD rather than rival-only: the interesting numbers are ratios, and
+    a ratio needs both sides. The first look already paid for itself — we field the highest
+    median level and the only fully-armed roster, while the guild with three times our
+    headcount has a median of 3 and arms fewer than a third of it.
+
+    Cheap by construction: the newest spectate snapshot is one row, and `track` is bounded
+    to the newest `track_rows`. Measured on the live DB at 0.056s for a COUNT over 72k track
+    rows and 0.009s for the newest 400 — this endpoint is not a codex-style table scan.
+    """
+    empty = {"guilds": [], "us": None, "gear_gap": [], "sightings": [], "tick": None}
+    if not _db_ready(db_path):
+        return empty
+    conn = _ro(db_path)
+    try:
+        row = conn.execute(
+            "SELECT payload_json FROM intel WHERE kind='spectate' "
+            "ORDER BY seq DESC LIMIT 1").fetchone()
+        snap = json.loads(row[0]) if row else {}
+        # Which guild is OURS, derived rather than hardcoded: every decision we record
+        # names one of our characters, and a char_uid is "<guild_id>_c<n>". Reading it from
+        # the data keeps this correct if the guild is ever renamed or re-created, and needs
+        # no access to the (git-ignored) token file.
+        ours = None
+        me = conn.execute(
+            "SELECT char_uid FROM decisions ORDER BY seq DESC LIMIT 1").fetchone()
+        if me and me[0]:
+            parts = str(me[0]).split("_")
+            if len(parts) >= 2:
+                ours = "_".join(parts[:2])
+        guilds = []
+        our_kinds: set[str] = set()
+        their_kinds: dict[str, int] = {}
+        for g in snap.get("guilds") or []:
+            roster = g.get("roster") or []
+            levels = sorted(r.get("level") or 0 for r in roster)
+            eq = [(r.get("equipment") or {}) for r in roster]
+            kinds = [v for e in eq for v in e.values() if v]
+            mine = g.get("guild_id") == ours
+            if mine:
+                our_kinds |= set(kinds)
+            else:
+                for k in kinds:
+                    their_kinds[k] = their_kinds.get(k, 0) + 1
+            guilds.append({
+                "name": g.get("name"), "guild_id": g.get("guild_id"),
+                "us": mine, "characters": g.get("characters"),
+                "roster": len(roster),
+                "level_median": levels[len(levels) // 2] if levels else None,
+                "level_max": max(levels) if levels else None,
+                "levels": levels,
+                "armed": sum(1 for e in eq if e.get("hand")),
+                "outfitted": sum(1 for e in eq if e.get("outfit")),
+                "worlds": g.get("worlds") or {},
+            })
+        guilds.sort(key=lambda x: (not x["us"], -(x["level_median"] or 0)))
+        # Gear a rival fields that no character of ours does — the concrete "what do they
+        # know that we don't" list, which is the whole point of reconnaissance.
+        gear_gap = sorted(({"kind": k, "rivals_fielding": n}
+                           for k, n in their_kinds.items() if k not in our_kinds),
+                          key=lambda x: -x["rivals_fielding"])
+        rows = conn.execute(
+            "SELECT payload_json FROM intel WHERE kind='track' "
+            "ORDER BY seq DESC LIMIT ?", (track_rows,)).fetchall()
+        # Where rivals actually are, by world and depth. Latest position per eid only:
+        # the feed samples every tick, so counting rows would just weight whoever stood
+        # still the longest.
+        latest: dict[int, dict] = {}
+        tick = None
+        for (payload,) in rows:
+            t = json.loads(payload)
+            tick = tick or t.get("tick")
+            for r in t.get("rivals") or []:
+                if r.get("eid") not in latest:
+                    latest[r["eid"]] = dict(r, map=t.get("map"))
+        by_world: dict[str, dict] = {}
+        for r in latest.values():
+            w = by_world.setdefault(r.get("map") or "?",
+                                    {"world": r.get("map"), "seen": 0, "depths": []})
+            w["seen"] += 1
+            pos = r.get("pos")
+            if isinstance(pos, (list, tuple)) and len(pos) == 2:
+                w["depths"].append(pos[1])
+        sightings = []
+        for w in by_world.values():
+            d = sorted(w["depths"])
+            sightings.append({"world": w["world"], "seen": w["seen"],
+                              "depth_median": d[len(d) // 2] if d else None,
+                              "depth_max": max(d) if d else None})
+        sightings.sort(key=lambda x: -x["seen"])
+        return {"guilds": guilds, "us": next((g for g in guilds if g["us"]), None),
+                "gear_gap": gear_gap, "sightings": sightings, "tick": tick}
+    except (_db.Error, ValueError):
+        return empty
+    finally:
+        conn.close()
+
+
 def api_nav(db_path: str, sample: int = 4000) -> dict:
     """The nav explainer: live nav rules + the ladder the bot actually weighed."""
     import inspect
@@ -1498,6 +1602,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(api_story())
             elif path == "/api/codex":
                 self._json(api_codex(self.db_config))
+            elif path == "/api/recon":
+                self._json(api_recon(self.db_config))
             elif path == "/api/nav":
                 self._json(api_nav(self.db_config))
             elif path == "/api/matrix":
@@ -1718,6 +1824,7 @@ pre.doc{white-space:pre-wrap;background:#11161c;border:1px solid #223;border-rad
 .fr-tbl th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;
   text-transform:uppercase;letter-spacing:.5px;padding:4px 8px 4px 0}
 .fr-tbl td{padding:6px 8px 6px 0;border-top:1px solid var(--border);vertical-align:top}
+.fr-tbl tr.mine td{color:var(--accent,#4ade80);font-weight:600}
 .fr-tbl td.p{font-variant-numeric:tabular-nums;font-weight:600}
 .fr-cell{font-family:ui-monospace,Menlo,monospace}
 /* codex — the auto-populated wiki */
@@ -1841,6 +1948,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     <button data-tab="decisions">Decisions</button>
     <button data-tab="map">Map</button>
     <button data-tab="codex">Codex</button>
+    <button data-tab="recon">Rivals</button>
     <button data-tab="nav">How nav works</button>
     <button data-tab="timeline">Timeline</button>
     <button data-tab="findings">Findings</button>
@@ -1920,6 +2028,19 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
     </div>
     <div class="small" style="margin-top:6px">drag to pan &middot; wheel or pinch to zoom &middot; hover for tile coords</div>
     <div class="legend" id="map-legend"></div>
+  </section>
+
+  <!-- RIVAL RECON -->
+  <section class="tab" id="tab-recon">
+    <div class="small" id="recon-info"></div>
+    <div class="card"><h2>Guild standings</h2><div id="recon-guilds"></div></div>
+    <div class="card"><h2>Where rivals actually are</h2>
+      <div class="small">Latest position per rival character. Compare the depth they work at
+        with ours — our characters sit near the home row.</div>
+      <div id="recon-where"></div></div>
+    <div class="card"><h2>Gear they field that we never have</h2>
+      <div class="small">Equipment kinds worn by a rival and by none of ours.</div>
+      <div id="recon-gap"></div></div>
   </section>
 
   <!-- CODEX -->
@@ -2066,6 +2187,7 @@ function loadActive(){
   else if(active==="decisions") loadDecisions();
   else if(active==="map") loadMap();
   else if(active==="codex") loadCodex();
+  else if(active==="recon") loadRecon();
   else if(active==="nav") loadNav();
   else if(active==="timeline") loadTimeline();
   else if(active==="findings") loadFindings();
@@ -2597,6 +2719,54 @@ function applyMap(msg){
   }
   if(msg.cursor){ mapSeq=msg.cursor.seq; mapTick=msg.cursor.tick; }
   if(active==="map"){ drawMap(); renderMapMeta(); }
+}
+
+/* ---- RIVAL RECON ---- */
+function reconTable(rows, cols){
+  const t=el("table","fr-tbl");
+  const hd=el("tr"); for(const c of cols) hd.appendChild(el("th",null,c.label));
+  t.appendChild(hd);
+  for(const r of rows){
+    const tr=el("tr", r.us ? "mine" : null);
+    for(const c of cols){
+      const v=c.get(r);
+      tr.appendChild(el("td", null, v===null||v===undefined ? "—" : String(v)));
+    }
+    t.appendChild(tr);
+  }
+  return t;
+}
+async function loadRecon(){
+  const d=await getJSON("/api/recon"); if(!d) return;
+  const info=$("#recon-info");
+  if(info) info.textContent = d.tick
+    ? `guild standings from the newest spectate snapshot; rival positions as of tick ${d.tick}`
+    : "no intel recorded yet — is the web sidecar running? (./svc.sh up web)";
+  const g=$("#recon-guilds"); g.innerHTML="";
+  if(!(d.guilds||[]).length){ g.appendChild(el("div","empty","No guild intel yet.")); }
+  else g.appendChild(reconTable(d.guilds, [
+    {label:"guild", get:r=>r.name + (r.us ? "  (us)" : "")},
+    {label:"chars", get:r=>r.characters},
+    {label:"level median", get:r=>r.level_median},
+    {label:"level max", get:r=>r.level_max},
+    {label:"armed", get:r=>`${r.armed}/${r.roster}`},
+    {label:"outfitted", get:r=>`${r.outfitted}/${r.roster}`},
+    {label:"worlds", get:r=>Object.entries(r.worlds||{}).map(([k,v])=>`${k} ${v}`).join(" · ")},
+  ]));
+  const w=$("#recon-where"); w.innerHTML="";
+  if(!(d.sightings||[]).length) w.appendChild(el("div","empty","No rival sightings recorded."));
+  else w.appendChild(reconTable(d.sightings, [
+    {label:"world", get:r=>r.world},
+    {label:"rivals seen", get:r=>r.seen},
+    {label:"depth median", get:r=>r.depth_median},
+    {label:"depth max", get:r=>r.depth_max},
+  ]));
+  const gap=$("#recon-gap"); gap.innerHTML="";
+  if(!(d.gear_gap||[]).length) gap.appendChild(el("div","empty","Nothing they field that we do not."));
+  else gap.appendChild(reconTable(d.gear_gap, [
+    {label:"kind", get:r=>r.kind},
+    {label:"rivals fielding", get:r=>r.rivals_fielding},
+  ]));
 }
 
 /* ---- CODEX ---- */

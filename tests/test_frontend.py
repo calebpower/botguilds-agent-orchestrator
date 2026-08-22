@@ -297,3 +297,22 @@ def test_dashboard_tab_switch_works(dashboard, page: Page):
     page.locator("button[data-tab='decisions']").click()
     expect(page.locator("#tab-decisions")).to_be_visible()
     expect(page.locator("#tab-overview")).to_be_hidden()
+
+
+def test_rivals_tab_renders_against_an_empty_database(dashboard, page: Page):
+    """The Rivals tab must render on a FRESH checkout with no intel at all.
+
+    That is the case that matters for a reconnaissance panel: it is fed by the web sidecar,
+    which is a separate service that can be down, and a tab that throws when its feed is
+    missing tells the operator nothing except that something is broken. Here it must say
+    plainly that there is no intel and name the service to start.
+    """
+    crashes = []
+    page.on("pageerror", lambda e: crashes.append(str(e)))
+    page.goto(dashboard, wait_until="domcontentloaded")
+    page.locator("button[data-tab='recon']").click()
+    expect(page.locator("#tab-recon")).to_be_visible()
+    expect(page.locator("#recon-info")).to_contain_text("no intel recorded yet")
+    expect(page.locator("#recon-info")).to_contain_text("svc.sh up web")
+    expect(page.locator("#recon-guilds")).to_contain_text("No guild intel yet")
+    assert crashes == [], f"uncaught JS errors: {crashes}"
