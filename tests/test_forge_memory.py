@@ -174,3 +174,85 @@ def test_an_unproven_product_still_walks_the_whole_ladder():
         exp._forge_failed.add(got[0])
     quantities = {r[1:] for r in seen if r[0] != "shield_iron"}
     assert len(quantities) > 1, f"an unproven product tried only one quantity: {seen}"
+
+
+# ---- v0.66.1: the events arrive on VILLAGE frames ----------------------------
+
+def test_a_forged_event_on_a_VILLAGE_frame_is_learned():
+    """The bug that made v0.64.0 inert for two whole versions.
+
+    Event parsing lived inside `_field()`, and village frames never reach `_field()` — they
+    route straight to `strategy.village()`. Forging happens IN THE VILLAGE: all six `forged`
+    events across runs #143 and #144 arrived on village frames, so `_forged` stayed empty,
+    `recently_forged` was always False, and proof-outranks-refusal never fired once. The
+    whole suite passed throughout, because nothing asserted that village events are read.
+    """
+    from steemer.bot import GuildBot
+
+    bot = GuildBot("explorer")
+    bot.tick = 100
+    bot.on_frame({"type": "frame", "world": "village", "tick": 100,
+                  "guild": {"gold": 0}, "shop": {"stock": []},
+                  "events": [{"kind": "forged", "eid": 7, "item": "spear"}],
+                  "chars": [{"char_uid": "u1", "eid": 7, "pos": [0, 0], "hp": 9,
+                             "max_hp": 9, "stamina": 40, "level": 1, "stats": {},
+                             "spells": [], "spell_cap": 1,
+                             "carry": {"used": 0, "cap": 21},
+                             "inventory": [], "equipment": {}}]})
+    assert bot.recently_forged("u1") is True
+
+
+def test_field_frames_still_learn_their_events():
+    """The refactor moved the parser; the field side must not have been dropped on the way
+    — `overburdened` only ever arrives on field frames."""
+    from steemer.bot import GuildBot
+
+    bot = GuildBot("explorer")
+    bot.tick = 100
+    bot.on_frame({"type": "frame", "world": "mines", "tick": 100,
+                  "events": [{"kind": "overburdened", "eid": 7}],
+                  "chars": [{"char_uid": "u1", "eid": 7, "pos": [0, 0], "hp": 9,
+                             "max_hp": 9, "stamina": 9, "inventory": [],
+                             "equipment": {}}],
+                  "visible": {"tiles": [], "entities": [], "items": [], "gold": []}})
+    assert bot.recently_overburdened("u1") is True
+
+
+def test_a_village_event_for_a_RIVAL_is_still_ignored():
+    from steemer.bot import GuildBot
+
+    bot = GuildBot("explorer")
+    bot.tick = 100
+    bot.on_frame({"type": "frame", "world": "village", "tick": 100,
+                  "guild": {"gold": 0}, "shop": {"stock": []},
+                  "events": [{"kind": "forged", "eid": 999999, "item": "spear"}],
+                  "chars": [{"char_uid": "u1", "eid": 7, "pos": [0, 0], "hp": 9,
+                             "max_hp": 9, "stamina": 40, "level": 1, "stats": {},
+                             "spells": [], "spell_cap": 1,
+                             "carry": {"used": 0, "cap": 21},
+                             "inventory": [], "equipment": {}}]})
+    assert bot.recently_forged("u1") is False
+
+
+def test_the_whole_chain_end_to_end_on_village_frames():
+    """Forge attempt -> `forged` event on a village frame -> recipe proven -> PERSISTED.
+    Every link asserted together, because each one individually passed while the chain was
+    broken in the middle."""
+    from steemer.bot import GuildBot
+
+    st = _store()
+    bot = GuildBot("explorer", storage=st)
+    exp = Explorer()
+    bot.strategy = exp
+    exp._forge_attempt["u1"] = ("spear", 1, 1)
+    bot.tick = 100
+    bot.on_frame({"type": "frame", "world": "village", "tick": 100,
+                  "guild": {"gold": 0}, "shop": {"stock": []},
+                  "events": [{"kind": "forged", "eid": 7, "item": "spear"}],
+                  "chars": [{"char_uid": "u1", "eid": 7, "pos": [0, 0], "hp": 9,
+                             "max_hp": 9, "stamina": 40, "level": 1, "stats": {},
+                             "spells": [], "spell_cap": 1,
+                             "carry": {"used": 0, "cap": 21},
+                             "inventory": [], "equipment": {}}]})
+    assert ("spear", 1, 1) in exp._forge_proven
+    assert "spear:1:1" in st.load_learned(Explorer.FORGE_TOPIC)

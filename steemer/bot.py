@@ -115,9 +115,37 @@ class GuildBot:
 
     def on_frame(self, frame: dict[str, Any]) -> list[dict[str, Any]]:
         self.tick = frame.get("tick", self.tick)
+        # v0.66.1: learn from events on EVERY frame, village included.
+        #
+        # This lived inside _field(), and village frames never reach _field() -- they route
+        # straight to strategy.village(). Forging happens IN THE VILLAGE, so all six
+        # `forged` events in runs #143-#144 arrived on village frames and were never seen:
+        # `_forged` stayed empty, `recently_forged` was always False, and v0.64.0's
+        # proof-outranks-refusal rule NEVER FIRED LIVE. That is why the corrected forge
+        # success rate showed no improvement from it -- the fix was not running.
+        self._learn_from_events(frame)
         if frame.get("world") == "village":
             return self.strategy.village(self, frame) or []
         return self._field(frame)
+
+    def _learn_from_events(self, frame: dict[str, Any]) -> None:
+        """Positive and negative evidence the SERVER volunteers, for any frame.
+
+        The server refuses and confirms through TWO channels -- action_errors AND events --
+        and these are the event-side ones. Scoped to our own eids: the streams are
+        world-wide and rivals forge and stagger under loot constantly.
+        """
+        our_eids = {c["eid"]: c["char_uid"] for c in frame.get("chars", []) or []
+                    if c.get("eid") is not None}
+        for ev in frame.get("events") or []:
+            uid = our_eids.get(ev.get("eid"))
+            if uid is None:
+                continue
+            kind = ev.get("kind")
+            if kind == "overburdened":
+                self._overburdened[uid] = self.tick
+            elif kind == "forged":
+                self._forged[uid] = self.tick
 
     def recently_overburdened(self, uid: str) -> bool:
         """Has the server refused this character a pickup for weight, recently?
@@ -271,15 +299,11 @@ class GuildBot:
             # v0.62.0: the server refuses through TWO channels -- action_errors AND events --
             # and we had only ever watched one. `overburdened` is an EVENT, which is why
             # every action_error query came back clean while 1,164 pickups died on it.
-            if ev.get("kind") == "overburdened" and ev.get("eid") in our_eids:
-                self._overburdened[our_eids[ev["eid"]]] = self.tick
             # v0.64.0: a `forged` event is PROOF that whatever recipe that character last
             # attempted actually works. The strategy needs it because `wrong_materials` is
             # not deterministic in the variables we key on -- run #140 shows the identical
             # (product, kinds, quantities) both succeeding and failing -- so failures alone
             # progressively condemned recipes we had already seen work.
-            if ev.get("kind") == "forged" and ev.get("eid") in our_eids:
-                self._forged[our_eids[ev["eid"]]] = self.tick
             if ev.get("kind") != "move_failed" or ev.get("eid") not in our_eids:
                 continue
             to = ev.get("to")

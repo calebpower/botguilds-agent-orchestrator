@@ -824,7 +824,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.66.0"
+    version = "explorer/0.66.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
