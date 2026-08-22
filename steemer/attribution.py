@@ -137,8 +137,21 @@ def events(conn, run_id: int, kind: str, ours_only: bool = True) -> list[dict]:
 
 
 def our_guild_id(conn) -> str | None:
-    """Derived from the newest decision's `char_uid` (`<guild_id>_c<n>`), never hardcoded."""
-    cur = conn.execute("SELECT char_uid FROM decisions ORDER BY seq DESC LIMIT 1")
+    """Derived from the newest per-character decision's `char_uid` (`<guild_id>_c<n>`),
+    never hardcoded.
+
+    The WHERE clause is the fix for a FLAKY oracle (2026-08-23). Guild-level decisions —
+    recruit, embark — are recorded with char_uid NULL, and there are 476k of them, so the
+    bare "newest row" read returned None whenever the live bot's last write happened to be
+    one. That made `rate_per(..., "sale")` answer 0.0 on roughly one call in three, and the
+    claims ledger — whose whole job is to catch wrong numbers — reported a CONTRADICTED
+    claim against data that had not changed. An attribution oracle that races the live
+    bot's write head is worse than a wrong one: it cries wolf exactly as often as the
+    village loop acts.
+    """
+    cur = conn.execute("SELECT char_uid FROM decisions "
+                       "WHERE char_uid IS NOT NULL AND char_uid != '' "
+                       "ORDER BY seq DESC LIMIT 1")
     row = cur.fetchone()
     if not row or not row[0]:
         return None

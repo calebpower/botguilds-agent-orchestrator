@@ -70,6 +70,9 @@
     "snatching the coin underfoot, then fleeing": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
+    "trekking to the nearest unexplored frontier — healed,": {
+      "through_bot_test": "test_a_HEALED_char_treks_to_a_frontier_FAR_beyond_the_errand_bound"
+    },
     "walking to a known vein — ore is the forge bottleneck": {
       "through_bot_test": "test_ore_seek_is_reachable_THROUGH_THE_BOT_not_just_through_act"
     }

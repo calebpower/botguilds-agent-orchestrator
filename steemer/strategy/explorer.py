@@ -587,6 +587,19 @@ REST_SCORE = 0.5           # the floor: rest wins only when nothing affordable b
 SCOUT_SCORE = 1.0          # "no goal reachable — stepping to scout": the real floor, since
                            # it is offered on essentially every idle tick
 FRONTIER_NORTH_SCORE = 2.5 # pushing north into unexplored ground
+# v0.77.0 — FRONTIER TREK. Measured on #158 (58k frames, mature) after heal-first shipped:
+# potion buys 0 -> 17, but median fielded y stayed at 3 and looted-out stayed at 29% — the
+# stated falsification's "not the only pin" branch fired. The actual pin: since 0.70.0
+# removed the 572 false frontiers, the nearest TRUE frontier is 192 tiles from the vale
+# spawn strip (86 mines, 64 spire) — all far beyond FIELD_GOAL_RANGE=20, so the frontier
+# offers can never fire from where the roster lives, nothing pulls north, and "looted-out
+# -> home" (1.5) wins by default. The heal opened the door (POISON_SAFE_DEPTH) and this is
+# the legs: an UNBOUNDED walk toward the nearest true frontier, exactly symmetric with
+# `_retreat`, which is already deliberately unbounded for the same map in the other
+# direction. Gated on carrying a heal, because a bare character bounces off the poison
+# gate at y=12 and the trek would walk it into a forced U-turn.
+TREK_SCORE = 2.2           # above looted-out(1.5)/say(2.1), below the bounded local
+                           # frontier pushes — but it only fires when those found nothing
 FRONTIER_SCORE = 2.0       # heading to the nearest frontier
 # v0.75.0 — flavour text (`say`). 0.74.x issued it from the VILLAGE and the server refused
 # all three attempts with `not_in_village`; docs/03-actions.md gives its scope as "map",
@@ -959,7 +972,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.76.0"
+    version = "explorer/0.77.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1956,6 +1969,23 @@ class Explorer:
                 # idle exposed, head HOME to re-embark somewhere fresher — UNLESS a refresh
                 # is about to replenish coins right here, in which case wait it out.
                 if not productive:
+                    # v0.77.0 FRONTIER TREK — before declaring the world looted-out, a
+                    # HEALED character walks toward the nearest true frontier, however far.
+                    # Unbounded on purpose: this is terrain, which the map remembers
+                    # durably, not contents (the 0.57.0 bound exists for contents). The
+                    # trek outranks the looted-out retreat below, so an idle healed
+                    # character explores while an idle bare one still heads home.
+                    trek_heal = any(i.get("kind") == "potion_red"
+                                    for i in char.get("inventory", []) or [])
+                    if trek_heal:
+                        tstep = nav.bfs_step(pos,
+                                             lambda p: nav.frontier(p, ctx.known, ctx.bounds),
+                                             ctx.known, blocked)
+                        if tstep is not None:
+                            offer({"char_uid": uid, "action": "move",
+                                   "dir": nav.step_dir(pos, tstep)}, TREK_SCORE,
+                                  "trekking to the nearest unexplored frontier — healed, "
+                                  "and everything local is farmed out")
                     nr = frame.get("next_refresh") or {}
                     in_ticks = nr.get("in_ticks")
                     refresh_soon = isinstance(in_ticks, int) and in_ticks <= REFRESH_STAY_TICKS

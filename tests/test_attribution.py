@@ -257,3 +257,28 @@ def test_decision_share_refuses_an_immature_run(tmp_path):
     conn, rid = _decisions(tmp_path, [_WON])
     with pytest.raises(m.TooEarly):
         m.decision_share(conn, rid, "ally")
+
+
+# ---- our_guild_id must not race the village loop -----------------------------
+
+def test_guild_id_survives_a_guild_level_decision_at_the_head(tmp_path):
+    """Guild-level decisions (recruit, embark) carry char_uid NULL, and one is the NEWEST
+    row whenever the village loop just acted — which is most of the time a run is live.
+    The bare newest-row read returned None then, every sale was filtered out, and the
+    claims ledger reported a contradiction against unchanged data, on one call in three.
+
+    A flaky oracle is worse than a wrong one, so this pins the exact shape: newest row
+    NULL, real attribution underneath."""
+    st = Storage(str(tmp_path / "g.db"))
+    st.begin_run("sha", "test/0")
+    st.conn.execute(
+        "INSERT INTO decisions(tick, world, char_uid, action, chosen_json, "
+        "alternatives_json, reasoning, strategy_version, run_id) VALUES(?,?,?,?,?,?,?,?,?)",
+        (1, "village", "g_us_c1", "buy", "{}", "[]", "why", "test/0", st.run_id))
+    st.conn.execute(
+        "INSERT INTO decisions(tick, world, char_uid, action, chosen_json, "
+        "alternatives_json, reasoning, strategy_version, run_id) VALUES(?,?,?,?,?,?,?,?,?)",
+        (2, "village", None, "recruit", "{}", "[]", "why", "test/0", st.run_id))
+    st.conn.commit()
+    assert m.our_guild_id(st.conn) == "g_us", \
+        "a guild-level decision at the head of the table blinded the ownership filter"
