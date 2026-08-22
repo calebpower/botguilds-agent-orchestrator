@@ -8,6 +8,7 @@ exits a map to the village.
 
 from __future__ import annotations
 
+import heapq
 from collections import deque
 from typing import Callable, Iterable
 
@@ -136,3 +137,68 @@ def frontier(pos: tuple[int, int], known: dict[tuple[int, int], str],
     if known.get(pos) in SOLID:
         return False
     return any(n not in known and in_bounds(n, bounds) for n in neighbors(pos))
+
+# v0.80.0 — BREAKABLE terrain. Trees and veins are SOLID to `bfs_step`, and that is the
+# "checkers" defect from the operator's screenshot: a character stood at a pine belt it
+# has been able to CHOP since 0.45.0 (~4 attacks, `terrain_destroyed`, and the tile
+# becomes floor) and read it as a dead end. Here a breakable tile is not a wall but an
+# EXPENSIVE step: BREAK_COST approximates the four attack ticks plus the move, so a short
+# detour still beats chopping, and a long one loses to it — which is the trade a person
+# makes without noticing.
+BREAK_COST = 5
+
+
+def weighted_step(
+    start: tuple[int, int],
+    is_goal: Callable[[tuple[int, int]], bool],
+    known: dict[tuple[int, int], str],
+    blocked: Iterable[tuple[int, int]] = (),
+    breakable: frozenset[str] = frozenset(),
+    max_cost: int | None = None,
+) -> tuple[int, int] | None:
+    """Dijkstra over remembered tiles; return the next tile toward the CHEAPEST goal.
+
+    Like ``bfs_step`` but a tile whose kind is in ``breakable`` costs ``BREAK_COST`` to
+    enter instead of being impassable. The caller inspects the returned tile's kind: a
+    breakable next tile means "attack it", anything else means "move". ``blocked`` stays
+    absolute (predator-adjacency is danger, not terrain), unknown tiles stay walls (fail
+    closed), and other SOLID kinds stay walls (nothing chops masonry). ``max_cost`` bounds
+    the search frontier by path cost, the weighted analogue of ``max_depth``.
+    """
+    blocked_set = set(blocked)
+    came_from: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
+    dist: dict[tuple[int, int], int] = {start: 0}
+    heap: list[tuple[int, int, tuple[int, int]]] = [(0, 0, start)]
+    tie = 0
+    goal: tuple[int, int] | None = None
+    while heap:
+        d, _, current = heapq.heappop(heap)
+        if d > dist.get(current, 10 ** 9):
+            continue                       # stale heap entry
+        if current != start and is_goal(current):
+            goal = current
+            break
+        if max_cost is not None and d >= max_cost:
+            continue
+        for nxt in neighbors(current):
+            if nxt in blocked_set:
+                continue
+            kind = known.get(nxt)
+            if kind in breakable:
+                step_cost = BREAK_COST
+            elif is_walkable(nxt, known, blocked_set) or (is_goal(nxt) and kind not in SOLID):
+                step_cost = 1
+            else:
+                continue
+            nd = d + step_cost
+            if nd < dist.get(nxt, 10 ** 9):
+                dist[nxt] = nd
+                came_from[nxt] = current
+                tie += 1
+                heapq.heappush(heap, (nd, tie, nxt))
+    if goal is None:
+        return None
+    node = goal
+    while came_from[node] is not None and came_from[node] != start:
+        node = came_from[node]  # type: ignore[assignment]
+    return node

@@ -86,6 +86,12 @@ blocker "gets rammed" — collision, not commute); (3) offer the ride.
 Also never issued: `throw`, `charge` (weapon run-up attack), `cast`, `list`/`unlist`/
 `buy_listing`.
 
+**OPERATOR DIRECTION (2026-08-22, screenshots): "chess, not checkers"** — lateral,
+multi-step reasoning. Item 1 (tree-as-dead-end) SHIPPED as 0.80.0 chop-through pathing.
+Item 2 queued below.
+
+| Danger as COST, not wall (planned escapes from mob boxes) | 0.88 | 0.75 | 1 | -0.165 | 0.495 | just added — NB ceiling 0.495: re-examine the risk term after 0.80 data rather than letting the ceiling rule bury an operator-directed item |
+
 **SHIPPED this cycle:** in-world trash talk (`say`) — 0.74.0–0.75.2, `steemer/chatter.py`.
 
 **MAGIC IS BLOCKED, not deprioritised.** It has topped the table for many passes and cannot

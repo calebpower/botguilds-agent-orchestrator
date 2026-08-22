@@ -122,14 +122,24 @@ class GuildBot:
         # v0.79.1: persist the server config. It carries constants we have repeatedly
         # NEEDED and could not answer offline — `ride_max_tiles` blocked the rail analysis
         # for two passes because nothing ever wrote it down; it lives only in this message
-        # and was gone by the time anyone asked. Recorded through `record_learned`, which
-        # is idempotent on (topic, fact), so an unchanged config costs one no-op row and a
-        # CHANGED config (Will patches the server mid-week) leaves both versions visible
-        # with their proved_at timestamps.
+        # and was gone by the time anyone asked.
+        #
+        # ONE ROW PER KEY, not one JSON blob: the first deploy stored the whole config as
+        # a single fact and prod silently truncated it at `learned.fact`'s varchar(255) —
+        # a defect SQLite tests cannot see. Scalars become "key=value" (always short);
+        # `maps` collapses to its ids. Idempotent per key via record_learned's (topic,
+        # fact) primary key, so an unchanged config costs no-ops and a changed one (Will
+        # patches the server mid-week) leaves the old and new values side by side with
+        # their proved_at timestamps.
         if self.storage is not None and self.config:
             try:
-                self.storage.record_learned(
-                    "server_config", json.dumps(self.config, sort_keys=True))
+                for key in sorted(self.config):
+                    val = self.config[key]
+                    if key == "maps" and isinstance(val, list):
+                        val = ",".join(str(m.get("id")) for m in val if isinstance(m, dict))
+                    elif isinstance(val, (dict, list)):
+                        val = json.dumps(val, sort_keys=True)[:200]
+                    self.storage.record_learned("server_config", f"{key}={val}"[:255])
             except Exception as e:
                 # A failed bookkeeping write must never block the hello — but it must not
                 # be silent either, or a broken learned-table write hides until the next

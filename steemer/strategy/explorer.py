@@ -973,7 +973,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.79.1"
+    version = "explorer/0.80.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2034,10 +2034,25 @@ class Explorer:
                     trek_heal = any(i.get("kind") == "potion_red"
                                     for i in char.get("inventory", []) or [])
                     if trek_heal:
-                        tstep = nav.bfs_step(pos,
-                                             lambda p: nav.frontier(p, ctx.known, ctx.bounds),
-                                             ctx.known, blocked)
-                        if tstep is not None:
+                        # v0.80.0: the trek paths THROUGH breakable terrain (operator
+                        # screenshot: a character read a pine belt as a dead end while
+                        # holding the chop mechanic it has had since 0.45.0). A tree on
+                        # the route costs BREAK_COST (~4 attack ticks + the step), so a
+                        # short detour still wins and a long one loses to the axe. When
+                        # the next tile on the cheapest route is a breakable, the offer
+                        # is the ATTACK that clears it, not a move into it.
+                        # NO attack branch here, deliberately: weighted_step returns a
+                        # NEIGHBOUR, and a breakable neighbour already triggers the
+                        # opportunistic adjacent-harvest (3.3) above, which sets
+                        # `productive` and skips this block entirely. A trek-side chop was
+                        # written, shadowed in every reachable case, and deleted when its
+                        # mutant survived — the composition IS the design: the trek walks
+                        # TO the belt, the harvest swings the axe, and the felled tile is
+                        # a path next tick.
+                        tstep = nav.weighted_step(
+                            pos, lambda p: nav.frontier(p, ctx.known, ctx.bounds),
+                            ctx.known, blocked, breakable=HARVEST_KINDS)
+                        if tstep is not None and ctx.known.get(tstep) not in HARVEST_KINDS:
                             offer({"char_uid": uid, "action": "move",
                                    "dir": nav.step_dir(pos, tstep)}, TREK_SCORE,
                                   "trekking to the nearest unexplored frontier — healed, "

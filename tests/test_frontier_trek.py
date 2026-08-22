@@ -92,3 +92,111 @@ def test_the_trek_sits_between_the_fillers_and_the_local_frontier_push():
     with a gathering offer, and the mutant that raises it above 4.0 is unobservable (it
     survived; the placement is the real guard, and test_real_local_work asserts that)."""
     assert SAY_SCORE < TREK_SCORE < FRONTIER_NORTH_SCORE
+
+
+# ---- v0.80.0: chess, not checkers — the trek chops through ---------------------
+#
+# Operator screenshots, 2026-08-22: a character stood at a pine belt and read it as a dead
+# end, while holding the chop mechanic it has had since 0.45.0. `tree` was SOLID to every
+# path search, so a forest was masonry. Now a breakable tile is an expensive STEP
+# (nav.BREAK_COST ~ four attack ticks plus the move), and the trek spends actions now for
+# position later.
+
+def _belt_frame(char):
+    """The known map is seeded on the bot: a corridor to the frontier CLOSED by a tree
+    belt at y=20 — no detour exists. The old trek returned None here and the character
+    declared the world looted-out one screen away from unexplored ground."""
+    tiles = [[x, y, "floor", 0, 0] for x in range(4) for y in range(0, 4)]
+    return {"type": "frame", "world": "vale", "tick": 500, "events": [],
+            "bounds": [4, 100], "chars": [char],
+            "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
+
+
+def _seed_belt(bot):
+    known = {(x, y): "floor" for x in range(4) for y in range(60)}
+    for x in range(4):
+        known[(x, 20)] = "tree"          # a full belt: no way around, only through
+    bot.known["vale"] = known
+
+
+def test_a_tree_belt_is_a_ROUTE_not_a_dead_end():
+    """The healed trekker walks toward the belt rather than giving up: the cheapest path
+    to the frontier at y=59 goes through one tree."""
+    bot = _bot()
+    _seed_belt(bot)
+    acts = bot.on_frame(_belt_frame(_char(healed=True)))
+    assert acts and acts[0]["action"] == "move" and acts[0]["dir"] == "N", \
+        f"a chop-through route existed and the trek declined it: {acts}"
+
+
+def test_ADJACENT_to_the_belt_the_axe_swings():
+    """At (1,19), one south of the tree line, the action must be the attack that clears
+    the belt — never a move into a solid tile (a guaranteed move_failed bounce).
+
+    The attack comes from 0.45.0's opportunistic adjacent-harvest, NOT from a trek-side
+    chop offer: a trek-side one was written, shadowed in every reachable case (a breakable
+    next-step is by definition adjacent, and adjacency fires the harvest first, which sets
+    `productive` and skips the trek), and deleted when its mutant survived. This test pins
+    the COMPOSITION: route to the belt, harvest swings, the felled tile is a path."""
+    bot = _bot()
+    _seed_belt(bot)
+    acts = bot.on_frame(_belt_frame(_char(healed=True, pos=(1, 19))))
+    assert acts and acts[0]["action"] == "attack" and acts[0]["target"] == [1, 20], \
+        f"expected to chop the belt tree at [1,20]: {acts}"
+
+
+def test_a_cheap_DETOUR_still_beats_the_axe():
+    """Nav-level, with a geometry where the arithmetic is STRICT: from (1,19), adjacent to
+    the belt, the only northward step is the tree (chop 5, total 44 to a frontier) while
+    the gap detour totals 42 — so the cheapest path MUST start east. Two earlier drafts of
+    this test failed instructively: at equal cost the tie legitimately broke north (both
+    routes pass the gap), and through the bot the opportunistic adjacent-harvest (3.3)
+    chops any tree it stands beside regardless of routing. The routing claim lives here;
+    the bot-level claim below is only "move, don't chop"."""
+    import steemer.nav as nav
+    known = {(x, y): "floor" for x in range(4) for y in range(60)}
+    for x in range(4):
+        known[(x, 20)] = "tree"
+    known[(3, 20)] = "floor"
+    step = nav.weighted_step((1, 19), lambda p: nav.frontier(p, known, (4, 100)),
+                             known, breakable=frozenset({"tree", "vein"}))
+    assert step == (2, 19), f"cheapest path starts east through the gap, got {step}"
+
+
+def test_through_the_bot_a_gapped_belt_is_WALKED_not_chopped():
+    """One tile back, where no adjacency short-circuits routing: the trek must offer a
+    MOVE along a cheapest path (north or east both qualify — the tie is legitimate),
+    never an attack, because the gap makes chopping strictly worse."""
+    bot = _bot()
+    _seed_belt(bot)
+    bot.known["vale"][(3, 20)] = "floor"          # the gap
+    acts = bot.on_frame(_belt_frame(_char(healed=True, pos=(1, 18))))
+    assert acts and acts[0]["action"] == "move" and acts[0]["dir"] in ("N", "E"), \
+        f"expected a walk toward the gap, not the axe: {acts}"
+
+
+def test_a_WALL_belt_is_still_a_dead_end():
+    """Masonry is not choppable. Same geometry with `wall` must find nothing and fall
+    through to the looted-out retreat — otherwise the trek would hurl attacks at stone."""
+    bot = _bot()
+    _seed_belt(bot)
+    for x in range(4):
+        bot.known["vale"][(x, 20)] = "wall"
+    acts = bot.on_frame(_belt_frame(_char(healed=True, pos=(1, 19))))
+    assert acts and not any(a.get("action") == "attack" for a in acts), \
+        f"tried to chop masonry: {acts}"
+    assert acts[0].get("dir") == "S", f"should give up and head home: {acts}"
+
+
+def test_weighted_step_NEVER_routes_through_a_blocked_tile():
+    """`blocked` is danger (predator-adjacency), not terrain, and it is absolute: a chop
+    route that passes beside a predator is not a route. Geometry: the only physical path
+    (the chopped tree) is blocked -> no route at all, even though the terrain allows one."""
+    import steemer.nav as nav
+    known = {(x, y): "floor" for x in range(3) for y in range(30)}
+    for x in range(3):
+        known[(x, 10)] = "tree"
+    step = nav.weighted_step((1, 5), lambda p: p[1] >= 20, known,
+                             blocked={(x, 10) for x in range(3)},
+                             breakable=frozenset({"tree"}))
+    assert step is None, f"routed through a blocked tile: {step}"
