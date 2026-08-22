@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.64.0` on **run #141**, repo HEAD `9b8acb6`, branch `main` (pushed).
+- **Live:** `explorer/0.65.1` on **run #143**, repo HEAD `fb55230`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -50,7 +50,13 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   recipes and all five shield_iron recipes**, including `(spear,1,1)`, which we had watched
   work twice. Now: a `forged` event PROVES the recipe that character last attempted; proven
   recipes are never blacklisted; unproven ones need 3 refusals; proof clears a wrongful ban.
-  **Every latch in this file should be read with that question: what restores an option?**
+  **AUDIT NOW COMPLETE (0.65.0/0.65.1).** Released: `wont_fit` and `_tome_failed` — both
+  gated on STATS, which we deliberately raise (`spend_xp` x2,151; str 2→6, level 6→18), so a
+  refusal at str 2 stood at str 6 forever. Each now records the stat TOTAL refused: out-grow
+  it and retry; a second refusal raises the bar; a weaker one cannot lower it. `wont_fit` was
+  also global (one weak character condemned a kind for everyone) and is now per-character.
+  Left alone with reasons: `slot_wrong` and `_swap_failed` (a fixed property of the kind, not
+  a moving threshold), `STUCK_BLOCK` (already a TTL), `price` (learned upward).
   (Cause of the non-determinism is still unknown — `tier` is the suspect, we ignore it.)
 - **⚠ COMPARE STATEFUL THINGS STATEFULLY.** A replay with a FRESH strategy per frame claimed
   97% of forge opportunities were missed; one stateful instance over the same run reproduced

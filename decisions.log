@@ -3677,3 +3677,40 @@ TEST-CRAFT, both recurring and both mine: three files used hand-rolled bot doubl
 broke the moment village() needed `recently_forged` — they now use the REAL GuildBot; and
 the fail-limit test sized its loop from FORGE_FAIL_LIMIT, the FOURTH time mutation testing
 has caught me deriving a fixture from the constant under test.
+
+================================================================================
+iter 78 — 2026-08-22 — the latch audit: what restores an option? (0.65.0/0.65.1, #142/#143)
+================================================================================
+FIRST, 0.64.0 IS CONFIRMED. Forge SUCCESS RATE 35% -> 68% (8 of 23 actions on #140, 13 of 19
+on #141); forged events per 10k frames roughly quadrupled. The band recovered
+(items/frame 0.013 -> 0.554), so raw counts are not attributable — but the success RATE is a
+ratio inside one mechanism and is exactly what proof-outranks-refusal predicts. Brews 1 -> 13.
+
+Then the audit the HANDOFF called for, applied to every latch in explorer.py.
+
+`wont_fit` was the worst, because the gate it models is one WE DELIBERATELY MOVE. `spend_xp`
+has fired 2,151 times; between #129 and #141 our maxima went str 2->6, vit 3->8, end 3->6,
+level 6->18. A kind refused at str 2 stayed refused at str 6 FOREVER, in all seven places it
+is consulted — equipping (x2), the armour buy, the forge product ladder, and the SELL rule,
+which then banks the item. 19 such refusals have accumulated over the project's life.
+A SECOND fault sat on top: keyed on KIND alone the set was GLOBAL, so the weakest character
+to try a bow decided whether anyone could wear one — exactly backwards.
+0.65.0 records the BAR (the stat total refused) instead of a bare no. Out-grow it and you may
+retry; a second refusal raises the bar (so a grown char doesn't retry every visit); a WEAKER
+refusal can never lower it. Where no character is in hand (sell rule, forge ladder) the
+question becomes "has the BEST of us out-grown it" — a kind one character can wear must not
+be banked. NAMED PROXY: the frame never says WHICH stat was short, so the sum stands in; a
+char that grew the wrong stat gets one more refusal, costing one action.
+0.65.1 applied the identical release to `_tome_failed` (INT-gated, INT grows).
+
+AUDIT COMPLETE, with reasons for the ones left alone:
+  released: wont_fit (0.65.0), _tome_failed (0.65.1), _forge_failed (0.64.0)
+  fine as-is: slot_wrong (a bow never goes on your feet — a fixed property, not a threshold),
+              _swap_failed (same, plus SWAP_GIVE_UP bounds the behaviour), STUCK_BLOCK (TTL),
+              self.price (learned upward from live stock).
+The three needing release are exactly the three whose gate is a number we ourselves push up.
+
+GATE 750 reaper / 741 local; 13 new tests, 13 mutants killed across both versions.
+TEST-CRAFT: my first tome draft poked `_stat_total` directly and failed because village()
+refreshes that cache FROM THE CHARACTER FRAME every visit — the fixture was setting a value
+the code overwrites. Driving it through real `stats` is both correct and a better test.
