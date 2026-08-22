@@ -973,7 +973,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.80.0"
+    version = "explorer/0.80.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2051,7 +2051,8 @@ class Explorer:
                         # a path next tick.
                         tstep = nav.weighted_step(
                             pos, lambda p: nav.frontier(p, ctx.known, ctx.bounds),
-                            ctx.known, blocked, breakable=HARVEST_KINDS)
+                            ctx.known, blocked, breakable=HARVEST_KINDS,
+                            fresh=ctx.fresh)
                         if tstep is not None and ctx.known.get(tstep) not in HARVEST_KINDS:
                             offer({"char_uid": uid, "action": "move",
                                    "dir": nav.step_dir(pos, tstep)}, TREK_SCORE,
@@ -2777,7 +2778,15 @@ class Explorer:
         # character unable to find a route home and offering `rest` instead, which is the
         # stuck-death that v0.42.0 and v0.50.0 were both spent on. The bound exists for
         # OPPORTUNISTIC goals; retreat is the opposite of opportunistic.
-        step = self._step(pos, lambda p: p[1] == 0, ctx, blocked, max_depth=None)
+        #
+        # v0.80.1: routed with the FRESHNESS bias (nav.STALE_COST), because the walk home
+        # is where run #164's 7x move_failed regression lived — deep trekkers retreating
+        # across remembered-from-past-runs map, bouncing off regrown bush/rock/water (524
+        # solid bounces, 239 of them under this very offer). A bias reorders among routes
+        # and never removes one, so reachability — the stuck-death constraint — is intact,
+        # and the only-stale-route case has a test.
+        step = nav.weighted_step(pos, lambda p: p[1] == 0, ctx.known, blocked,
+                                 fresh=ctx.fresh)
         if step:
             offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
                   score, why, urgent=urgent)

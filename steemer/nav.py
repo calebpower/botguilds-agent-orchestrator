@@ -146,6 +146,16 @@ def frontier(pos: tuple[int, int], known: dict[tuple[int, int], str],
 # detour still beats chopping, and a long one loses to it — which is the trade a person
 # makes without noticing.
 BREAK_COST = 5
+# v0.80.1 — STALE memory costs more to walk on. Run #164 (the first with deep trekkers):
+# move_failed 31 -> 231/10k, and the doomed moves were the RETREATS — long walks home
+# through map hydrated from PAST runs, bouncing off regrown bush/rock/water that memory
+# still calls floor (524 solid-terrain bounces). The hydration premise "terrain is
+# durable" (0.55.0) is only mostly true, and the error concentrates exactly on the long
+# routes. A tile seen THIS RUN costs 1; a tile known only from memory costs STALE_COST —
+# so among equal routes the router picks the verified one, and where only stale memory
+# offers a path it still takes it (a bias must never remove reachability: that would be
+# the 0.42/0.50 stuck-death again, made of freshness instead of walls).
+STALE_COST = 3
 
 
 def weighted_step(
@@ -155,6 +165,7 @@ def weighted_step(
     blocked: Iterable[tuple[int, int]] = (),
     breakable: frozenset[str] = frozenset(),
     max_cost: int | None = None,
+    fresh: "set[tuple[int, int]] | None" = None,
 ) -> tuple[int, int] | None:
     """Dijkstra over remembered tiles; return the next tile toward the CHEAPEST goal.
 
@@ -187,7 +198,7 @@ def weighted_step(
             if kind in breakable:
                 step_cost = BREAK_COST
             elif is_walkable(nxt, known, blocked_set) or (is_goal(nxt) and kind not in SOLID):
-                step_cost = 1
+                step_cost = 1 if fresh is None or nxt in fresh else STALE_COST
             else:
                 continue
             nd = d + step_cost

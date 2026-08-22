@@ -200,3 +200,63 @@ def test_weighted_step_NEVER_routes_through_a_blocked_tile():
                              blocked={(x, 10) for x in range(3)},
                              breakable=frozenset({"tree"}))
     assert step is None, f"routed through a blocked tile: {step}"
+
+
+# ---- v0.80.1: stale memory costs more to walk on -------------------------------
+
+def test_a_LONGER_fresh_route_beats_a_shorter_stale_one():
+    """The stale corridor is strictly SHORTER, deliberately: an equal-length version of
+    this test passed with the bias deleted, because the tie happened to break toward the
+    fresh side — an oracle that cannot fail. Here the unbiased router must pick the short
+    stale corridor (17*1 < 20*1), and only the bias (17*STALE_COST=51 > ~22) can send it
+    the fresh way — so the mutant that deletes the bias fails and the tie cannot save it."""
+    import steemer.nav as nav
+    known = {(1, y): "floor" for y in range(18)}          # stale corridor, 17 steps home
+    known.update({(x, 17): "floor" for x in (2, 3)})      # spur east to the fresh corridor
+    known.update({(4, y): "floor" for y in range(18)})    # fresh corridor, ~20 via spur
+    fresh = {(2, 17), (3, 17)} | {(4, y) for y in range(18)}
+    step = nav.weighted_step((1, 17), lambda p: p[1] == 0, known, fresh=fresh)
+    assert step == (2, 17), f"took the short stale corridor despite the bias: {step}"
+
+
+def test_an_ONLY_STALE_route_is_still_taken():
+    """The bias must reorder, never remove: a hurt character whose single route home is
+    unverified memory takes it anyway — refusing would be the 0.42/0.50 stuck-death
+    rebuilt out of freshness instead of walls."""
+    import steemer.nav as nav
+    known = {(1, y): "floor" for y in range(30)}
+    step = nav.weighted_step((1, 29), lambda p: p[1] == 0, known, fresh=set())
+    assert step == (1, 28), f"a stale-only route was refused: {step}"
+
+
+def test_no_freshness_data_means_no_bias():
+    """fresh=None (tests, replays, callers that predate 0.80.1) must behave exactly like
+    the unbiased router — asserted so the default can never silently become 'everything
+    is stale'."""
+    import steemer.nav as nav
+    known = {(1, y): "floor" for y in range(10)}
+    assert nav.weighted_step((1, 9), lambda p: p[1] == 0, known) == (1, 8)
+
+
+def test_the_RETREAT_routes_through_fresh_ground_THROUGH_THE_BOT():
+    """The plumbing test the mutants demanded: dropping `fresh=ctx.fresh` from the
+    retreat left every other test green. A scout walks the eastern corridor early in the
+    run (its tiles become seen-this-run); a heal-less character deep at the junction then
+    retreats — and must step EAST toward the verified corridor, though the remembered
+    western one is a tile shorter."""
+    bot = _bot()
+    known = {(1, y): "floor" for y in range(26)}          # stale corridor (shorter)
+    known.update({(x, 25): "floor" for x in (2, 3)})
+    known.update({(4, y): "floor" for y in range(26)})    # fresh corridor
+    bot.known["vale"] = known
+    scout_tiles = [[4, y, "floor", 0, 0] for y in range(26)]
+    bot.on_frame({"type": "frame", "world": "vale", "tick": 499, "events": [],
+                  "bounds": [6, 100], "chars": [],
+                  "visible": {"tiles": scout_tiles, "entities": [], "items": [], "gold": []}})
+    deep = _char(healed=False, pos=(2, 25))
+    acts = bot.on_frame({"type": "frame", "world": "vale", "tick": 500, "events": [],
+                         "bounds": [6, 100], "chars": [deep],
+                         "visible": {"tiles": [[x, 25, "floor", 0, 0] for x in (1, 2, 3)],
+                                     "entities": [], "items": [], "gold": []}})
+    assert acts and acts[0]["action"] == "move" and acts[0]["dir"] == "E", \
+        f"retreated down the unverified corridor: {acts}"
