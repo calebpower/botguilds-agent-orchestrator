@@ -1,21 +1,20 @@
-"""v0.74.0 wiring: flavour text reaches the world, and costs the guild nothing.
+"""v0.75.0 wiring: flavour text is a FIELD action, and it only ever costs an idle rest.
 
-`test_chatter.py` tests the module. This tests the two claims that only the WIRING can
-answer, and that the module cannot:
+0.74.x issued `say` from the village and the server refused all three attempts with
+`not_in_village`. docs/03-actions.md gives the action's scope as "map" — I read that as
+"map-visible" rather than as where it is legal. The scope column had the answer before the
+feature was written, and the fail-closed path (three rejections and stop) is the only
+reason it cost three actions rather than one every cooldown for the rest of the run.
 
-  * a `say` is emitted through `GuildBot.on_frame` at all — four behaviours have shipped
-    correct and unreachable because their tests started downstream of the routing;
-  * turning chatter on changes NO other action the village loop would have taken.
+`test_chatter.py` tests the module. This tests what only the wiring can answer:
 
-The second is asserted from two sides, because "I looked and did not see a problem" is the
-weaker half of every claim in this repo. One oracle proves the real action still comes out
-on a tick that has one; the other replays a whole sequence with chatter silenced and
-compares the non-`say` actions element by element.
+  * a `say` comes out of `GuildBot.on_frame` at all;
+  * it never beats anything except a rest, and never a rest that would RECOVER something;
+  * an offer that loses does not spend the line.
 """
 from steemer.bot import GuildBot
-from steemer.strategy.explorer import EMBARK_COOLDOWN, VILLAGE_ACTION_COOLDOWN
-import steemer.chatter as chatter_mod
-
+from steemer.strategy.explorer import (FRONTIER_NORTH_SCORE, FRONTIER_SCORE,
+                                       REST_SCORE, SAY_SCORE, SCOUT_SCORE)
 
 SILENT_FOR = 300        # steemer.chatter.COOLDOWN (duplicated: see test_chatter.py)
 GIVE_UP_AFTER = 3       # steemer.chatter.FAIL_LIMIT
@@ -28,16 +27,20 @@ def _bot():
     return b
 
 
-def _village(tick, inventory=(), gold=100, events=()):
-    """A village frame with the roster at cap, so nothing recruits or embarks."""
-    return {"world": "village", "tick": tick, "events": list(events),
-            "guild": {"gold": gold, "chars_here": ["c1"],
-                      "chars_by_world": {"vale": [f"v{i}" for i in range(10)]}},
-            "chars": [{"char_uid": "c1", "eid": 7, "hp": 30, "max_hp": 30,
-                       "inventory": list(inventory), "stats": {"vit": 8, "end": 8, "str": 8},
-                       "equipment": {"hand": {"kind": "club"}, "offhand": None,
-                                     "outfit": None, "trinket": None, "boots": None},
-                       "gifts": [], "xp": 0}]}
+def _char(hp=30, stamina=60, max_stamina=60, pos=(1, 1)):
+    return {"char_uid": "c1", "eid": 7, "pos": list(pos), "hp": hp, "max_hp": 30,
+            "stamina": stamina, "max_stamina": max_stamina, "level": 3, "stats": {},
+            "gifts": [], "statuses": [], "spells": [], "spell_cap": 1,
+            "carry": {"used": 0, "cap": 20}, "inventory": [],
+            "equipment": {"hand": {"kind": "club"}}}
+
+
+def _frame(tick, char=None, items=(), events=()):
+    """A small explored room, so `frontier` has nothing to chase and the ladder is quiet."""
+    tiles = [[x, y, "floor", 0, 0] for x in range(4) for y in range(4)]
+    return {"type": "frame", "world": "vale", "tick": tick, "events": list(events),
+            "bounds": [4, 4], "chars": [char or _char()],
+            "visible": {"tiles": tiles, "entities": [], "items": list(items), "gold": []}}
 
 
 def _says(actions):
@@ -47,191 +50,96 @@ def _says(actions):
 def test_a_say_reaches_the_world_THROUGH_THE_BOT():
     bot = _bot()
     said = []
-    for tick in range(1, 4 * SILENT_FOR, 7):
-        said += _says(bot.on_frame(_village(tick)))
+    for tick in range(1, 3 * SILENT_FOR, 7):
+        said += _says(bot.on_frame(_frame(tick)))
     assert said, "chatter never produced a say through GuildBot.on_frame"
-    first = said[0]
-    assert first.get("char_uid") == "c1" and first.get("text")
-    assert len(first["text"]) <= 40
+    assert said[0]["char_uid"] == "c1" and len(said[0]["text"]) <= 40
 
 
 def test_it_talks_about_an_event_THE_SERVER_actually_sent():
-    """The event path runs through `_learn_from_events`, which resolves eid -> char_uid.
-    Feeding chatter anywhere else would repeat 0.64.0, which parsed events on frames it
-    never saw and shipped inert for two versions."""
+    """Events reach chatter through `_learn_from_events`, which runs for every frame and
+    resolves eid -> char_uid. 0.64.0 put an event parser somewhere it never saw its own
+    events and shipped inert for two versions."""
     bot = _bot()
     said = []
     for tick in range(1, 3 * SILENT_FOR, 5):
         evs = [{"kind": "forged", "eid": 7, "item": "spear"}] if tick == 1 else []
-        said += _says(bot.on_frame(_village(tick, events=evs)))
+        said += _says(bot.on_frame(_frame(tick, events=evs)))
     assert any("spear" in a["text"] for a in said), \
         f"the forge we were told about never reached the world: {[a['text'] for a in said]}"
 
 
-# ---- it costs nothing: two oracles -------------------------------------------
+# ---- it only costs an idle rest ----------------------------------------------
 
-def test_a_tick_with_real_work_still_does_the_real_work():
-    """Oracle one, the direct case: a sellable item is present, so the tick has a job."""
+def test_a_TIRED_character_recovers_instead_of_talking():
+    """The claim "it only displaces an idle rest" was false in the first draft: rest is
+    also the RECOVERY action, and it wins precisely when a character has something to
+    recover. Three decision-engine tests caught a character chatting at low stamina.
+
+    30/60 is chosen so the test can only pass for the RIGHT reason. At 5/60 it passed with
+    the gate deleted — a `say` costs 10 stamina, so the affordability check in `offer` was
+    quietly doing the work and the gate was never exercised. Here the action is affordable
+    and resting still has something to give."""
     bot = _bot()
-    loot = [{"kind": "tomato", "item_id": "i1", "uses": []}]
-    acts = bot.on_frame(_village(3 * SILENT_FOR, inventory=loot))
-    assert acts == [{"char_uid": "c1", "action": "sell", "item_id": "i1"}], \
-        f"flavour text displaced a sale: {acts}"
+    for tick in range(1, 3 * SILENT_FOR, 7):
+        acts = bot.on_frame(_frame(tick, char=_char(stamina=30, max_stamina=60)))
+        assert not _says(acts), f"talked at 30/60 stamina instead of resting: {acts}"
 
 
-def test_chatter_changes_NOTHING_ELSE_over_a_full_sequence():
-    """Oracle two, from the other side: replay the same village ticks with chatter
-    silenced, and require the non-`say` actions to match exactly. The first oracle proves
-    one tick keeps its action; this proves none of them lost one, including ticks whose
-    behaviour depends on state built up over the run.
-
-    THE SEQUENCE IS SHAPED BY WHAT THE ORACLE MUST BE ABLE TO CATCH. Two earlier versions
-    could not fail:
-
-      * work every 50 ticks — a 300-tick chatter cooldown almost never collided with it,
-        so the mutant that charges the speaker a VILLAGE_ACTION_COOLDOWN survived;
-      * work every tick — the village is then never idle, chatter never gets a free tick,
-        and the comparison ran with nothing to compare.
-
-    Alternating blocks of 7 give both: idle stretches long enough for a line, and working
-    stretches immediately after, where a cooldown stamped on the speaker delays a real
-    sale. The run is long enough for many such crossings rather than one lucky one.
-    """
-    def run(silence: bool):
-        bot = _bot()
-        if silence:
-            for _ in range(GIVE_UP_AFTER):
-                bot.chatter.note_rejected()
-        real, spoken = [], []
-        for tick in range(1, 20 * SILENT_FOR):
-            working = (tick // 7) % 2 == 0
-            inv = [{"kind": "tomato", "item_id": f"i{tick}", "uses": []}] if working else []
-            evs = [{"kind": "forged", "eid": 7, "item": "spear"}] if tick % 137 == 0 else []
-            acts = bot.on_frame(_village(tick, inventory=inv, events=evs))
-            spoken += _says(acts)
-            real.append([a for a in acts if a.get("action") != "say"])
-        return real, spoken
-
-    (with_chatter, spoken), (without, silent) = run(False), run(True)
-    # SELF-TEST FIRST, and before the success indicator: the comparison below passes
-    # trivially whenever chatter is broken, disabled, or starved — which is most of the
-    # ways this could actually be wrong. Assert the thing was running.
-    assert len(spoken) > 3, f"chatter barely spoke ({len(spoken)}); the comparison proves little"
-    assert not silent, "silencing chatter did not silence it"
-    assert sum(1 for a in with_chatter if a) > 50, "too few real actions to compare"
-    assert with_chatter == without, "enabling flavour text changed a real action"
-
-
-# ---- v0.74.1: riding along ---------------------------------------------------
-
-def _village_two(tick, events=()):
-    """Two characters home and the field BELOW cap, so the loop embarks every tick.
-
-    This is the shape 0.74.0 could not speak in, and it is the common one: 429 of run
-    #153's first 541 village ticks were taken by an embark, and flavour text placed after
-    the ladder never got a turn.
-    """
-    def ch(uid, eid):
-        return {"char_uid": uid, "eid": eid, "hp": 30, "max_hp": 30, "inventory": [],
-                "stats": {"vit": 8, "end": 8, "str": 8}, "gifts": [], "xp": 0,
-                "equipment": {"hand": {"kind": "club"}, "offhand": None, "outfit": None,
-                              "trinket": None, "boots": None}}
-    return {"world": "village", "tick": tick, "events": list(events),
-            "guild": {"gold": 100, "chars_here": ["c1", "c2"], "chars_by_world": {}},
-            "chars": [ch("c1", 7), ch("c2", 8)]}
-
-
-def test_a_say_rides_along_with_the_ticks_real_action():
+def test_a_character_short_of_FULL_HP_does_not_stop_to_talk():
+    """25/30, not 4/30. At 4 hp the character takes the retreat branch and returns long
+    before the say is offered, so that fixture proved nothing about this gate — it survived
+    the mutant that removes it. 25/30 is above every hurt threshold in the ladder, so the
+    only thing standing between this character and a chat is the gate itself."""
     bot = _bot()
-    embarked = said = None
-    for tick in range(1, 3 * SILENT_FOR):
-        acts = bot.on_frame(_village_two(tick))
-        for a in acts:
-            if a.get("action") == "embark":
-                embarked = embarked or (tick, a)
-            if a.get("action") == "say":
-                said = said or (tick, a, acts)
-    assert embarked, "the fixture never embarked, so there was nothing to ride along with"
-    assert said, "flavour text never spoke on a tick that had real work — 0.74.0's defect"
-    tick, say, acts = said
-    others = [a for a in acts if a is not say]
-    assert others, f"the say was alone on tick {tick}; it should accompany real work: {acts}"
-    assert say["char_uid"] not in {a.get("char_uid") for a in others}, \
-        "the speaker was also the subject of the tick's real action"
+    for tick in range(1, 3 * SILENT_FOR, 7):
+        acts = bot.on_frame(_frame(tick, char=_char(hp=25)))
+        assert not _says(acts), f"talked at 25/30 hp instead of topping up: {acts}"
 
 
-def _subjects(action):
-    """Every character an action commands. An embark names them in `char_uids`; everything
-    else uses `char_uid`. Reading only one spelling is how the first version of this test
-    watched an embark go by without seeing whose it was."""
-    out = set(action.get("char_uids") or ())
-    if action.get("char_uid") is not None:
-        out.add(action["char_uid"])
-    return out
-
-
-def test_the_speaker_is_never_the_character_being_embarked():
-    """A character mid-embark is leaving, not loitering. Talking through it would put two
-    actions on one character in a single tick, which is the shape of the run-#38 re-send
-    storm rather than of flavour text."""
+def test_a_character_with_missing_max_stamina_stays_QUIET():
+    """Missing data reads as "not ready", never as "ready". The opposite default would
+    make a protocol change silently spend rest ticks."""
     bot = _bot()
-    spoke = False
-    for tick in range(1, 4 * SILENT_FOR):
-        acts = bot.on_frame(_village_two(tick))
-        spoke = spoke or any(a.get("action") == "say" for a in acts)
-        seen = set()
-        for a in acts:
-            clash = seen & _subjects(a)
-            assert not clash, f"two actions for {clash} on tick {tick}: {acts}"
-            seen |= _subjects(a)
-    assert spoke, "chatter never spoke, so this proves nothing about its speaker"
+    char = _char()
+    del char["max_stamina"]
+    for tick in range(1, 2 * SILENT_FOR, 7):
+        assert not _says(bot.on_frame(_frame(tick, char=char)))
 
 
-def test_the_speaker_is_not_a_character_whose_embark_is_still_IN_FLIGHT():
-    """The tick after an embark, the character is still listed at home — the frame has not
-    caught up — and it is no longer in this tick's action list, so the same-tick guard does
-    not cover it. Only `_embark_at` does."""
+def test_the_say_outbids_only_the_idle_FILLERS():
+    """Not a re-export of the constants: it pins the ORDER, which is the whole safety
+    argument. It must beat scout — the ladder's always-available filler, and the reason a
+    say scored just above REST fired zero times — and lose to the frontier push and
+    everything productive above it."""
+    assert SAY_SCORE > FRONTIER_SCORE > SCOUT_SCORE > REST_SCORE
+    assert SAY_SCORE < FRONTIER_NORTH_SCORE, \
+        "the north push, every retreat, spacing and gathering must still win"
+
+
+def test_loot_on_the_floor_beats_flavour_text():
     bot = _bot()
-    leaving = {}
-    for tick in range(1, 4 * SILENT_FOR):
-        acts = bot.on_frame(_village_two(tick))
-        for a in acts:
-            if a.get("action") == "embark":
-                for uid in _subjects(a):
-                    leaving[uid] = tick
-            if a.get("action") == "say":
-                uid = a["char_uid"]
-                since = tick - leaving.get(uid, -10 ** 9)
-                assert since >= EMBARK_COOLDOWN, \
-                    f"{uid} spoke {since} ticks after being sent to the field"
+    for tick in range(1, 2 * SILENT_FOR, 7):
+        acts = bot.on_frame(_frame(tick, items=[{"pos": [3, 3]}]))
+        assert not _says(acts), f"talked while there was loot to fetch: {acts}"
 
 
-def test_the_speaker_is_not_a_character_mid_TRANSACTION():
-    """The other half of "idle". A character that just sold something is one the village
-    loop is still working with — its next tick may equip, buy, or re-sell — and the
-    re-send guard exists because a stale frame made those repeat. Flavour text should not
-    interleave itself with that character's errand.
+def test_an_offer_that_LOSES_does_not_spend_the_line():
+    """peek/commit, and the reason for it. If the offer consumed the line on the way past,
+    a tick where the say lost would still burn the 300-tick cooldown — and the one event we
+    had to talk about — on a broadcast that never happened.
 
-    `_village_two` never sells, so this shape was invisible: both guards on the speaker
-    survived mutation until this test existed.
+    Loot every tick for a while (the say loses), then loot removed: the guild must still
+    have something to say, and it must still be the FORGE it was told about.
     """
     bot = _bot()
-    def frame(tick):
-        f = _village_two(tick)
-        f["chars"][0]["inventory"] = [{"kind": "tomato", "item_id": f"i{tick}", "uses": []}]
-        return f
-
-    sold_at, checked = {}, False
-    for tick in range(1, 4 * SILENT_FOR):
-        acts = bot.on_frame(frame(tick))
-        for a in acts:
-            if a.get("action") == "sell":
-                sold_at[a["char_uid"]] = tick
-            if a.get("action") == "say":
-                uid = a["char_uid"]
-                since = tick - sold_at.get(uid, -10 ** 9)
-                assert since >= VILLAGE_ACTION_COOLDOWN, \
-                    f"{uid} spoke {since} ticks after a sale, mid-errand"
-                checked = True
-    assert sold_at, "the fixture never sold anything"
-    assert checked, "chatter never spoke, so the guard was never exercised"
+    bot.on_frame(_frame(1, events=[{"kind": "forged", "eid": 7, "item": "spear"}],
+                        items=[{"pos": [3, 3]}]))
+    for tick in range(2, 60):
+        assert not _says(bot.on_frame(_frame(tick, items=[{"pos": [3, 3]}])))
+    said = []
+    for tick in range(60, 120):
+        said += _says(bot.on_frame(_frame(tick)))
+    assert said, "the line was consumed by an offer that never went out"
+    assert "spear" in said[0]["text"], \
+        f"the event was spent while losing; got {said[0]['text']!r}"

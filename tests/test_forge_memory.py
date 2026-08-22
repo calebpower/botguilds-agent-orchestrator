@@ -20,16 +20,7 @@ from steemer.storage import Storage
 from steemer.strategy.explorer import Explorer, FORGE_RECIPES
 
 
-class _Bot:
-    tick = 500
-    config: dict = {}
-
-    def __init__(self, storage=None):
-        self.storage = storage
-        self._forged = {}
-
-    def recently_forged(self, uid):
-        return uid in self._forged
+from support import strategy_bot as _Bot
 
 
 def _ing(n=1, kind="ingot_copper"):

@@ -289,16 +289,7 @@ def test_the_HEAL_GATE_is_applied_at_the_call_site_not_just_available():
     from steemer.reasoning import DecisionTrace
     from steemer.strategy.base import FieldContext
 
-    class _Bot:
-        config: dict = {}
-        tick = 500
-        storage = None
-
-        def recently_overburdened(self, uid):
-            return False
-
-        def recently_forged(self, uid):
-            return False
+    from support import strategy_bot as _Bot
 
     known = {(x, 0): "floor" for x in range(60)}
     known[(25, 0)] = "vein"

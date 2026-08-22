@@ -94,8 +94,14 @@ class Chatter:
 
     # -- output ------------------------------------------------------------------
 
-    def line(self, tick: int, gold: int = 0, roster: int = 0) -> str | None:
-        """A line to say, or None. None is the common answer and the safe one."""
+    def peek(self, tick: int, gold: int = 0, roster: int = 0) -> str | None:
+        """The line we WOULD say, with no side effects. None is the common answer.
+
+        Split from `commit` in v0.75.0, when the say moved into the field ladder. There an
+        offer competes and usually loses, and a `line()` that marked itself said on the way
+        past would burn the cooldown — and spend the one event we had to talk about — on a
+        tick where nothing was ever broadcast. The offer asks; only the send commits.
+        """
         if self.disabled or tick - self._last_said < COOLDOWN:
             return None
         variants, fields = _IDLE, {}
@@ -114,8 +120,16 @@ class Chatter:
         except (KeyError, IndexError, ValueError):
             return None
         text = text[:MAX_LEN]
-        if not text.strip():
-            return None
+        return text or None
+
+    def commit(self, tick: int) -> None:
+        """Called when a `say` is actually sent: start the cooldown, spend the event."""
         self._last_said = tick
         self._recent = None      # say each thing once
+
+    def line(self, tick: int, gold: int = 0, roster: int = 0) -> str | None:
+        """peek + commit, for callers that send whatever they are given."""
+        text = self.peek(tick, gold=gold, roster=roster)
+        if text is not None:
+            self.commit(tick)
         return text

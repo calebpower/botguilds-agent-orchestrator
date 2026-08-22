@@ -18,18 +18,7 @@ from steemer.strategy.base import FieldContext
 from steemer.strategy.explorer import Explorer
 
 
-class _Bot:
-    config: dict = {}
-
-    def __init__(self, tick=500):
-        self.tick = tick
-        self.storage = None
-
-    def recently_overburdened(self, uid):
-        return False
-
-    def recently_forged(self, uid):
-        return False
+from support import strategy_bot as _Bot
 
 
 def _tome(kind="tome_bolt"):

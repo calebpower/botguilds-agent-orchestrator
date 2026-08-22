@@ -31,6 +31,9 @@
     "drinking a red potion to recover HP": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
+    "flavour text — saying": {
+      "through_bot_test": "test_a_say_reaches_the_world_THROUGH_THE_BOT"
+    },
     "grabbing a coin in the safe direction while evading": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
@@ -84,9 +87,6 @@
     },
     "embarking": {
       "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
-    },
-    "idle tick — saying": {
-      "through_bot_test": "test_a_say_reaches_the_world_THROUGH_THE_BOT"
     },
     "learning": {
       "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."

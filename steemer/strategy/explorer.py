@@ -581,6 +581,44 @@ DRINK_KEEP_PREFIXES = ("potion", "vial", "elixir", "tonic")
 CONTAINERS = frozenset({"chest", "safe"})
 DEFAULT_MAPS = ("vale", "mines", "spire")
 REST_SCORE = 0.5           # the floor: rest wins only when nothing affordable beats it
+# The two idle FILLERS, named in v0.75.0. Both were bare literals referenced by number in
+# five comments, and the say had to be placed relative to them — a placement argued against
+# a magic number is an argument nobody can check.
+SCOUT_SCORE = 1.0          # "no goal reachable — stepping to scout": the real floor, since
+                           # it is offered on essentially every idle tick
+FRONTIER_NORTH_SCORE = 2.5 # pushing north into unexplored ground
+FRONTIER_SCORE = 2.0       # heading to the nearest frontier
+# v0.75.0 — flavour text (`say`). 0.74.x issued it from the VILLAGE and the server refused
+# all three attempts with `not_in_village`; docs/03-actions.md gives its scope as "map",
+# which I had read as "map-visible" rather than as WHERE IT IS LEGAL. The scope column had
+# the answer before the first line of chatter.py was written.
+#
+# WHERE IT SITS, after getting this wrong twice in one session. The first attempt scored it
+# at 0.6, just above REST, reasoning that a rest is the cheapest thing it could displace. It
+# fired zero times: rest is almost never the alternative, because "no goal reachable —
+# stepping to scout" (1.0) is offered on nearly every idle tick. Moving it to 1.1 fired zero
+# times too — the looted-out walk home (1.5) and the frontier pushes (2.0/2.5) are also
+# always there. "Score it below everything so it cannot cost anything" keeps producing a
+# behaviour that cannot happen, which is the same defect as v0.48.0's cohesion and this
+# session's rally, arrived at from a different direction each time.
+#
+# The cost is small enough to state plainly instead of engineering around: ONE action, for
+# one character, once per 300 ticks, guild-wide — with ~7 fielded that is under 0.1% of the
+# actions we issue. So it is scored above the idle FILLERS it displaces (scout 1.0, the
+# looted-out walk home 1.5, the nearest-frontier step 2.0) and below everything that is
+# ever load-bearing: the north push (2.5), every retreat (2.5 and up), predator spacing
+# (3.0), gathering (4.0+), the dodge and the desperation escape.
+#
+# The `rested` gate below is the other half: a character with full hp and stamina is one
+# that would have wandered, not one that would have recovered or run.
+SAY_SCORE = 2.1
+SAY_READY_FRAC = 0.9       # ...and only from a character with nothing to gain by resting.
+# The first draft claimed "it can only displace an idle rest tick" and that was FALSE:
+# rest is also the RECOVERY action, and it wins exactly when a character is too tired to
+# do anything else. Three decision-engine tests caught it — a character with no affordable
+# action was talking instead of recovering. A rest is only idle when hp and stamina are
+# already topped up, so that is the gate. `max_stamina` is absent -> treated as NOT ready,
+# because the conservative reading of missing data is the one that cannot cost a recovery.
 POTION_KEEP = 1            # potions to carry into the field per character
 
 # v0.58.0 BOTTLES. The heal supply had a hole in it that nothing was watching.
@@ -896,7 +934,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.74.1"
+    version = "explorer/0.75.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1054,57 +1092,6 @@ class Explorer:
     # -- village: gear + economy + healing supply + discovery-first deployment --
 
     def village(self, bot: "Any", frame: dict[str, Any]) -> list[dict[str, Any]]:
-        """The village loop, plus flavour text riding along on a spare character.
-
-        v0.74.1 — 0.74.0 put the `say` at the END of the loop, on a tick where nothing else
-        happened, and it shipped STARVED: 429 of run #153's first 541 village ticks were
-        taken by an embark, and the rest had nobody home. The free tick it was waiting for
-        essentially does not exist while the field is filling.
-
-        Riding along is free in a stronger sense than "last in the ladder" ever was. The
-        loop's own action goes out unchanged, and the speaker is a DIFFERENT character that
-        is doing nothing this tick — so there is no ordering in which the guild loses
-        anything, rather than merely no ordering we happened to test. A second character is
-        home 56% of village ticks on #153 (15.5% on #151, when the roster was mostly
-        fielded), which is the difference between rare and never.
-        """
-        actions = self._village_core(bot, frame) or []
-        say = self._maybe_say(bot, frame, actions)
-        return actions + ([say] if say is not None else [])
-
-    def _maybe_say(self, bot: "Any", frame: dict[str, Any],
-                   taken: list[dict[str, Any]]) -> dict[str, Any] | None:
-        """A `say` from a character with nothing else to do this tick, or None."""
-        # NO "did this character get an action this tick" check, deliberately. The first
-        # draft had one, and mutation testing removed it with the entire suite still green:
-        # every character the village loop commands is already excluded by one of the two
-        # guards below — `_village_acted` for per-character actions, `_embark_at` for
-        # embarks, which stamp their subject before this runs. A third guard that cannot
-        # be observed failing is not defence in depth, it is a claim about which check is
-        # load-bearing that happens to be false, and it would have sent the next reader
-        # to the wrong line.
-        tick = bot.tick
-        for char in frame.get("chars", []) or []:
-            uid = char.get("char_uid")
-            if uid is None or char.get("craft"):
-                continue
-            if tick - self._village_acted.get(uid, -10 ** 9) < VILLAGE_ACTION_COOLDOWN:
-                continue
-            if uid in self._village_intent:
-                continue
-            if tick - self._embark_at.get(uid, -10 ** 9) < EMBARK_COOLDOWN:
-                continue        # embark already commanded; it is leaving, not loitering
-            guild = frame.get("guild", {}) or {}
-            text = bot.chatter.line(tick, gold=guild.get("gold", 0),
-                                    roster=len(frame.get("chars", []) or []))
-            if text is None:
-                return None
-            return self._village_act(
-                bot, None, {"char_uid": uid, "action": "say", "text": text},
-                f"idle tick — saying {text!r} (flavour text only)")
-        return None
-
-    def _village_core(self, bot: "Any", frame: dict[str, Any]) -> list[dict[str, Any]]:
         guild = frame.get("guild", {})
         cfg = bot.config
         chars = frame.get("chars", [])
@@ -1393,30 +1380,6 @@ class Explorer:
                     f"embarking {uid} to {target} (safest: threat "
                     f"{round(threat(target), 2)}, {by_world.get(target, 0)} of us there)")]
 
-        # v0.74.0 FLAVOUR TEXT — last, and only on a tick that produced nothing else.
-        # `village()` returns at most one action, so every earlier branch has already
-        # declined: nothing here can displace a buy, a sale, an embark or a recruit. The
-        # cost of a line is one idle tick of a benched character, and we carry a bench of
-        # 14-20. See steemer/chatter.py for why it only says things that happened.
-        #
-        # Passed with uid=None DELIBERATELY: `_village_act` would otherwise stamp
-        # VILLAGE_ACTION_COOLDOWN on the speaker and block its next buy for a few ticks,
-        # which is a real cost, and the whole justification here is that there is none.
-        # Chatter carries its own COOLDOWN, so it cannot storm.
-        # The speaker must be IDLE in the strong sense: not mid-errand under the re-send
-        # guard, and with no gold-spending intent in flight. A character that just bought
-        # something is one the village loop is still working with, and "free" has to mean
-        # free of that too, not merely free of this tick.
-        idle = [u for u in here_avail
-                if tick - self._village_acted.get(u, -10 ** 9) >= VILLAGE_ACTION_COOLDOWN
-                and u not in self._village_intent]
-        if idle:
-            text = bot.chatter.line(tick, gold=gold, roster=roster_seen)
-            if text is not None:
-                speaker = idle[0]
-                return [self._village_act(
-                    bot, None, {"char_uid": speaker, "action": "say", "text": text},
-                    f"idle tick — saying {text!r} (flavour text only)")]
         return []
 
     # -- field: per-character scored decision ---------------------------------
@@ -1544,6 +1507,22 @@ class Explorer:
                       "hurt & cornered — desperation step to a clear tile (beats resting to death)",
                       urgent=True)
             return
+
+        # v0.75.0 FLAVOUR TEXT. Offered here so a hurt or cornered character — which has
+        # already returned above — never stops to talk, and scored one notch over REST so
+        # the only thing it can ever displace is an idle rest tick. PEEKED, not taken: this
+        # offer usually loses, and consuming the line here would spend the cooldown, and the
+        # one event we had to talk about, on a tick where nothing was broadcast. The bot
+        # commits when the action is actually sent.
+        max_sta = char.get("max_stamina")
+        rested = (max_sta is not None and stamina >= SAY_READY_FRAC * max_sta
+                  and hp >= max_hp)
+        chat = bot.chatter.peek(bot.tick, gold=getattr(bot, "gold", 0) or 0,
+                                roster=len(frame.get("chars", []) or [])) if rested else None
+        if chat is not None:
+            offer({"char_uid": uid, "action": "say", "text": chat}, SAY_SCORE,
+                  f"flavour text — saying {chat!r}; unlike a rest this also resets "
+                  f"the unattended-recall timer")
 
         # --- DRASTIC undead-flee (v0.25.0): mood-driven. If a THREAT mob (poison
         # undead) is within FLEE_RADIUS, do NOT loot or fight — run to the village.
@@ -1939,12 +1918,12 @@ class Explorer:
                 north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known, ctx.bounds), ctx, blocked)
                 if north:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
-                          2.5, "pushing north into unexplored ground")
+                          FRONTIER_NORTH_SCORE, "pushing north into unexplored ground")
                     productive = True
                 any_frontier = self._step(pos, lambda p: nav.frontier(p, ctx.known, ctx.bounds), ctx, blocked)
                 if any_frontier:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, any_frontier)},
-                          2.0, "heading to the nearest frontier")
+                          FRONTIER_SCORE, "heading to the nearest frontier")
                     productive = True
 
                 # v0.36.0 DEPLETION-AWARE retreat: nothing to grab and nowhere to explore
@@ -1962,7 +1941,7 @@ class Explorer:
                 for d, (dx, dy) in nav.DIRS.items():
                     nxt = (pos[0] + dx, pos[1] + dy)
                     if nav.is_walkable(nxt, ctx.known, blocked):
-                        offer({"char_uid": uid, "action": "move", "dir": d}, 1.0,
+                        offer({"char_uid": uid, "action": "move", "dir": d}, SCOUT_SCORE,
                               "no goal reachable — stepping to scout")
                         break
                     break

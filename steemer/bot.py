@@ -350,6 +350,9 @@ class GuildBot:
             moved_dir = None
             if action:
                 actions.append(action)
+                if action.get("action") == "say":
+                    # Commit only now: the offer merely asked, and it loses most ticks.
+                    self.chatter.commit(self.tick)
                 # Reserve this character's move destination so a later character
                 # in the same frame won't pick the same tile — two of our own
                 # moving onto one tile is a bounce (move_failed) for one of them.
