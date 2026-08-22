@@ -972,7 +972,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.77.0"
+    version = "explorer/0.78.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1212,6 +1212,27 @@ class Explorer:
             #    reach the content carrying the XP and one that cannot.
             potions_held = sum(1 for i in inv if i["kind"] == "potion_red")
             if potions_held < POTION_KEEP:
+                # 3-zero) WITHDRAW FROM THE BANK FIRST (v0.78.0). Found on run #159 while
+                # measuring the trek: the guild inventory held 202 potion_red — banked
+                # loot and old brews, roughly TEN TIMES everything we have ever bought —
+                # while characters went bare and the treasury ground at 109 buying more at
+                # 20g. In the village, `drop {item_id}` moves an item OUT of the guild
+                # inventory onto the character (docs/03-actions.md; the verb reads
+                # backwards). A withdrawal costs zero gold, so it outranks the buy
+                # unconditionally, and no intent latch is needed for the same reason
+                # `sell` is excluded from it: each names a distinct item_id, so a
+                # stale-frame repeat cannot double-spend — it bounces off no_such_item
+                # and the per-char cooldown already spaces the retries.
+                banked = next((i for i in (frame.get("guild", {}).get("inventory") or [])
+                               if i.get("kind") == "potion_red"
+                               and i.get("item_id") is not None), None)
+                if banked is not None:
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "drop",
+                                   "item_id": banked["item_id"]},
+                        f"withdrawing a banked potion_red (item {banked['item_id']}; "
+                        f"{sum(1 for i in frame['guild']['inventory'] if i.get('kind') == 'potion_red')} "
+                        f"in the vault) — free, unlike the 20g shop buy")]
                 buy = self._afford_potion(frame, gold)
                 if buy is not None:
                     kind, price = buy

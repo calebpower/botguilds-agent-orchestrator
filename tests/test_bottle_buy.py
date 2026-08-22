@@ -223,3 +223,67 @@ def test_a_HEALED_character_then_gets_armed():
     f["chars"][0]["inventory"] = [{"kind": "potion_red", "item_id": "p1", "uses": ["use"]}]
     acts = [a for a in Explorer().village(_Bot(), f) if a.get("action") == "buy"]
     assert acts and acts[0]["kind"] == "club", f"expected to arm a healed char: {acts}"
+
+
+# ---- v0.78.0: the vault outranks the shop ------------------------------------
+
+def _vault_frame(gold, banked_potions=1, char_potion=False):
+    """A heal-less character home, with potions sitting in the guild inventory. Run #159's
+    discovery: 202 banked potion_red — ~10x everything ever bought — while the treasury
+    ground at 109 buying more at 20g."""
+    f = _frame(gold, [{"kind": "potion_red", "item_id": "held", "uses": ["drink"]}]
+                     if char_potion else [],
+               stock=[{"kind": "potion_red", "buy_price": 20}])
+    f["guild"]["inventory"] = [{"kind": "potion_red", "item_id": 900 + i, "tier": 1}
+                               for i in range(banked_potions)] + \
+                              [{"kind": "bottle_empty", "item_id": 800}]
+    return f
+
+
+def _acts(frame):
+    return Explorer().village(_Bot(), frame)
+
+
+def test_a_banked_potion_is_WITHDRAWN_not_bought():
+    acts = [a for a in _acts(_vault_frame(gold=200)) if a.get("action") in ("drop", "buy")]
+    assert acts and acts[0]["action"] == "drop" and acts[0]["item_id"] == 900, \
+        f"spent gold on a potion the vault already holds: {acts}"
+
+
+def test_the_withdrawal_works_when_the_shop_buy_is_UNAFFORDABLE():
+    """The whole point: it is free. Gold below every floor must not block it."""
+    acts = [a for a in _acts(_vault_frame(gold=5)) if a.get("action") in ("drop", "buy")]
+    assert acts and acts[0]["action"] == "drop", f"a free withdrawal was gated on gold: {acts}"
+
+
+def test_an_EMPTY_vault_falls_back_to_the_shop():
+    acts = [a for a in _acts(_vault_frame(gold=200, banked_potions=0))
+            if a.get("action") in ("drop", "buy")]
+    assert acts and acts[0]["action"] == "buy" and acts[0]["kind"] == "potion_red", \
+        f"with no banked potion the shop buy must still fire: {acts}"
+
+
+def test_only_a_POTION_is_withdrawn_never_the_bottles_beside_it():
+    """The vault also holds 404 bottle_empty; kind matters, not vault position."""
+    f = _vault_frame(gold=200)
+    f["guild"]["inventory"].reverse()          # bottle first in the list
+    acts = [a for a in _acts(f) if a.get("action") == "drop"]
+    assert acts and acts[0]["item_id"] == 900, f"withdrew the wrong kind: {acts}"
+
+
+def test_a_char_already_HOLDING_a_potion_does_not_withdraw_another():
+    acts = [a for a in _acts(_vault_frame(gold=200, char_potion=True))
+            if a.get("action") == "drop"]
+    assert not acts, f"hoarded a second potion past POTION_KEEP: {acts}"
+
+
+def test_the_withdrawal_is_reachable_THROUGH_THE_BOT():
+    """Drives GuildBot.on_frame — the wiring, not just the strategy method. The village
+    reachability gate requires this, and it is the gate that would have caught 0.68.0."""
+    bot = _Bot()
+    f = _vault_frame(gold=5)
+    f["chars"][0]["char_uid"] = "u1"
+    acts = bot.on_frame(f)
+    drops = [a for a in acts if a.get("action") == "drop"]
+    assert drops and drops[0]["item_id"] == 900, \
+        f"the withdrawal never came out of on_frame: {acts}"
