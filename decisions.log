@@ -4001,3 +4001,47 @@ TEST-CRAFT: two survivors were instructive, not fixable. A TWO-character fixture
 mutual pursuit — a pair DOES converge; the failure needs three or more. And "converges" cannot
 tell a rally from a pile-on, since walking to one arbitrary member also converges; the
 distinguishing claim is WHERE they meet.
+
+================================================================================
+iter 86 — 2026-08-22 — five executable guardrails against the LOOP's failure rate
+================================================================================
+No bot change this pass. The operator asked what I could do better and what we could write to
+make it stick. The honest diagnosis: the code I ship is usually correct; what fails is knowing
+whether it RAN and whether the numbers MEAN anything. In 24h: 6 attribution errors (11 across
+project history), 4 correct-but-unreachable versions, 7 test-craft slips, 2 expired premises.
+
+AND PROSE HAS ALREADY BEEN TRIED. `orchestrator/loop.md` has carried a "Metric attribution"
+section since before go-live; memory already warned that death queries count rivals. Eleven
+attribution errors happened anyway, one of which reached the operator as a confirmed result
+and had to be retracted. Everything that ever STUCK in this project was executable —
+shadow.MIN_DECISIONS, the mutate.py self-test, the pre-commit hook. So all five are executable.
+
+ 1. steemer/attribution.py — ours_only DEFAULTS TRUE; TooEarly under 20k frames; compare()
+    cannot yield a delta without the band confounder; distinct_entities() answers "how many"
+    not "how often". On #141 it returns 4 forges of ours against the 13 world-wide reported.
+ 2. steemer/claims.py + tools/recheck_claims.py — the 0.61.0 expectation detector pointed at
+    the loop. A claim records the QUESTION, re-run against immutable history; disagreement can
+    only mean the original was wrong. Only vetted checks recordable, else the ledger launders
+    the same bad query. Three-valued (unavailable != contradicted).
+ 3. tests/test_reachability.py — a new offer fails the suite until its reachability is stated.
+    Honest limit: makes the question unavoidable, does not prove a behaviour fires.
+ 4. tests/test_test_hygiene.py — ratchets on derived fixtures (caught 4x) and hand-rolled bot
+    doubles (3x).
+ 5. tests/test_premises.py — `# PREMISE(date, claim): query`, stale after 45 days.
+ALL BUDGETS RATCHET DOWN ONLY. Converted one behaviour immediately (vein-seek now driven
+through GuildBot.on_frame), exemptions 23 -> 22, so the ratchet is seen turning, not described.
+loop.md's "Metric attribution" section rewritten from advice into pointers at things that fail.
+
+*** I CLOBBERED AN EXISTING MODULE MID-PASS. *** `steemer/metrics.py` already existed and
+computes the KPI snapshot; I wrote over it with `cat >`. Eight UI tests caught it. Restored
+from HEAD, mine renamed `steemer/attribution.py` — a better name regardless, since it answers
+WHOSE events these are rather than what the KPIs are. Dull lesson, worth writing down: check
+whether a filename is taken before writing to it.
+
+ALSO: docs/collaboration.md (500 lines) — a living record of the practices this project has
+produced, drafted by a subagent from decisions.log/findings/wishlist/git history. It surfaced
+seven practices I had not listed, notably STATING THE FALSIFICATION BEFORE DEPLOYING, checking
+a premise before advising, and picking a read-only lever when the world cannot be measured.
+OPERATOR PRONOUNS: they/them (stated 2026-08-22). The generated doc had defaulted to "his";
+fixed, and saved to memory — generated prose is where this slips.
+GATE 834 reaper / 825 local.
