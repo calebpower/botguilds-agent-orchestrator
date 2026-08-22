@@ -287,3 +287,61 @@ def test_the_withdrawal_is_reachable_THROUGH_THE_BOT():
     drops = [a for a in acts if a.get("action") == "drop"]
     assert drops and drops[0]["item_id"] == 900, \
         f"the withdrawal never came out of on_frame: {acts}"
+
+
+# ---- v0.78.1: phantom vault ids are remembered, not retried -------------------
+
+def test_a_REFUSED_vault_id_is_never_tried_again():
+    """Run #160: the head of the vault list was a phantom — 1,181 withdrawals of item
+    13913, every one rejected no_such_item, ~1 per frame. A dead id is not a stale-frame
+    repeat (the case the no-latch reasoning covered); it is dead FOREVER, so the fix is
+    memory, not spacing. After the rejection the next attempt must name the NEXT id."""
+    exp = Explorer()
+    bot = _Bot()
+    f = _vault_frame(gold=200, banked_potions=3)
+    f["chars"][0]["char_uid"] = "u1"
+    first = [a for a in exp.village(bot, f) if a.get("action") == "drop"]
+    assert first and first[0]["item_id"] == 900
+    exp.on_action_error(bot, {"action": "drop", "char_uid": "u1", "reason": "no_such_item"})
+    bot.tick += 10                                     # clear the per-char cooldown
+    second = [a for a in exp.village(bot, f) if a.get("action") == "drop"]
+    assert second and second[0]["item_id"] == 901, \
+        f"retried the phantom instead of moving on: {second}"
+
+
+def test_withdrawals_FAIL_CLOSED_after_too_many_phantoms():
+    """A vault whose entries keep failing is a vault we do not understand. After
+    VAULT_DEAD_LIMIT phantoms the withdrawal stops for the run and the SHOP BUY takes
+    over — asserting the fallback, not just the silence, because a heal-less roster is
+    the whole disease."""
+    # 8 duplicated on purpose, not imported: a fixture sized from VAULT_DEAD_LIMIT agrees
+    # with itself at any value. The pin below fails loudly if the constant moves.
+    PHANTOMS = 8
+    from steemer.strategy.explorer import VAULT_DEAD_LIMIT
+    assert VAULT_DEAD_LIMIT == PHANTOMS, "the limit moved; re-read the numbers in this test"
+    exp = Explorer()
+    bot = _Bot()
+    f = _vault_frame(gold=200, banked_potions=PHANTOMS + 4)
+    f["chars"][0]["char_uid"] = "u1"
+    for i in range(PHANTOMS):
+        acts = [a for a in exp.village(bot, f) if a.get("action") == "drop"]
+        assert acts, f"stopped early at phantom {i}"
+        exp.on_action_error(bot, {"action": "drop", "char_uid": "u1",
+                                  "reason": "no_such_item"})
+        bot.tick += 10
+    acts = exp.village(bot, f)
+    drops = [a for a in acts if a.get("action") == "drop"]
+    buys = [a for a in acts if a.get("action") == "buy"]
+    assert not drops, f"kept withdrawing past the fail-closed limit: {drops}"
+    assert buys and buys[0]["kind"] == "potion_red", \
+        f"the shop fallback did not take over: {acts}"
+
+
+def test_an_UNRELATED_drop_error_does_not_poison_the_vault():
+    """Field loot-sheds also use `drop`; their failures must not count against vault ids.
+    The pending map only holds ids WE offered as withdrawals."""
+    exp = Explorer()
+    bot = _Bot()
+    exp.on_action_error(bot, {"action": "drop", "char_uid": "ghost",
+                              "reason": "no_such_item"})
+    assert not exp._vault_dead

@@ -633,6 +633,7 @@ SAY_READY_FRAC = 0.9       # ...and only from a character with nothing to gain b
 # already topped up, so that is the gate. `max_stamina` is absent -> treated as NOT ready,
 # because the conservative reading of missing data is the one that cannot cost a recovery.
 POTION_KEEP = 1            # potions to carry into the field per character
+VAULT_DEAD_LIMIT = 8       # phantom vault ids tolerated before withdrawals stop for the run
 
 # v0.58.0 BOTTLES. The heal supply had a hole in it that nothing was watching.
 #
@@ -972,7 +973,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.78.0"
+    version = "explorer/0.78.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1011,6 +1012,13 @@ class Explorer:
         # actions for ~1 sale — the same duplicate-send storm as embark).
         self._village_acted: dict[str, int] = {}
         # uid -> (intent_key, tick_issued); see INTENT_TTL.
+        # v0.78.1: vault item_ids the server has REFUSED with no_such_item. The frame's
+        # guild.inventory turned out to carry PHANTOM entries — run #160 opened with item
+        # 13913 first in the list, and 1,181 withdrawals of it were all rejected: a dead id
+        # is not a stale-frame repeat, it is dead forever, so it must be remembered, not
+        # retried. Maps item_id -> True; guild-level because the vault is guild-level.
+        self._vault_dead: set = set()
+        self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
         # failed recipe is tried once and never again. Mirrors slot_wrong/wont_fit.
@@ -1086,6 +1094,14 @@ class Explorer:
         # v0.74.0: `say` is an action we had never sent before. If the server refuses it,
         # stop — a rejected action every cooldown would be a slow error-spam of exactly the
         # kind the anomaly monitor exists to shout about.
+        # v0.78.1: a refused withdrawal names a PHANTOM vault id — remember it so the
+        # next attempt tries the next entry instead of the same corpse forever (run #160:
+        # 1,181 rejections of one id in 1,083 frames).
+        if (message.get("action") == "drop" and message.get("reason") == "no_such_item"
+                and uid is not None):
+            dead = self._vault_pending.pop(uid, None)
+            if dead is not None:
+                self._vault_dead.add(dead)
         if message.get("action") == "say":
             bot.chatter.note_rejected(bot.tick)
         if message.get("action") == "forge" and uid is not None:
@@ -1225,8 +1241,16 @@ class Explorer:
                 # and the per-char cooldown already spaces the retries.
                 banked = next((i for i in (frame.get("guild", {}).get("inventory") or [])
                                if i.get("kind") == "potion_red"
-                               and i.get("item_id") is not None), None)
+                               and i.get("item_id") is not None
+                               and i.get("item_id") not in self._vault_dead), None)
+                # Fail closed: a vault whose first VAULT_DEAD_LIMIT potion ids are all
+                # phantoms is a vault we do not understand — stop withdrawing this run
+                # rather than walking 202 entries of an error storm, and let the shop buy
+                # below carry the heal.
+                if banked is not None and len(self._vault_dead) >= VAULT_DEAD_LIMIT:
+                    banked = None
                 if banked is not None:
+                    self._vault_pending[uid] = banked["item_id"]
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "drop",
                                    "item_id": banked["item_id"]},
