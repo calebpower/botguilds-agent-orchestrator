@@ -872,7 +872,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.71.0"
+    version = "explorer/0.72.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2033,13 +2033,31 @@ class Explorer:
     @staticmethod
     def _cohesion_step(pos: tuple[int, int], allies: list[tuple[int, int]],
                        ctx: "FieldContext", blocked) -> tuple[int, int] | None:
-        """One step toward being within ``COHESION_HOLD`` of any ally, or None.
+        """One step toward the group's CENTRE, or None once we are there.
 
-        The GOAL is proximity, not the ally's tile — an ally's own tile is occupied and
-        therefore blocked, so pathing to it would always fail.
+        v0.72.0: this used to close on the NEAREST ALLY, and that is mutual pursuit — every
+        character chasing a target that is chasing something else. It does not converge, and
+        run #150 shows it consuming 25% of ALL DECISIONS while achieving nothing. One
+        character logged 482 consecutive cohesion decisions with the ally distance reading
+        13, 9, 8, 7, 6, 8, 8, 6, 8; at tick 1769538 four characters were "closing" on each
+        other, two walking north and two south, all reporting a distance of 7. Another spent
+        the run chasing an ally 19 tiles away: 19, 18, 17, 19, 19, 17.
+
+        The centre is a FIXED POINT for the tick, so moving toward it monotonically shrinks
+        the group's spread instead of trading places with it. Every character targets the
+        same tile, which is what makes a rally converge rather than oscillate.
+
+        The GOAL is proximity to that centre, not the centre tile itself: it may be solid, or
+        occupied by whichever ally is standing on it, and pathing onto an occupied tile
+        always fails.
         """
+        if not allies:
+            return None
+        cx = sum(a[0] for a in allies) // len(allies)
+        cy = sum(a[1] for a in allies) // len(allies)
+
         def close_enough(t: tuple[int, int]) -> bool:
-            return any(abs(t[0] - a[0]) + abs(t[1] - a[1]) <= COHESION_HOLD for a in allies)
+            return abs(t[0] - cx) + abs(t[1] - cy) <= COHESION_HOLD
         # Short-circuit if we are ALREADY in range: nav.bfs_step answers "which neighbour
         # leads to the nearest goal" and does not treat the start tile as a goal, so
         # without this it would hand back a pointless step. The caller's hysteresis check
