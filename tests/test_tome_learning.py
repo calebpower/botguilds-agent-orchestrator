@@ -34,9 +34,9 @@ def _tome(kind="tome_bolt", i=0):
     return {"kind": kind, "item_id": f"{kind}-{i}", "uses": ["use"], "tier": 1}
 
 
-def _char(spells=(), cap=1, inv=None):
+def _char(spells=(), cap=1, inv=None, stats=None):
     return {"char_uid": "u1", "pos": [0, 0], "hp": 20, "max_hp": 20, "stamina": 40,
-            "level": 3, "stats": {"int": 2}, "carry": {"used": 3, "cap": 21},
+            "level": 3, "stats": stats or {"int": 2}, "carry": {"used": 3, "cap": 21},
             "spells": list(spells), "spell_cap": cap,
             "inventory": inv if inv is not None else [_tome()],
             "equipment": {"hand": {"kind": "club"}, "offhand": None, "outfit": None,
@@ -153,7 +153,7 @@ def test_a_failed_use_of_a_NON_tome_condemns_nothing():
     exp = Explorer()
     exp._using["u1"] = "potion_red"
     exp.on_action_error(None, {"char_uid": "u1", "action": "use", "reason": "whatever"})
-    assert exp._tome_failed == set()
+    assert exp._tome_failed == {}
 
 
 def test_the_tome_prefix_covers_the_forms_we_have_actually_seen():
@@ -161,3 +161,58 @@ def test_the_tome_prefix_covers_the_forms_we_have_actually_seen():
     the constant: tome_ring, tome_step, tome_field, tome_veil, tome_bolt."""
     for kind in ("tome_ring", "tome_step", "tome_field", "tome_veil", "tome_bolt"):
         assert kind.startswith(TOME_PREFIX)
+
+
+# ---- v0.65.1: INT grows, so a tome refusal must expire too --------------------
+
+def test_a_tome_refusal_expires_when_the_character_out_grows_it():
+    """INT gates which tomes a character may use (docs/06) and INT GROWS — `spend_xp` has
+    fired 2,151 times. This is the same ratchet `wont_fit` was, in the second place it
+    appears, and it gets the same release rather than being left as the one latch that
+    still never forgets."""
+    exp = Explorer()
+    # Stats come from the CHARACTER FRAME: village() refreshes _stat_total from it every
+    # visit, so poking the cache directly would be testing a value the code overwrites.
+    weak, grown = {"int": 2, "str": 4}, {"int": 6, "str": 6}
+    acts = _acts(exp, _char(stats=weak))
+    assert acts[0]["action"] == "use"
+    exp.on_action_error(None, {"char_uid": "u1", "action": "use",
+                               "reason": "stat_requirement"})
+    assert not any(a.get("action") == "use"
+                   for a in _acts(exp, _char(stats=weak), tick=900)), \
+        "still out of reach at the same stats"
+    acts = _acts(exp, _char(stats=grown), tick=1800)
+    assert acts and acts[0]["action"] == "use", "grown past the bar — try again"
+
+
+def test_a_second_tome_refusal_raises_the_bar():
+    """Or a grown character retries every village visit forever."""
+    exp = Explorer()
+    weak, grown = {"int": 2, "str": 4}, {"int": 6, "str": 6}
+    _acts(exp, _char(stats=weak))
+    exp.on_action_error(None, {"char_uid": "u1", "action": "use",
+                               "reason": "stat_requirement"})
+    _acts(exp, _char(stats=grown), tick=900)
+    exp.on_action_error(None, {"char_uid": "u1", "action": "use",
+                               "reason": "stat_requirement"})
+    assert not any(a.get("action") == "use"
+                   for a in _acts(exp, _char(stats=grown), tick=1800))
+
+
+def test_a_LATER_WEAKER_state_cannot_lower_the_tome_bar():
+    """The bar is the highest refusal seen, not the latest. A character can lose stats
+    (a debuff, or a frame we read mid-change), and if that lowered the bar the tome would
+    become 'available' again at stats we already know are too low — a retry every visit."""
+    exp = Explorer()
+    strong, weak = {"int": 6, "str": 6}, {"int": 1, "str": 1}
+    _acts(exp, _char(stats=strong))
+    exp.on_action_error(None, {"char_uid": "u1", "action": "use",
+                               "reason": "stat_requirement"})
+    assert exp._tome_failed[("u1", "tome_bolt")] == 12
+    _acts(exp, _char(stats=weak), tick=900)          # refreshes _stat_total to 2
+    exp._using["u1"] = "tome_bolt"
+    exp.on_action_error(None, {"char_uid": "u1", "action": "use",
+                               "reason": "stat_requirement"})
+    assert exp._tome_failed[("u1", "tome_bolt")] == 12, "a weaker refusal must not lower it"
+    assert not any(a.get("action") == "use"
+                   for a in _acts(exp, _char(stats=strong), tick=1800))

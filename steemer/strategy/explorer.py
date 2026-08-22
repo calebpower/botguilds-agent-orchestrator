@@ -824,7 +824,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.65.0"
+    version = "explorer/0.65.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -886,7 +886,10 @@ class Explorer:
         self._forge_fails: dict[tuple[str, int, int], int] = defaultdict(int)
         # v0.63.0: (uid, tome_kind) the server refused -- INT gates which tomes a character
         # may use, so a refusal is durable information about that character.
-        self._tome_failed: set[tuple[str, str]] = set()
+        # (uid, tome_kind) -> the stat TOTAL that was refused. INT gates which tomes a
+        # character may use (docs/06) and INT GROWS, so this is the same ratchet `wont_fit`
+        # was and gets the same release: out-grow the refusal and you may try again.
+        self._tome_failed: dict[tuple[str, str], int] = {}
         self._using: dict[str, str] = {}     # uid -> kind of the `use` in flight
         # v0.53.0: kind -> the shop's buy_price, learned from every village frame we see.
         # This is the only QUALITY ranking the game exposes: items carry no damage or
@@ -941,7 +944,9 @@ class Explorer:
         if message.get("action") == "use" and uid is not None:
             kind = self._using.pop(uid, None)
             if kind is not None and kind.startswith(TOME_PREFIX):
-                self._tome_failed.add((uid, kind))
+                have = self._stat_total.get(uid, 0)
+                key = (uid, kind)
+                self._tome_failed[key] = max(self._tome_failed.get(key, 0), have)
         if message.get("action") != "equip":
             return
         pend = self.equipping.get(message.get("char_uid"))
@@ -2232,7 +2237,9 @@ class Explorer:
             return None
         for item in inv:
             kind = item.get("kind") or ""
-            if kind.startswith(TOME_PREFIX) and (uid, kind) not in self._tome_failed:
+            bar = self._tome_failed.get((uid, kind))
+            if kind.startswith(TOME_PREFIX) and (bar is None
+                                                 or self._stat_total.get(uid, 0) > bar):
                 return item
         return None
 
