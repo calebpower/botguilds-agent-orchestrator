@@ -55,24 +55,22 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| Rival-recon dashboard tab | 0.80 | 0.97 | 39 | **0.562** | 0.582 | **qualifies** |
-| In-world trash talk (`say`) | 0.75 | 0.95 | 49 | **0.520** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 50 | **0.512** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 37 | **0.510** | 0.529 | **qualifies** |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 17 | 0.445 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 48 | 0.439 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 50 | 0.438 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 22 | 0.380 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 32 | 0.323 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 49 | 0.321 | 0.330 | INELIGIBLE — ceiling<0.5 |
-| Magic — CASTING (0.63 keeps/learns forms; casting unbuilt) | 0.90 | 0.85 | 1 | -0.191 | 0.574 | clears at tc=11 |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 50 | **0.520** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 51 | **0.513** | 0.527 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 38 | **0.511** | 0.529 | **qualifies** |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 18 | 0.447 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 49 | 0.439 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 51 | 0.438 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 23 | 0.382 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 33 | 0.324 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 50 | 0.321 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Magic — CASTING (0.63 keeps/learns forms) | 0.90 | 0.85 | 2 | 0.191 | 0.574 | clears at tc=11 |
 
-_Scored 2026-08-21 (iter 75). `tc` +1 (0.63.0 deployed). **Magic re-enters as a NEW item at
-tc=1** — the acquisition half shipped (keep + learn), so what remains is casting, and it restarts
-the clock honestly rather than inheriting fifty passes of age it did not earn. That leaves
-**rival-recon tab (0.562) as the only qualifying item that has never been built**, and it has now
-led or co-led for five passes. Next pass takes it unless the loop turns up something on the
-critical path._
+_Scored 2026-08-21 (iter 76). `tc` +1 (Rivals tab deployed). **Rival-recon SHIPPED** and leaves
+the table. NOTE the 'Rival-awareness dashboard panel' below is now largely SUBSUMED by it — it was
+already INELIGIBLE on ceiling, and what remains of it is duplicate. Three items still qualify;
+`say` leads at 0.520, which is a genuinely weak field, so next pass should prefer whatever the
+loop's own measurement turns up over a thin list item._
 
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
@@ -131,17 +129,6 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   understand the mechanic — a mastery meter); integrate mob-prediction into the strategy only once
   validated. Data: bestiary + spectate-track (intel kind='track') + our frames. (operator request)
 
-- [ ] **Rival-recon dashboard tab** — a dashboard tab dedicated to intelligence on the
-  OTHER guilds: as much as we can learn about each rival — historical stats over time
-  (size, levels, gear progression), their character movements (which worlds/maps they
-  work, when), inferred *algorithms* (do they park in the village, rush a map, hunt loot,
-  avoid us — extrapolated from `/events/spectate` + the periodic spectate roster), and
-  per-character detail where exposed (inventories, gold, equipment). A long-term
-  *strategy* surface, not a tactical one (spectate lags ~45s and carries no live mob
-  data — see the vision finding). Builds on the existing intel pipeline
-  (`steemer/intel.py` summarize_spectate) + the spectate stream. Dovetails with the
-  "Behavioral analysis of mobs and rival players" and "Rival-awareness dashboard panel"
-  items — this is the fuller, dedicated version. (operator request 2026-08-20)
 
 - [ ] **Short-TTL memory of recently-seen predator tiles** — char sight is partly
   line-of-sight-occluded (~18% of mobs first appear at distance 0, i.e. a predator
@@ -247,6 +234,16 @@ is misleading to scan, and the every-pass check that the score table covers ever
 item is only checkable when the two are separated. Entries below keep their full
 original text; the short `-> module (date, @ run)` lines are the older ledger format
 and are kept as-is rather than rewritten.
+
+- [x] **Rival-recon dashboard tab** — SHIPPED 2026-08-21 as the **Rivals** tab
+  (`ui/server.py` `api_recon` + `/api/recon`, Playwright-tested). Reads the `spectate` and
+  `track` intel feeds that had been written for months and never read back. Cross-guild, not
+  rival-only, because every number here is a ratio. 7 unit tests + 1 Playwright, 10 mutants
+  killed; 0.140s on the live DB.
+  **It paid for itself on the first look:** we field the ONLY fully-armed roster on the
+  server (10/10 vs 9/30 and 2/9) and the highest median level (8 vs 3 and 2) — and rivals
+  work at depth 29–43 while ours sit at median depth 2, which is POISON_SAFE_DEPTH seen from
+  the outside and independent confirmation that DEPTH is the ore bottleneck.
 
 - [x] **Magic — ACQUIRING FORMS (tomes)** — SHIPPED `explorer/0.63.0`, 2026-08-21, run #140.
   The block was never cost. **We had sold 74 tomes** (ring 22, step 16, field 14, veil 13,

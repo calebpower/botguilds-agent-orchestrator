@@ -3594,3 +3594,42 @@ Left as-is: the commit is already pushed, and rewriting published history needs 
 say-so. PRACTICE FIX: commit messages now always go through a heredoc file and `-F`, never an
 inline `-m` with backticks — every long message in this log already did, and this was the one
 short one that did not.
+
+================================================================================
+iter 76 — 2026-08-21 — the Rivals tab: intel we collected for months and never read
+================================================================================
+LEVER CHOICE, and the reason matters: runs #139 and #140 were both severely starved
+(items/frame 0.043 and 0.013 against #137's 1.261), rival presence flat at ~3.2 chars/frame
+and our own unchanged at 3.29 — so the world is low-loot, not broken. NOTHING LOOT-DEPENDENT
+COULD BE MEASURED THIS PASS, which makes it exactly the right time for a read-only lever.
+Took the only qualifying never-built item (rival-recon tab, 0.562, led or co-led five passes).
+
+`spectate` (4,745 rows) and `track` (72,285 rows, 1.8s fresh) had been written for many runs
+and read back only by me, by hand, in scratch scripts. Two findings on the first look, both
+about US:
+  * WE LEAD ON QUALITY, TRAIL ON SCALE. Median level: us 7 (now 8), WillMorr 3, Fable 2.
+    Armed: us 10/10 — the ONLY fully-armed roster on the server — vs 9/30 and 2/9. Their max
+    is 29 to our 16, but the median says that is one veteran in front of a large unarmed
+    bench. The arming arc (0.40, 0.53) shows as a lead over every rival; no metric of ours
+    had ever said so.
+  * RIVALS WORK AT DEPTH 29-43 (max 57); ours sit at median depth 2. That is
+    POISON_SAFE_DEPTH seen FROM THE OUTSIDE, on live data, with no knowledge of our code —
+    the strongest independent confirmation yet that DEPTH, not seeking, is the ore
+    bottleneck. Two oracles now agree from opposite directions.
+  * Gear gap surfaced `smith_apron` — an outfit a rival fields and no character of ours ever
+    has. Also: we are 0/10 OUTFITTED and so is almost everyone (WillMorr 1/30).
+
+DESIGN: cross-guild rather than rival-only (every number here is a ratio and a ratio needs
+both sides). "Which guild is ours" is DERIVED from the newest decision's char_uid
+(`<guild_id>_c<n>`), not hardcoded — a rename cannot silently make the panel compare us
+against ourselves, and it needs no access to the git-ignored token. Rival positions take the
+NEWEST sighting per eid, never a row count: the feed samples every tick, so rows would weight
+whoever loitered longest and make one stationary character look like a crowd.
+TIMED ON THE LIVE DB BEFORE SHIPPING (the memory note exists because the codex once took
+17s): 0.140s end to end; COUNT over 72k track rows 0.056s; newest 400 rows 0.009s.
+GATE 731 reaper / 722 local. 7 unit tests + 1 Playwright, 10 mutants killed. All three
+first-round survivors were WEAK TESTS, not sound code: the gear-gap fixture gave the rival
+nothing we also field (so the filter was unobservable), the newest-position test asserted
+only the COUNT, and one assertion was written `A and B or C`, which precedence makes nearly
+unfalsifiable. The Playwright test runs against an EMPTY DB on purpose — the feed comes from
+a separate service that can be down, and the panel must say so and name `./svc.sh up web`.

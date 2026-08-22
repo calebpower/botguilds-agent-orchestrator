@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.63.0` on **run #140**, repo HEAD `b566d80`, branch `main` (pushed).
+- **Live:** `explorer/0.63.0` on **run #140**, repo HEAD `0d25ec1` (dashboard gained a Rivals tab), branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -43,6 +43,17 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   confirmed / violated / **expired**. `expired` is not `violated` — frames are stale and
   "not yet" must never read as "did not" (that inference killed two characters). Alarms are
   PER ACTION FAMILY and print + persist as `bot_anomaly` rows.
+- **📡 RIVALS TAB (dashboard) — cross-guild comparison, `/api/recon`.** Reads the `spectate`
+  and `track` intel feeds that had been written for months and never read back. Two findings
+  from the first look, both about us:
+  **(1)** We field the **only fully-armed roster on the server** (10/10 vs WillMorr 9/30,
+  Fable 2/9) and the highest median level (8 vs 3 and 2). Their max is 29 to our 16 — one
+  veteran in front of a large unarmed bench.
+  **(2)** **Rivals work at depth 29–43 (max 57); our characters sit at median depth 2.** That
+  is `POISON_SAFE_DEPTH` seen from the OUTSIDE, on live data, with no knowledge of our code —
+  independent confirmation that DEPTH, not seeking, is the ore bottleneck.
+  Also: nobody is outfitted (us 0/10), and `smith_apron` is a kind a rival fields and we never
+  have.
 - **⚠ CHECK WHAT WE SELL BEFORE BELIEVING A CHAIN IS BLOCKED. Four for four.** `_should_sell`
   has a catch-all branch — "nothing recognised -> bank it" — and every mechanic we unlock adds
   an item it silently misfiles. It has now eaten lumber+ingots (fixed 0.46), `bone` and raw
