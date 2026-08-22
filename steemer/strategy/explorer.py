@@ -896,7 +896,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.73.0"
+    version = "explorer/0.74.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1007,6 +1007,11 @@ class Explorer:
         # v0.52.0: a REJECTED forge teaches us its recipe was wrong. Record the exact
         # (product, ingots, lumber) so it is attempted once and never again — the recipe
         # quantities are undocumented, so the server's rejection IS the documentation.
+        # v0.74.0: `say` is an action we had never sent before. If the server refuses it,
+        # stop — a rejected action every cooldown would be a slow error-spam of exactly the
+        # kind the anomaly monitor exists to shout about.
+        if message.get("action") == "say":
+            bot.chatter.note_rejected()
         if message.get("action") == "forge" and uid is not None:
             pend = self._forge_attempt.pop(uid, None)
             if pend is not None and pend not in self._forge_proven:
@@ -1336,6 +1341,31 @@ class Explorer:
                                 "char_uids": [uid]},
                     f"embarking {uid} to {target} (safest: threat "
                     f"{round(threat(target), 2)}, {by_world.get(target, 0)} of us there)")]
+
+        # v0.74.0 FLAVOUR TEXT — last, and only on a tick that produced nothing else.
+        # `village()` returns at most one action, so every earlier branch has already
+        # declined: nothing here can displace a buy, a sale, an embark or a recruit. The
+        # cost of a line is one idle tick of a benched character, and we carry a bench of
+        # 14-20. See steemer/chatter.py for why it only says things that happened.
+        #
+        # Passed with uid=None DELIBERATELY: `_village_act` would otherwise stamp
+        # VILLAGE_ACTION_COOLDOWN on the speaker and block its next buy for a few ticks,
+        # which is a real cost, and the whole justification here is that there is none.
+        # Chatter carries its own COOLDOWN, so it cannot storm.
+        # The speaker must be IDLE in the strong sense: not mid-errand under the re-send
+        # guard, and with no gold-spending intent in flight. A character that just bought
+        # something is one the village loop is still working with, and "free" has to mean
+        # free of that too, not merely free of this tick.
+        idle = [u for u in here_avail
+                if tick - self._village_acted.get(u, -10 ** 9) >= VILLAGE_ACTION_COOLDOWN
+                and u not in self._village_intent]
+        if idle:
+            text = bot.chatter.line(tick, gold=gold, roster=roster_seen)
+            if text is not None:
+                speaker = idle[0]
+                return [self._village_act(
+                    bot, None, {"char_uid": speaker, "action": "say", "text": text},
+                    f"idle tick — saying {text!r} (flavour text only)")]
         return []
 
     # -- field: per-character scored decision ---------------------------------

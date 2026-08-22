@@ -71,5 +71,39 @@
       "through_bot_test": "test_ore_seek_is_reachable_THROUGH_THE_BOT_not_just_through_act"
     }
   },
-  "exempt_budget": 21
+  "exempt_budget": 21,
+  "village_behaviours": {
+    "brewing": {
+      "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
+    },
+    "buying a": {
+      "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
+    },
+    "buying a bottle_empty (": {
+      "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
+    },
+    "embarking": {
+      "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
+    },
+    "idle tick — saying": {
+      "through_bot_test": "test_a_say_reaches_the_world_THROUGH_THE_BOT"
+    },
+    "learning": {
+      "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
+    },
+    "recruiting (roster": {
+      "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
+    },
+    "selling": {
+      "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
+    },
+    "smelting 2×": {
+      "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
+    },
+    "spending XP on": {
+      "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
+    }
+  },
+  "village_exempt_budget": 9,
+  "_village_note": "Same ratchet, for the VILLAGE loop. The field detector only reads `offer(...)`, so village behaviours were invisible to it — including v0.68.0's, which this file's own docstring cites as a motivating failure. Seeded at the true current count on 2026-08-22 and DECREASE-ONLY thereafter, exactly like exempt_budget."
 }

@@ -12,6 +12,7 @@ from typing import Any
 
 from . import nav
 from .anomaly import AnomalyMonitor
+from .chatter import Chatter
 from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace
 from .storage import Storage
@@ -80,6 +81,9 @@ class GuildBot:
         self._overburdened: dict[str, int] = {}
         # uid -> tick of the most recent `forged` event for that character (v0.64.0).
         self._forged: dict[str, int] = {}
+        # Flavour text (v0.74.0). Lives on the bot because the bot is where
+        # events arrive already attributed to us.
+        self.chatter = Chatter()
         # Tiles worth RE-CHECKING because a refresh has happened since we last looked at
         # them. Kept apart from `known` on purpose: `known` records what we have OBSERVED,
         # and this is a HYPOTHESIS about what a refresh did. Conflating the two would put
@@ -146,6 +150,14 @@ class GuildBot:
                 self._overburdened[uid] = self.tick
             elif kind == "forged":
                 self._forged[uid] = self.tick
+            # v0.74.0: feed the chatter HERE, where every frame lands and ownership has
+            # already been resolved. Hooking it into `village()` instead would repeat
+            # 0.64.0's mistake exactly — that parser sat in the field path, never saw the
+            # `forged` events it was written for, and shipped inert for two versions.
+            mine = dict(ev)
+            mine["char_uid"] = uid
+            mine.setdefault("world", frame.get("world"))
+            self.chatter.note_events([mine])
 
     def recently_overburdened(self, uid: str) -> bool:
         """Has the server refused this character a pickup for weight, recently?

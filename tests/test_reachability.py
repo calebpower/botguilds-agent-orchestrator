@@ -102,3 +102,56 @@ def test_exemptions_are_few_enough_to_read():
     exempt = [n for n, e in registry()["behaviours"].items() if e.get("exempt_reason")]
     assert len(exempt) <= registry()["exempt_budget"], (
         f"{len(exempt)} exemptions against a budget of {registry()['exempt_budget']}")
+
+
+# ---- the same ratchet, for the VILLAGE loop ----------------------------------
+#
+# OFFER_RE reads the field ladder only. Village actions never pass through `offer`, so the
+# whole village loop was outside this gate — including v0.68.0's learn step, which is one
+# of the four failures named at the top of this file. A guardrail that cannot see the bug
+# it was built for is worth exactly as much as the tests it replaced.
+#
+# Seeded at the true count on 2026-08-22 rather than at zero, because the alternative is a
+# green suite that means nothing. It decreases from here, like the other one.
+
+VILLAGE_RE = re.compile(r'_village_act\(\s*\n?\s*bot,[^)]*?\}\s*,\s*\n?\s*f?"([^"{]{8,})',
+                        re.S)
+
+
+def village_behaviours() -> set[str]:
+    src = open(STRATEGY).read()
+    return {m.group(1).strip() for m in VILLAGE_RE.finditer(src)}
+
+
+def test_the_village_detector_finds_something():
+    """Self-test: a regex that matches nothing would make every check below vacuous, and
+    would look identical to a clean bill of health."""
+    found = village_behaviours()
+    assert len(found) >= 5, f"the village detector has stopped matching: {found}"
+    assert any("embarking" in b for b in found), \
+        "embark is the one village action we are certain exists"
+
+
+def test_every_village_behaviour_is_registered():
+    registered = set(registry().get("village_behaviours", {}))
+    missing = village_behaviours() - registered
+    assert not missing, (
+        "village behaviours with no stated reachability:\n  " + "\n  ".join(sorted(missing))
+        + "\n\nAdd a through_bot_test, or an exempt_reason, in tests/reachability.json.")
+
+
+def test_the_village_registry_has_not_gone_stale():
+    stale = set(registry().get("village_behaviours", {})) - village_behaviours()
+    assert not stale, (
+        "registry names village behaviours that no longer exist in explorer.py:\n  "
+        + "\n  ".join(sorted(stale)))
+
+
+def test_the_village_exemption_budget_only_shrinks():
+    reg = registry()
+    exempt = [b for b, v in reg.get("village_behaviours", {}).items() if "exempt_reason" in v]
+    budget = reg.get("village_exempt_budget", 0)
+    assert len(exempt) <= budget, (
+        f"{len(exempt)} village behaviours are exempt but the budget is {budget}. Write a "
+        "test that drives GuildBot.on_frame; do not raise the number.")
+    assert budget <= 9, "village_exempt_budget is a ratchet seeded at 9 — it may only fall"
