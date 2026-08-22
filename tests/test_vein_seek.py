@@ -236,3 +236,83 @@ def test_walking_HOME_is_never_bounded():
     Explorer()._retreat("u1", (0, 100), _ctx(known), set(), offer, 8.5, "hurt — walking home")
     assert offers, "a hurt character 100 tiles from home must still find a route"
     assert offers[0][0]["dir"] == "S"
+
+
+# ---- v0.71.0: a healed character may range further for ore --------------------
+
+def _healed(inv_extra=()):
+    return {"char_uid": "u1", "carry": {"used": 3, "cap": 21},
+            "inventory": [{"kind": "potion_red", "item_id": "p1"}, *inv_extra]}
+
+
+def test_a_healed_character_reaches_ore_the_unhealed_one_cannot():
+    """The sizing problem in one test. Veins sit at median depth 88 (shallowest 24), the
+    median distance from one of our characters to the nearest vein is 30, and only 4.72% of
+    mines character-frames were within the old 14 — so the ore errand was sized never to
+    reach the ore. Runs #148/#149 broke 4 and 3 veins against 44 and 193 trees."""
+    from steemer.strategy.explorer import VEIN_SEEK_RANGE_HEALED
+    known = _corridor(length=60, vein_at=25)
+    ctx = _ctx(known)
+    assert Explorer._ore_step((0, 0), ctx, set()) is None, "out of the ordinary reach"
+    assert Explorer._ore_step((0, 0), ctx, set(),
+                              VEIN_SEEK_RANGE_HEALED) == (1, 0)
+
+
+def test_even_a_healed_character_will_not_cross_the_map():
+    """Still a bound, raised deliberately — not the unbounded goal search that caused the
+    v0.55.0 regression. 50 tiles is an expedition whoever is carrying what."""
+    from steemer.strategy.explorer import VEIN_SEEK_RANGE_HEALED
+    known = _corridor(length=90, vein_at=50)
+    assert Explorer._ore_step((0, 0), _ctx(known), set(),
+                              VEIN_SEEK_RANGE_HEALED) is None
+
+
+def test_the_healed_reach_spans_the_measured_gap():
+    """Pins the constants against the MEASUREMENT rather than each other: the shallowest
+    vein is at depth 24 and the median character-to-vein distance is 30, so the healed
+    reach has to clear 30 while the ordinary one stays a detour."""
+    from steemer.strategy.explorer import VEIN_SEEK_RANGE_HEALED
+    assert VEIN_SEEK_RANGE < 24 < 30 < VEIN_SEEK_RANGE_HEALED
+
+
+def test_the_ordinary_reach_is_the_default_so_nothing_else_changes():
+    """Every other caller of _ore_step keeps the short errand."""
+    known = _corridor(length=60, vein_at=25)
+    assert Explorer._ore_step((0, 0), _ctx(known), set()) is None
+
+
+def test_the_HEAL_GATE_is_applied_at_the_call_site_not_just_available():
+    """Drives `act()` rather than `_ore_step`, because the tests above would all pass with
+    the gate deleted — they pass `reach` themselves. This project has shipped four
+    behaviours that were correct and never reached; the gate is only real if the caller
+    applies it."""
+    from steemer.reasoning import DecisionTrace
+    from steemer.strategy.base import FieldContext
+
+    class _Bot:
+        config: dict = {}
+        tick = 500
+        storage = None
+
+        def recently_overburdened(self, uid):
+            return False
+
+        def recently_forged(self, uid):
+            return False
+
+    known = {(x, 0): "floor" for x in range(60)}
+    known[(25, 0)] = "vein"
+    ctx = FieldContext(world="mines", known=known)
+
+    def seeks(inv):
+        char = {"char_uid": "u1", "eid": 7, "pos": [0, 0], "hp": 30, "max_hp": 30,
+                "stamina": 40, "level": 3, "stats": {}, "gifts": [], "statuses": [],
+                "spells": [], "spell_cap": 1, "carry": {"used": 1, "cap": 21},
+                "inventory": list(inv), "equipment": {"hand": {"kind": "club"}}}
+        trace = DecisionTrace(tick=500, world="mines", char_uid="u1")
+        Explorer().act(_Bot(), char, {"world": "mines", "tick": 500}, ctx, trace)
+        return any("known vein" in c.why for c in trace.candidates)
+
+    assert seeks([{"kind": "potion_red", "item_id": "p1"}]) is True, \
+        "a healed character reaches the vein 25 tiles away"
+    assert seeks([]) is False, "an un-healed one does not"

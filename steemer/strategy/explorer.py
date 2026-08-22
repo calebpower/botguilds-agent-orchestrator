@@ -767,6 +767,22 @@ HARVEST_KINDS = frozenset({"tree", "vein"})
 #   * Bounded by VEIN_SEEK_RANGE, so it is a detour and not an expedition.
 ORE_KINDS = frozenset({"vein"})
 VEIN_SEEK_RANGE = 14
+# v0.71.0: a character CARRYING A HEAL may go much further for ore, and the numbers say it
+# must. Veins in the mines sit at median depth 88 and the shallowest at 24; the median
+# distance from one of our characters to the nearest vein is 30, and only 4.72% of mines
+# character-frames are within 14. So the ore errand was sized to never reach the ore, and
+# runs #148/#149 broke 4 and 3 veins against 44 and 193 trees.
+#
+# Gated on the heal rather than granted to everyone, because the two facts are the same
+# fact: veins are DEEP, depth is where poison kills, and POISON_SAFE_DEPTH exists for
+# exactly that. The character that can safely make the trip is the one carrying the answer
+# to what makes it dangerous — and since v0.69.0 that is 27% of them rather than 4%.
+#
+# The move-failure budget says this is affordable: 0.24-0.33% of moves currently fail,
+# against a 5.2% historical baseline and the 19.4% of the v0.55.0 regression. Long errands
+# were dangerous when they were UNBOUNDED over a freshly-hydrated map (v0.57.0); this is a
+# bound, raised deliberately, for one purpose, with the headroom measured first.
+VEIN_SEEK_RANGE_HEALED = 32
 # Scored ABOVE frontier(2.5) -- walking toward a known resource beats walking at random --
 # but BELOW cohesion(2.8), so a character in a world dangerous enough to form up does not
 # wander off alone to mine, and well below adjacent harvest(3.3) and any real gathering.
@@ -856,7 +872,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.70.0"
+    version = "explorer/0.71.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1750,7 +1766,12 @@ class Explorer:
                 # v0.54.0 slice 2: nothing breakable underfoot, so WALK to ore. Only ore --
                 # see ORE_KINDS. Guarded by _wants_ore so this is never a march for cargo we
                 # would only drop or sell at the other end.
-                step = self._ore_step(pos, ctx, blocked)
+                # A healed character may range further: see VEIN_SEEK_RANGE_HEALED.
+                healed = any(i.get("kind") == "potion_red"
+                             for i in char.get("inventory", []) or [])
+                step = self._ore_step(
+                    pos, ctx, blocked,
+                    VEIN_SEEK_RANGE_HEALED if healed else VEIN_SEEK_RANGE)
                 if step is not None:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
                           VEIN_SEEK_SCORE,
@@ -2029,7 +2050,8 @@ class Explorer:
         return nav.bfs_step(pos, close_enough, ctx.known, blocked)
 
     @staticmethod
-    def _ore_step(pos: tuple[int, int], ctx: "FieldContext", blocked) -> tuple[int, int] | None:
+    def _ore_step(pos: tuple[int, int], ctx: "FieldContext", blocked,
+                  reach: int = VEIN_SEEK_RANGE) -> tuple[int, int] | None:
         """One step toward the nearest known ORE tile within ``VEIN_SEEK_RANGE``, or None.
 
         The goal tile is SOLID (a vein is scenery you break, not ground you stand on), so
@@ -2043,7 +2065,7 @@ class Explorer:
         # The range limit is `max_depth` alone. An explicit manhattan check here was
         # redundant — a path of at most N steps cannot end further than N away — and
         # mutation testing proved it: no test could tell the two versions apart.
-        return nav.bfs_step(pos, beside_ore, ctx.known, blocked, max_depth=VEIN_SEEK_RANGE)
+        return nav.bfs_step(pos, beside_ore, ctx.known, blocked, max_depth=reach)
 
     @staticmethod
     def _wants_ore(char: dict[str, Any]) -> bool:
