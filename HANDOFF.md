@@ -6,7 +6,15 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.78.1` on **run #161**, repo HEAD `f962a4c`, branch `main` (pushed).
+- **Live:** `explorer/0.80.0` on **run #164**, repo HEAD `584d0e5`, branch `main` (pushed).
+- **OPERATOR DIRECTION (2026-08-22): "chess, not checkers"** — lateral multi-step reasoning.
+  Shipped: 0.80.0 chop-through pathing (nav.weighted_step, BREAK_COST=5). Queued: danger as
+  COST not wall (mob-box escapes). See memory: operator-direction-lateral-reasoning.
+- **0.79.0 BREWING RESTARTED** (bottle floor 150 -> potion floor 100): first bottle ever
+  bought -> brewed potion_red. Mature measurement owed on the 0.80.0 run.
+- **SERVER CONFIG NOW CAPTURED** per-key into learned(topic=server_config) — NB prod
+  truncates learned.fact at varchar(255); never store blobs there. ride_max_tiles is NOT
+  in the live config; the ride cap must be discovered empirically.
 - **TREK CONFIRMED** (mature #159): healed chars median y 4→21 max 125, deaths FELL to 2.5/10k,
   xp 3.5x — but only 4.8% of char-frames are healed, so POTION THROUGHPUT now binds.
 - **⚠ THE VAULT IS A MIRAGE**: frame `guild.inventory` lists 202 potions/404 bottles that the
