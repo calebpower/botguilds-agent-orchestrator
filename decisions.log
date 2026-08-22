@@ -4286,3 +4286,32 @@ BREAK_COST from terrain_hit/destroyed ratios.
 MEANWHILE 0.79.0 brewing early signal (#162, pre-maturity): first bottle ever bought ->
 brewed -> potion_red, zero 20g shop buys. Mature measurement still owed.
 GATE 903 reaper / 894 local.
+
+================================================================================
+iter 93 (2026-08-22 night) — mature #164 + explorer/0.80.1 — the freshness bias
+================================================================================
+MATURE #164 (43k frames, band 0.63 vs #159's 0.40):
+  * TREADMILL: returned/10k 900 -> 556; a character crossed the ENTIRE map (y=199).
+  * BREWING (0.79.0): works but trivial — 2 bottles, 2 brews (1 red), 16 shop buys still
+    carrying the supply. Healed share 2.5%. The bottleneck moved INSIDE brewing: one
+    bottle per char per visit, herbs must already be in the pack. Not the win yet.
+  * move_failed 31 -> 231/10k — MY FALSIFICATION NAMED IT AND IT FIRED. Attribution via
+    decision-join: NOT the trek router — the RETREATS (239/255 top offenders = "world
+    looted-out — home"), walking home over map hydrated from PAST runs, bouncing off
+    regrown bush/rock/water (524 solid bounces). 0.55.0's "terrain is durable" is only
+    mostly true, and the error concentrates on long routes: the trek made characters
+    DEEP, and the walk home crossed 100+ tiles of unverified memory.
+
+0.80.1 — STALE MEMORY COSTS MORE: nav.weighted_step charges STALE_COST=3 on tiles not
+seen this run (ctx.fresh <- bot's per-run seen set); retreat + trek route with it. A BIAS,
+never a wall: only-stale routes are still taken (tested), or this would be the stuck-death
+rebuilt from freshness. fresh=None = unbiased (tested, so the default cannot rot).
+MUTATION RE-BUILT TWO ORACLES: the equal-corridors test passed with the bias DELETED (tie
+broke fresh-ward by luck — an oracle that cannot fail; stale corridor now strictly
+shorter), and the ctx.fresh plumbing had NO test until a through-the-bot retreat test
+existed. Three layers mutated: nav cost, strategy plumbing, bot wiring.
+FALSIFICATION (in the commit): next mature run move_failed back toward ~31 with
+returned/10k holding <=~556 and depth intact; if not, the staleness attribution was wrong.
+EARLY #165 (3.5k frames): 83/10k and falling.
+NEXT after that measurement: brewing throughput (the 2-bottle trickle — herbs+bottle
+logistics), or danger-as-cost (operator item 2). GATE 907 reaper / 898 local.

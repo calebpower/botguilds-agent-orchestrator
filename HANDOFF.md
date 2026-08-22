@@ -6,7 +6,14 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.80.0` on **run #164**, repo HEAD `584d0e5`, branch `main` (pushed).
+- **Live:** `explorer/0.80.1` on **run #165**, repo HEAD `ec6c1b5`, branch `main` (pushed).
+- **⚠ REMEMBERED TERRAIN IS ONLY MOSTLY DURABLE** (mature #164): deep trekkers' walks home
+  bounced off regrown bush/rock/water 524 times (move_failed 31→231/10k). 0.80.1 charges
+  nav.STALE_COST=3 on tiles not seen this run (ctx.fresh); retreat+trek biased, never
+  walled — only-stale routes still taken. Watch #165 mature: move_failed → ~31?
+- **TREADMILL IMPROVING**: returned/10k 900 → 556 on #164; one char crossed y=199.
+- **BREWING IS A TRICKLE**: 2 bottles/2 brews on #164 vs 16 shop buys — the constraint is
+  now bottle+herb logistics per villager, not the floor.
 - **OPERATOR DIRECTION (2026-08-22): "chess, not checkers"** — lateral multi-step reasoning.
   Shipped: 0.80.0 chop-through pathing (nav.weighted_step, BREAK_COST=5). Queued: danger as
   COST not wall (mob-box escapes). See memory: operator-direction-lateral-reasoning.
