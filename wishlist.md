@@ -55,72 +55,28 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| Rival-recon dashboard tab | 0.80 | 0.97 | 36 | **0.560** | 0.582 | **qualifies** |
-| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 47 | **0.557** | 0.574 | **qualifies** |
-| Expectation/reality mismatch detector | 0.90 | 0.95 | 10 | **0.556** | 0.641 | **qualifies** |
-| In-world trash talk (`say`) | 0.75 | 0.95 | 46 | **0.519** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 47 | **0.512** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 34 | **0.508** | 0.529 | **qualifies** |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 45 | 0.438 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 47 | 0.437 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 14 | 0.437 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 19 | 0.377 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 29 | 0.322 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 46 | 0.320 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Rival-recon dashboard tab | 0.80 | 0.97 | 37 | **0.561** | 0.582 | **qualifies** |
+| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 48 | **0.558** | 0.574 | **qualifies** |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 47 | **0.519** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 48 | **0.512** | 0.527 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 35 | **0.509** | 0.529 | **qualifies** |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 15 | 0.440 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 46 | 0.438 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 48 | 0.437 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 20 | 0.378 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 30 | 0.323 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 47 | 0.321 | 0.330 | INELIGIBLE — ceiling<0.5 |
 
-_Scored 2026-08-21 (iter 72). `tc` +1 (0.60.0 deployed). **Band-refresh timing awareness SHIPPED**
-as 0.60.0 and leaves the table — see Done. Note its slice-1 value was OVERSTATED in the commit
-message: 22 distinct emptied chests, not the thousands the sighting-count implied (see
-decisions.log iter 72). Remaining band work — timing gathering to the cycle — is not queued as a
-separate item yet; raise it if it proves worth more than the leaders below._
+_Scored 2026-08-21 (iter 73). `tc` +1 (0.61.0 deployed). **The expectation/reality mismatch
+detector SHIPPED** as 0.61.0 and leaves the table — see Done. It earned its place immediately: on its
+first run over real data it found that 90% of our pickups fail silently. **Next pass takes that
+finding, not a list item** — `overburdened` is a server refusal we never learned from._
 
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
 
 ## Open
 
-- [ ] **Expectation/reality mismatch detector ("did what we predicted actually happen?")**
-  — the bot DECLARES an expectation alongside each decision ("we expect *foo* to happen"),
-  a separate mechanism follows that trail against later frames, and a MISMATCH raises an
-  emergency alert we can watch for. Surfaced in the **Decisions** dashboard tab alongside
-  the reasoning that made the prediction. (operator request 2026-08-21)
-
-  **This would have caught both of the deaths diagnosed the same day, and the duplicate-
-  spend bug, and it is the generalisation of two fixes already shipped:**
-  - `Recruit-15469` (vale) and `Recruit-15484` (mines) both died because a tile was
-    blacklisted on a *stale* frame. The expectation "after `move S` my position becomes
-    (7,35)" was silently violated three ticks running; nothing was watching, and the
-    character was entombed and bled out at 56/56 stamina.
-  - v0.49.0's intent latch is exactly this idea in miniature, scoped to one case: "after
-    `buy club`, a club appears in my inventory". Before it, a stale frame bought six.
-  - v0.50.0's learned-block fix is the same shape again: stop INFERRING from absence,
-    require positive evidence.
-  A general mechanism would have found all three from one place instead of three
-  post-mortems.
-
-  **Shape.** Each `offer()` may carry a `predict` — a small, checkable claim about the next
-  few frames: a position, an inventory delta, a slot filled, a tile destroyed, a status
-  cleared. The verifier reads later frames and resolves each prediction to
-  `confirmed` / `violated` / `expired`, keyed to the decision that made it. That gives:
-  - **A live alarm** on a violation rate that spikes, reusing `steemer/anomaly.py`, which
-    already watches the action-error stream for exactly this kind of signal.
-  - **A per-branch confidence score** — which branches predict well and which are lying to
-    us. Pairs naturally with `steemer/shadow.py`: shadow answers "does this branch ever
-    WIN a tick", this answers "when it wins, does what it expected actually happen".
-  - **The Decisions tab** showing ✓/✗ against each recorded reason, so the operator can see
-    a character's beliefs failing in real time rather than reconstructing it afterwards.
-
-  **The trap to design around:** frames are STALE, so "it has not happened yet" must not
-  read as "it did not happen". Every prediction needs a grace window before it can be
-  called violated — that confusion is the direct cause of both deaths above, and the
-  detector must not repeat the bug it exists to catch. (Same lesson as
-  `shadow.MIN_DECISIONS` and the v0.48.0 warm-up misread.)
-
-  **Scoring:** good_idea 0.90 (it generalises three separate fixes; it is the only proposal
-  on this list that would surface unknown-unknown misbehaviour rather than a bug we already
-  suspect; and it is directly operator-visible in the dashboard); risk_to_bot 0.95 (the
-  verifier is read-only and the alarm is advisory — the only bot-side change is carrying an
-  optional `predict` on offers, which cannot alter a decision).
 
 - [ ] **Exploration matrix (B) — the experiment arm** *(OVERRIDE-ONLY; touches live play)* —
   exploring-role characters spend a budgeted fraction of idle ticks probing the top untried cells
@@ -278,6 +234,19 @@ is misleading to scan, and the every-pass check that the score table covers ever
 item is only checkable when the two are separated. Entries below keep their full
 original text; the short `-> module (date, @ run)` lines are the older ledger format
 and are kept as-is rather than rewritten.
+
+- [x] **Expectation/reality mismatch detector** — SHIPPED `steemer/expectation.py` +
+  `explorer/0.61.0`, 2026-08-21, run #138. The bot derives a checkable claim from each action
+  it sends (move/pickup/buy/equip/sell) and resolves it against later frames as
+  confirmed / violated / **expired** — the third value being the whole design, since frames are
+  stale and "not yet" must never read as "did not". Alarms are PER ACTION FAMILY (a rare broken
+  family hides under a common healthy one in any pooled rate) and refuse to rule on a small
+  sample. They print live and persist as `bot_anomaly` rows the dashboard already surfaces.
+  22 tests, 19 mutants killed.
+  **It earned its place on its first run over real data:** across 20,000 frames it found that
+  `pickup` confirms 90 times against 811 violations — 90% of our pickups fail silently, because
+  `overburdened` (1,164 events) is reported as an EVENT rather than an action_error and nothing
+  ever learned from it. That is now the next lever.
 
 - [x] **Band-refresh timing awareness** — SHIPPED `explorer/0.60.0`, 2026-08-21, run #137.
   Each field frame carries `next_refresh: {band, in_ticks}` and we had ignored it entirely.

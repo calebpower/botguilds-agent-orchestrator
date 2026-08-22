@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.60.0` on **run #137**, repo HEAD `1f9d220`, branch `main` (pushed).
+- **Live:** `explorer/0.61.0` on **run #138**, repo HEAD `f316950`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -38,6 +38,19 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
      walks a character home from 100 tiles out.
   3. **Remembered TERRAIN is durable; remembered CONTENTS are not** (0.56.0). Chests are scoped
      to tiles seen THIS run, because a chest gets opened and refills on the band's schedule.
+- **🔎 THE BOT NOW CHECKS ITS OWN BELIEFS (0.61.0, `steemer/expectation.py`).** It derives a
+  checkable claim from every action it sends and resolves it against later frames as
+  confirmed / violated / **expired**. `expired` is not `violated` — frames are stale and
+  "not yet" must never read as "did not" (that inference killed two characters). Alarms are
+  PER ACTION FAMILY and print + persist as `bot_anomaly` rows.
+- **⚠ NEXT LEVER, found by that detector: 90% OF OUR PICKUPS FAIL SILENTLY.** `pickup`
+  confirms 90 against **811 violations** over 20,000 frames. `overburdened` fires 1,164 times
+  against 283 real pickups — and the server reports it as an **EVENT, not an action_error**,
+  so every error query ever run came back clean. The shed logic keys off `carry.used >= cap`,
+  which is NEVER true (0 of 8,200 char-frames near the cap): `overburdened` means "this ITEM
+  does not fit" by BULK. We re-issue a doomed pickup and nothing learns.
+  **General lesson: the server refuses through TWO channels — action_errors AND events — and
+  we had only ever watched one.**
 - **BANDS REFRESH — now DETECTED (0.60.0), and the rule it bought.** Each field frame carries
   `next_refresh: {band, in_ticks}`; a refresh is a change in the band NUMBER **or** a JUMP UP in
   `in_ticks` (a countdown only falls). Per world; ~10 boundaries per 14,000 ticks. Loot swings

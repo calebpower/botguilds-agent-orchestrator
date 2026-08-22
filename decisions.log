@@ -3460,3 +3460,51 @@ So the change is correct, cheap and worth keeping — 22 chests refilling on a f
 real income we were leaving — but it is a modest lever, not the large one I described. The
 error was reporting a rate as a population; distinct-count and sighting-count are different
 questions and I answered the easier one.
+
+================================================================================
+iter 73 — 2026-08-21 — the expectation/reality mismatch detector (0.61.0, run #138)
+================================================================================
+FIRST, 0.60.0 MEASURED HONESTLY. Chest-beelines rose 0.0144 -> 0.0509/frame and 3 of 9 opens
+returned `nothing_to_open` (so the refill hypothesis is right roughly two-thirds of the time,
+at a bounded 20-tile cost). But NORMALISED it is a wash: chest sightings rose 2.5x with the
+band, and opens per 1,000 chest sightings actually FELL, 11.13 -> 9.61. 0.60.0's economic
+effect is within band noise — exactly what the 22-distinct-chest correction predicted. It
+fires; it does not move a needle.
+
+0.61.0 = the detector, an operator request the last four passes each argued for. Predictions
+are DERIVED from the action we send (move/pickup/buy/equip/sell), never declared at the
+offer site: a prediction beside the offer is a second thing to keep in sync, and hand-written
+predictions cover only the cases someone thought of, which is the failure being fixed. An
+action we cannot check gets NO prediction — a detector padded with unfalsifiable claims reads
+as healthy.
+Three-valued on purpose. Frames are STALE, so "not yet" must never read as "did not", and
+that confusion is the direct cause of the two entombment deaths. Grace window; `expired` is
+NOT `violated`; expiry reported alongside the confirmation rate rather than folded in.
+
+IT FOUND A REAL DEFECT ON ITS FIRST RUN OVER REAL DATA — the entire point of the item.
+Across 20,000 frames of #137: `move` confirms 29,779/29,779; `pickup` confirms 90 against
+811 VIOLATIONS, a 10% success rate.
+THE CAUSE, and why nothing had seen it: `overburdened` fires 1,164 times against only 283
+real `pickup` events, and the server reports it as an EVENT, not an action_error — so every
+error query I have run came back clean. Worse, the strategy's shed-when-overburdened logic
+keys off `carry.used >= cap`, which is NEVER true (0 of 8,200 char-frames within 2 of the
+cap): `overburdened` means "this ITEM does not fit" by BULK, not "the pack is full". We
+re-issue a doomed pickup and nothing learns. Same shape as the pre-0.50 learned-block bug.
+=> NEXT LEVER, and it is a finding rather than a hunch because this tool produced it.
+
+DESIGN CORRECTION MADE MID-BUILD: the alarm is PER ACTION FAMILY. The same first run showed
+why — `move` resolved 29,779 times against `pickup`'s 901, so a pickup failing nine times in
+ten was 2.6% of the total and would never trip an aggregate threshold. The signal lives in
+the family (as in anomaly.py). It also refuses to rule on a small sample per family, which is
+`shadow.MIN_DECISIONS`' lesson restated.
+
+NEARLY SHIPPED A CRASH: `_report_anomaly` does `a["subtype"]`, and my alarm dict had none —
+a KeyError INSIDE on_frame, i.e. the observability tool taking the bot down. Caught before
+deploy, pinned by two tests, one driving the REAL GuildBot._report_anomaly rather than a copy
+of its expectations. That is the un-enumerated-caller failure of the 0.51.0 segfault again.
+
+GATE 702 reaper / 694 local; 22 tests, 19 mutants killed.
+LIVE STATUS: run #138 is in a STARVED BAND (0 pickups/buys/equips/sells in 3,636 frames; only
+move and embark), so the detector is correctly SILENT rather than unproven — the mechanism is
+evidenced by the 20k-frame replay. Watch for `expectation_mismatch:*` anomalies when loot
+returns.
