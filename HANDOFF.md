@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.62.0` on **run #139**, repo HEAD `447532d`, branch `main` (pushed).
+- **Live:** `explorer/0.63.0` on **run #140**, repo HEAD `b566d80`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -43,6 +43,14 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   confirmed / violated / **expired**. `expired` is not `violated` — frames are stale and
   "not yet" must never read as "did not" (that inference killed two characters). Alarms are
   PER ACTION FAMILY and print + persist as `bot_anomaly` rows.
+- **⚠ CHECK WHAT WE SELL BEFORE BELIEVING A CHAIN IS BLOCKED. Four for four.** `_should_sell`
+  has a catch-all branch — "nothing recognised -> bank it" — and every mechanic we unlock adds
+  an item it silently misfiles. It has now eaten lumber+ingots (fixed 0.46), `bone` and raw
+  `ore` (0.59), and **74 TOMES** (0.63): ring 22, step 16, field 14, veil 13, bolt 9, sold for
+  36-44 gold each against a 120-150 shop price, most recently runs #130/#135/#137 — while
+  "magic is unaffordable" sat at the top of the wishlist for fifty passes and we had never
+  learned a single spell. 0.63.0 keeps tomes under `spell_cap` and `use`s them before the sell
+  step. **Casting is still unbuilt** — a form in a head is not a spell thrown.
 - **⚠ THE SERVER REFUSES THROUGH TWO CHANNELS — action_errors AND EVENTS.** We watched only
   one for the whole project. `overburdened` is an EVENT, so 1,164 refused pickups were
   invisible to every action_error query while a character burned hundreds of ticks. **When an

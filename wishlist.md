@@ -55,24 +55,24 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| Rival-recon dashboard tab | 0.80 | 0.97 | 38 | **0.562** | 0.582 | **qualifies** |
-| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 49 | **0.558** | 0.574 | **qualifies** |
-| In-world trash talk (`say`) | 0.75 | 0.95 | 48 | **0.520** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 49 | **0.512** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 36 | **0.510** | 0.529 | **qualifies** |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 16 | 0.443 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 47 | 0.438 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 49 | 0.438 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 21 | 0.379 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 31 | 0.323 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 48 | 0.321 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Rival-recon dashboard tab | 0.80 | 0.97 | 39 | **0.562** | 0.582 | **qualifies** |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 49 | **0.520** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 50 | **0.512** | 0.527 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 37 | **0.510** | 0.529 | **qualifies** |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 17 | 0.445 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 48 | 0.439 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 50 | 0.438 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 22 | 0.380 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 32 | 0.323 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 49 | 0.321 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Magic — CASTING (0.63 keeps/learns forms; casting unbuilt) | 0.90 | 0.85 | 1 | -0.191 | 0.574 | clears at tc=11 |
 
-_Scored 2026-08-21 (iter 74). `tc` +1 (0.62.0 deployed). This pass's lever came from the
-v0.61.0 detector's own finding rather than the list. **Two items have now led for four passes
-without being built** — rival-recon tab and magic/cast, separated by 0.003, which is noise in a
-score with two significant figures. Next pass takes ONE of them; operator preference decides,
-and absent a preference I will take `cast`, since it is a whole mechanic we have never used and
-the operator's stated direction is to master mechanics and LEVEL characters._
+_Scored 2026-08-21 (iter 75). `tc` +1 (0.63.0 deployed). **Magic re-enters as a NEW item at
+tc=1** — the acquisition half shipped (keep + learn), so what remains is casting, and it restarts
+the clock honestly rather than inheriting fifty passes of age it did not earn. That leaves
+**rival-recon tab (0.562) as the only qualifying item that has never been built**, and it has now
+led or co-led for five passes. Next pass takes it unless the loop turns up something on the
+critical path._
 
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
@@ -221,9 +221,20 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   known to be breakable, and surface "maybe break this?" candidates. Could drive
   active game discovery (attack-the-obstacle probes) rather than just routing
   around. (operator request)
-- [ ] **Magic / spellweaving (`cast`)** — the direct counter to the poison that
-  dominates status-damage; a whole unused mechanic (M4). Needs mana/implement +
-  attunement discovery.
+- [ ] **Magic — CASTING** *(the acquisition half SHIPPED as 0.63.0; this is what remains)* —
+  `cast {spell: form, essence, target[, focus]}`. **Aether is FREE** — no attunement, no
+  focus, and it is the default if no essence is named — so an aether cast of a learned form
+  needs nothing but mana and stamina. Not every form x essence exists (`no_such_working`),
+  which is a learn-by-rejection grid exactly like the forge recipes.
+  **Prerequisite is now satisfiable:** 0.63.0 stops us selling tomes and `use`s them to learn
+  a form. Wait until a character actually holds a form before building this, or it ships inert
+  the way v0.54.0 did.
+  Scoring: good_idea 0.90 (a whole mechanic we have never used, and ranged damage is the
+  levelling lever the operator's direction asks for); risk_to_bot 0.85 (touches live combat
+  and spends mana/stamina; `no_such_working` and friendly fire are real — rings and fields hit
+  our own characters too).
+
+
 - [ ] **Rival-awareness dashboard panel** — surface the spectate `intel` (us vs
   rivals: size, levels, gear) on the web UI.
 - [ ] **Player market (`list` / `buy_listing`)** — we only use the NPC shop; the
@@ -236,6 +247,15 @@ is misleading to scan, and the every-pass check that the score table covers ever
 item is only checkable when the two are separated. Entries below keep their full
 original text; the short `-> module (date, @ run)` lines are the older ledger format
 and are kept as-is rather than rewritten.
+
+- [x] **Magic — ACQUIRING FORMS (tomes)** — SHIPPED `explorer/0.63.0`, 2026-08-21, run #140.
+  The block was never cost. **We had sold 74 tomes** (ring 22, step 16, field 14, veil 13,
+  bolt 9) for 36-44 gold apiece against a 120-150 shop price, most recently on runs #130,
+  #135 and #137, and had never learned a single spell. A tome carries `use`, not `equip`, so
+  `_should_sell` filed it under "pure loot -> bank it" — the fourth scarce chain input lost to
+  that same default. Now kept while under `spell_cap` and `use`d before the sell step, with
+  (character, tome_kind) learn-by-rejection. 12 tests, 10 mutants killed.
+  **Casting remains unbuilt** and is back on the Open list at tc=1.
 
 - [x] **Expectation/reality mismatch detector** — SHIPPED `steemer/expectation.py` +
   `explorer/0.61.0`, 2026-08-21, run #138. The bot derives a checkable claim from each action

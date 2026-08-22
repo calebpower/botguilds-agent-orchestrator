@@ -3549,3 +3549,37 @@ TWO TEST-CRAFT NOTES, both caught by mutation rather than by reading:
    left it green. THIRD TIME mutation testing has caught me doing this (VEIN_SEEK_RANGE,
    SCARCE_LONE_KEEP, now OVERBURDENED_TTL). It is a habit, not three accidents: when a test
    needs a magnitude, HARDCODE the policy claim and pin the constant's band separately.
+
+================================================================================
+iter 75 — 2026-08-21 — magic was never priced out; we were SELLING it (0.63.0, run #140)
+================================================================================
+Took the long-standing wishlist leader (magic/cast, four passes at the top). I expected the
+lever to be "afford a tome". It was not.
+
+**WE HAVE SOLD 74 TOMES.** tome_ring x22, tome_step x16, tome_field x14, tome_veil x13,
+tome_bolt x9 — most recently runs #130/#135/#137 — for **36-44 gold apiece** against a shop
+price of 120-150. Each teaches a spell FORM by being `use`d (docs/06). `learned` events in
+our entire history: ZERO. Same leak as `bone` and raw `ore`, in the same branch: a tome
+carries `use`, not `equip`, so `_should_sell` files it under "pure loot -> bank it".
+
+0.63.0: keep a tome while the character can still learn from it, and `use` it BEFORE the
+sell step. Ordering is the fix — selling runs first for anything it calls loot, which is how
+74 reached the counter. Bounded: at `spell_cap` a new form FORGETS the oldest, so there a
+tome is genuinely surplus; a frame without `spell_cap` reads "no room" rather than "room for
+one" (an unknown capability is not a guess to act on). Learn-by-rejection on (char, kind)
+since INT gates which tomes a character may use; `use` also drinks potions (2,582 sent), so
+a failed potion condemns nothing.
+NOT CLAIMED: that magic works. A form in a head is not a spell thrown. Casting is the next
+slice and now has a satisfiable prerequisite.
+GATE 723 reaper / 715 local; 12 tests, 10 mutants killed.
+
+ALSO MEASURED: 0.62.0's overburdened fix is still UNEXERCISED — run #139 was another starved
+band (items/frame 0.043), 65 pickups, 71% of them landing, and ZERO overburdened events. Not
+a failure signal; pre-recorded as such last pass so it would not be misread this pass.
+
+THE PATTERN NOW WORTH NAMING, because it is four for four: bone, raw ore, tomes — and lumber
+and ingots back in v0.46.0 — were all sold as "pure loot" by the same branch of
+`_should_sell`, each one the scarce input to a chain we were simultaneously blocked on. The
+branch is a DEFAULT ("nothing recognised -> bank it") and every new mechanic we unlock adds
+an item it silently misfiles. Next time a chain looks blocked on supply, CHECK WHAT WE SELL
+before assuming we cannot get it.
