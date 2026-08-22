@@ -3789,3 +3789,36 @@ THIRD INERT SHIPMENT (0.48 misread as inert but wasn't; 0.54 genuinely inert; 0.
 all three shared one shape: CODE THAT WAS CORRECT AND NEVER REACHED. Green tests measure the
 code you call, not the code the bot runs. When a fix shows no effect, FIRST ask whether it
 executed — before interpreting the numbers at all.
+
+================================================================================
+iter 80 — 2026-08-22 — magic was locked out by our own XP policy (0.67.0, run #146)
+================================================================================
+VERIFICATION FIRST: the tome chain finally had something to act on. Run #145 dropped TWO
+tomes (tome_field, tome_bolt) — the first since 0.63 shipped six deploys earlier. We picked
+them up and KEPT them: **zero tomes sold**, against 74 sold across project history. 0.63.0
+works. We then issued `use` on exactly those item_ids. The server answered
+`stat_requirement` FIVE TIMES.
+Every link works except the stat — and the stat was never coming. `XP_PRIORITY` is
+("vit","end","str"); INT IS NOT IN IT. INT gates which tomes a char may use (docs/06) plus
+max_mana, spell_cap and essence_cap. With INT at its starting 1-2 there is no route to a
+spell however many tomes we keep. MAGIC WAS LOCKED OUT BY OUR OWN XP POLICY, NOT BY THE GAME.
+
+0.67.0 raises INT for the character that has DEMONSTRABLY been refused — carrying a tome the
+server already turned it away from. Not "holds a tome": an unrefused tome may simply not have
+been tried yet, and spending survival stats on a guess is how the poison-death arc began. The
+refusal is already recorded (0.63.0) and retry-on-growth already built (0.65.1), so the loop
+closes with no new machinery and no cost to a character not carrying a tome. Survival
+ordering preserved intact beneath INT. Both v0.22.0 guards kept and tested (stat cap,
+affordability — returning an unaffordable stat is why spend_xp once logged 0 forever).
+GATE 775 reaper / 766 local; 10 tests, 8 mutants killed.
+
+*** MEASUREMENT DISCIPLINE — I BROKE IT TWICE IN ONE PASS ***
+I alarmed on "forging has stopped entirely" (0 attempts) and "terrain_hit collapsed 519 -> 8",
+and chased both hard. BOTH WERE ARTIFACTS OF SAMPLING A RUN IN ITS FIRST MINUTES. Full-run
+figures: terrain_hit 114.6 -> 101.3 per 10k, trees destroyed 125 -> 115, forge attempts
+resumed. Nothing had stopped.
+This project already encodes the lesson — `shadow.MIN_DECISIONS` exists because v0.48.0 was
+declared inert from 28 offers — but I applied it only to the shadow harness and not to ad-hoc
+queries. RULE: a run younger than ~20k frames cannot support a claim that something STOPPED;
+re-measure at full length before diagnosing. The cost this time was only my own time, but the
+same haste produced a false regression diagnosis in iter 71.

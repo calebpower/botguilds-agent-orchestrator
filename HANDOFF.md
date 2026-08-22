@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.66.1` on **run #145**, repo HEAD `f78238a`, branch `main` (pushed).
+- **Live:** `explorer/0.67.0` on **run #146**, repo HEAD `8568444`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -43,6 +43,18 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   confirmed / violated / **expired**. `expired` is not `violated` — frames are stale and
   "not yet" must never read as "did not" (that inference killed two characters). Alarms are
   PER ACTION FAMILY and print + persist as `bot_anomaly` rows.
+- **🔮 THE MAGIC CHAIN IS ONE STAT FROM WORKING (0.67.0).** Run #145 dropped two tomes — the
+  first since 0.63 — and every link held: kept (zero sold, against 74 historically), `use`
+  issued on exactly those item_ids, and the server replied **`stat_requirement` five times**.
+  `XP_PRIORITY` was `("vit","end","str")` — **INT was not in it at all**, and INT gates which
+  tomes you may use, `max_mana`, `spell_cap` and `essence_cap`. Magic was locked out by our
+  own XP policy, not by the game. 0.67.0 raises INT **only** for a character carrying a tome
+  it has already been refused (an untried tome is a guess, and survival stats are the cost).
+  **Watch for: `learned` events, non-empty `spells`, then casting.**
+- **⚠ A RUN YOUNGER THAN ~20k FRAMES CANNOT SUPPORT "SOMETHING STOPPED".** I raised two false
+  alarms in one pass ("forging has stopped entirely", "terrain_hit collapsed 519→8") from
+  minutes-old samples; full-run figures were unremarkable (terrain_hit 114.6→101.3/10k).
+  `shadow.MIN_DECISIONS` exists for exactly this — apply it to ad-hoc queries too.
 - **⚠⚠ WHEN A FIX SHOWS NO EFFECT, FIRST ASK WHETHER IT EXECUTED.** v0.64.0's proof rule
   never ran live for TWO versions: event parsing sat inside `_field()`, village frames route
   straight to `strategy.village()`, and **every `forged` event arrives on a village frame**.
