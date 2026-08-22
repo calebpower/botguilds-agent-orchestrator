@@ -3714,3 +3714,20 @@ GATE 750 reaper / 741 local; 13 new tests, 13 mutants killed across both version
 TEST-CRAFT: my first tome draft poked `_stat_total` directly and failed because village()
 refreshes that cache FROM THE CHARACTER FRAME every visit — the fixture was setting a value
 the code overwrites. Driving it through real `stats` is both correct and a better test.
+
+*** CORRECTION to iter 78: the 0.64.0 "confirmation" was WRONG ***
+I reported forge success rising 35% -> 68% and forged events quadrupling. Both figures
+counted RIVAL forges. The `forged` event stream is world-wide, and run #141's forged items
+included pickaxe x5 and sickle x3 — products we never attempted. Filtering to OUR eids:
+    run #129  15 actions ->  5 ours  (33%)
+    run #140  23 actions ->  6 ours  (26%)   [pre-0.64]
+    run #141  19 actions ->  4 ours  (21%)   [0.64]
+    run #143  23 actions ->  4 ours  (17%)   [0.65]
+So our forge success has NOT improved; it has drifted DOWN, and output is flat at 4-6 items
+per run. 0.64.0 remains structurally right — a one-strike ban on a noisy signal is a ratchet
+— but it bought no measured gain, and relaxing the ban naturally spends more attempts on
+recipes that fail, which is part of the decline.
+THE MISTAKE IS ONE I HAVE MADE BEFORE AND WRITTEN DOWN BEFORE: `eid` is a world-wide
+namespace and event streams carry every guild's actions. I filtered by eid correctly for
+deaths (iter 77) and then failed to for forges one pass later. Filtering by ownership is not
+a step to remember case by case; for any event-derived metric it is the FIRST step.

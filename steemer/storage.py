@@ -126,6 +126,24 @@ class Storage:
             out.setdefault(world, {})[(int(x), int(y))] = kind
         return out
 
+    def record_learned(self, topic: str, fact: str) -> None:
+        """Persist one PROVEN fact the strategy worked out in play.
+
+        Idempotent by primary key, so re-proving costs nothing. Positive facts only -- see
+        the note on the `learned` table: a persisted FAILURE would carry a wrong belief
+        across every future run, and `wrong_materials` has already been shown to be
+        unreliable."""
+        sql = ("INSERT INTO learned(topic, fact, proved_at) VALUES(?,?,?) "
+               "ON CONFLICT(topic, fact) DO NOTHING" if self.conn.dialect == "sqlite"
+               else "INSERT IGNORE INTO learned(topic, fact, proved_at) VALUES(?,?,?)")
+        self.conn.execute(sql, (topic, fact, time.time()))
+        self._tick_commit()
+
+    def load_learned(self, topic: str) -> set[str]:
+        """Every fact proven for a topic, across all previous runs."""
+        cur = self.conn.execute("SELECT fact FROM learned WHERE topic=?", (topic,))
+        return {r[0] for r in cur.fetchall()}
+
     def record_actions(self, tick: int, actions: Iterable[dict[str, Any]]) -> None:
         rows = [(tick, a.get("char_uid"), a.get("action"), json.dumps(a), self.run_id)
                 for a in actions]

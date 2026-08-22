@@ -422,6 +422,15 @@ CREATE TABLE IF NOT EXISTS tiles_seen (
     last_tick INTEGER, base TEXT,
     PRIMARY KEY (world, x, y)
 );
+-- v0.66.0: knowledge the STRATEGY proves in play and must not re-learn every deploy.
+-- Only POSITIVE facts belong here. Failures are deliberately excluded: `wrong_materials`
+-- is not deterministic in what we key on (see explorer.py _forge_proven), so a persisted
+-- failure would carry a wrong belief across runs forever, which is the mistake v0.55.0
+-- made with chest contents.
+CREATE TABLE IF NOT EXISTS learned (
+    topic TEXT, fact TEXT, proved_at REAL,
+    PRIMARY KEY (topic, fact)
+);
 CREATE TABLE IF NOT EXISTS decisions (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     tick INTEGER, world TEXT, char_uid TEXT,
@@ -501,6 +510,10 @@ CREATE TABLE IF NOT EXISTS tiles_seen (
     world VARCHAR(255), x INT, y INT, kind VARCHAR(255), sprite INT,
     last_tick INT, base TEXT,
     PRIMARY KEY (world, x, y)
+);
+CREATE TABLE IF NOT EXISTS learned (
+    topic VARCHAR(64), fact VARCHAR(255), proved_at DOUBLE,
+    PRIMARY KEY (topic, fact)
 );
 CREATE TABLE IF NOT EXISTS decisions (
     seq INT AUTO_INCREMENT PRIMARY KEY,

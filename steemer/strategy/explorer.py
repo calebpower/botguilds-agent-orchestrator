@@ -824,7 +824,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.65.1"
+    version = "explorer/0.66.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -883,6 +883,7 @@ class Explorer:
         # So: proof outranks refusal. A recipe that has ever worked is never blacklisted,
         # and one that has not needs FORGE_FAIL_LIMIT refusals before we give up on it.
         self._forge_proven: set[tuple[str, int, int]] = set()
+        self._forge_hydrated = False
         self._forge_fails: dict[tuple[str, int, int], int] = defaultdict(int)
         # v0.63.0: (uid, tome_kind) the server refused -- INT gates which tomes a character
         # may use, so a refusal is durable information about that character.
@@ -981,6 +982,7 @@ class Explorer:
         chars = frame.get("chars", [])
         gold = guild.get("gold", 0)
         self._learn_prices(frame)
+        self._hydrate_forge(bot)
 
         for char in chars:
             uid = char["char_uid"]
@@ -1137,9 +1139,7 @@ class Explorer:
             if bot.recently_forged(uid):
                 proven = self._forge_attempt.pop(uid, None)
                 if proven is not None:
-                    self._forge_proven.add(proven)
-                    self._forge_failed.discard(proven)
-                    self._forge_fails.pop(proven, None)
+                    self._prove_forge(bot, proven)
             forge = self._choose_forge(inv, eqp, char.get("stamina", 0))
             if forge is not None:
                 recipe, item_ids, why = forge
@@ -2125,6 +2125,62 @@ class Explorer:
                 keep.update(it["item_id"] for it in g)
         return keep
 
+    FORGE_TOPIC = "forge_recipe"
+
+    @staticmethod
+    def _recipe_fact(recipe: tuple[str, int, int]) -> str:
+        return "%s:%d:%d" % recipe
+
+    @staticmethod
+    def _fact_recipe(fact: str) -> tuple[str, int, int] | None:
+        parts = fact.split(":")
+        if len(parts) != 3:
+            return None
+        try:
+            return parts[0], int(parts[1]), int(parts[2])
+        except ValueError:
+            return None
+
+    def _hydrate_forge(self, bot: "Any") -> None:
+        """Load recipes proven in EARLIER runs, once per process.
+
+        Without this every deploy re-walks the ladder from scratch, and run #143 shows the
+        bill: one character spent 20 of the run's 23 forge attempts rediscovering that its
+        affordable `shield_iron` quantities all fail -- something run #129 had already
+        proven, since shield_iron needs (3, 1) and it held two ingots. We redeploy several
+        times a day, so that tuition is paid over and over.
+
+        Best-effort, like the map hydration it mirrors: no storage, a read-only replay or an
+        older schema must still start, just ignorant as before.
+        """
+        if self._forge_hydrated:
+            return
+        self._forge_hydrated = True
+        st = getattr(bot, "storage", None)
+        if st is None:
+            return
+        try:
+            for fact in st.load_learned(self.FORGE_TOPIC):
+                recipe = self._fact_recipe(fact)
+                if recipe is not None:
+                    self._forge_proven.add(recipe)
+        except Exception as e:      # pragma: no cover - exercised by the None path
+            print(f"[forge] could not load proven recipes ({e}) — starting fresh",
+                  flush=True)
+
+    def _prove_forge(self, bot: "Any", recipe: tuple[str, int, int]) -> None:
+        """Record a proven recipe in memory AND in storage, so the next deploy inherits it."""
+        self._forge_proven.add(recipe)
+        self._forge_failed.discard(recipe)
+        self._forge_fails.pop(recipe, None)
+        st = getattr(bot, "storage", None)
+        if st is None:
+            return
+        try:
+            st.record_learned(self.FORGE_TOPIC, self._recipe_fact(recipe))
+        except Exception as e:      # pragma: no cover
+            print(f"[forge] could not persist a proven recipe ({e}) — continuing", flush=True)
+
     def _choose_forge(self, inv: list[dict[str, Any]], eqp: dict[str, Any],
                       stamina: int) -> tuple[tuple[str, int, int], list[Any], str] | None:
         """Pick a forge to attempt: ``((product, n_ingot, n_lumber), item_ids, why)``.
@@ -2147,7 +2203,13 @@ class Explorer:
         for product in FORGE_PRODUCTS:
             if product in worn or self._wont_fit(product):
                 continue
-            for n_ing, n_lum in FORGE_RECIPES:
+            # v0.66.0: once a product has a PROVEN recipe, that is the only quantity worth
+            # sending. Walking the rest of the ladder anyway is what cost run #143 thirteen
+            # attempts on `shield_iron` from a character holding two ingots, when #129 had
+            # already proven it needs three. If the proven quantity is unaffordable right
+            # now, this product is simply not on today's menu -- move to the next one.
+            proven = [r for r in FORGE_RECIPES if (product, *r) in self._forge_proven]
+            for n_ing, n_lum in (proven or FORGE_RECIPES):
                 if (product, n_ing, n_lum) in self._forge_failed:
                     continue
                 if len(ingots) < n_ing or len(lumber) < n_lum:
