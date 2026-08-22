@@ -146,9 +146,15 @@ def test_a_separated_char_in_a_dangerous_world_MOVES_toward_its_ally():
     """The ally is placed WEST on purpose. The frontier push also moves north (scored 2.5),
     so an ally to the NORTH would make "moved north" ambiguous between cohesion and
     ordinary exploring — the first version of this test had exactly that hole. West is
-    unambiguous: nothing else in the ladder sends an idle character that way."""
+    unambiguous: nothing else in the ladder sends an idle character that way.
+
+    v0.73.0 moved the separated character from 10 tiles out to 6. Ten tiles is no longer a
+    rally we start at all — beyond COHESION_RANGE it cannot finish inside a median field
+    stint, so the character explores instead, which is the point of the change. The claim
+    under test is unchanged: a separated character in a dangerous world closes on its ally.
+    `test_cohesion_range.py` holds the other half — that a rally out of reach is declined."""
     bot = _bot()
-    far, near = _char("c1", (10, 0)), _char("c2", (0, 0))
+    far, near = _char("c1", (6, 0)), _char("c2", (0, 0))
     _mark_dangerous(bot, "mines", 10)
     acts = bot.on_frame(_frame([far, near]))
     mine = [a for a in acts if a.get("char_uid") == "c1"]

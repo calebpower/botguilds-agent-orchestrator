@@ -466,6 +466,23 @@ COHESION_PRED_DENSE = 2    # a world with this many melee predators in view coun
 # score, same income — the formation just closes while we work.
 COHESION_DETOUR = 10       # ...but only if such loot is within this far, so forming up can
                            # never send a character across the map past nearer loot.
+# v0.73.0 — 0.72.0 fixed the mutual pursuit and the group STILL did not converge. Measured
+# on #150 vs #151: group spread median 43 -> 39 tiles, frames with the group tight
+# (spread<=6) 1.7% -> 1.3%, while cohesion's share of CHOSEN decisions went UP, 11.6% ->
+# 17.6%. The centre rally converges in simulation and not in play, because a rally is not
+# a one-tick action: it needs uninterrupted ticks, and a FIELD STINT IS MEDIAN 9-10 TICKS
+# (only 1.6-3.4% run to 60). Distance to the group centre is median 13, p75 22 — so for
+# most characters most of the time the rally CANNOT finish before the stint ends, and the
+# movement is spent for nothing. This is the same defect as the over-long ore errand: an
+# errand must be sized against uninterrupted time, not against how far the target is.
+# The fix is not another pathing change. It is to attempt the rally ONLY when it can
+# actually complete, and otherwise leave the character to do something productive.
+# PREMISE(2026-08-22, a rally is worth starting only if a median field stint can close it):
+#   SELECT ... -- see tools/field_stints.py; re-derive COHESION_RANGE from the stint median
+COHESION_RANGE = 8         # rally only from within this far of the centre: ~8 ticks of
+                           # walking, inside the median stint. Held 34.6% of the time on
+                           # #151, so cohesion becomes an occasional achievable action
+                           # instead of a permanent unachievable one.
 PRED_SPACING_RADIUS = 2    # v0.37.0: step away from a MELEE predator this close (not yet
 #   adjacent) BEFORE it lands the first hit — the anti-stuck lever (see the act() block).
 # v0.38.0 MODE-GATED SPACING: 0.37 spaced at a flat 3.0 in EVERY band, which cost ~-49%
@@ -879,7 +896,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.72.0"
+    version = "explorer/0.73.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1658,12 +1675,28 @@ class Explorer:
         allies = [tuple(c["pos"]) for c in frame.get("chars", []) or []
                   if c.get("char_uid") != uid and c.get("pos")]
         form_up = bool(allies) and not homing and self._world_is_dangerous(ctx.world, bot.tick)
+        rally = False
+        centre_gap = 0
         if form_up:
             _gap = min(abs(pos[0] - a[0]) + abs(pos[1] - a[1]) for a in allies)
             # Hysteresis: once closing, keep closing until inside HOLD.
             form_up = _gap > (COHESION_HOLD if uid in self._cohering else COHESION_PULL)
             if not form_up:
                 self._cohering.discard(uid)
+            else:
+                # v0.73.0: the standalone rally is gated on the distance to the CENTRE,
+                # because the centre is what _cohesion_step walks toward. Gating it on the
+                # nearest ally (what 0.72.0 shipped) measures one thing and moves toward
+                # another: a character 5 tiles from an ally would start a rally to a centre
+                # 20 tiles away and never arrive. The centre here is the ALLIES' centroid,
+                # self excluded, matching the helper exactly — the two must agree or the
+                # gate and the stopping rule disagree about when we have arrived.
+                _cx = sum(a[0] for a in allies) // len(allies)
+                _cy = sum(a[1] for a in allies) // len(allies)
+                centre_gap = abs(pos[0] - _cx) + abs(pos[1] - _cy)
+                rally = COHESION_HOLD < centre_gap <= COHESION_RANGE
+                if not rally:
+                    self._cohering.discard(uid)
         if not homing:
             if pos in ctx.loot or pos in ctx.gold:
                 offer({"char_uid": uid, "action": "pickup"}, 6.0, "loot/gold underfoot — grab it")
@@ -1809,19 +1842,16 @@ class Explorer:
                 # rather than displacing income, and it loses outright to spacing (3.0),
                 # the dodge (7.3) and the retreat (8.5). A homing char is exempt (it is
                 # walking to the village); so is a world we have not scouted. ---
-                if form_up:
-                    gap = min(abs(pos[0] - a[0]) + abs(pos[1] - a[1]) for a in allies)
-                    if True:
-                        step = self._cohesion_step(pos, allies, ctx, blocked)
-                        if step is not None:
-                            self._cohering.add(uid)
-                            offer({"char_uid": uid, "action": "move",
-                                   "dir": nav.step_dir(pos, step)}, COHESION_SCORE,
-                                  f"closing on the nearest ally ({gap} away) — dangerous "
-                                  f"world, forming up while it is clear")
-                            productive = True
-                        else:
-                            self._cohering.discard(uid)
+                if rally:
+                    step = self._cohesion_step(pos, allies, ctx, blocked)
+                    if step is not None:
+                        self._cohering.add(uid)
+                        offer({"char_uid": uid, "action": "move",
+                               "dir": nav.step_dir(pos, step)}, COHESION_SCORE,
+                              f"rallying to the group centre ({centre_gap} away, close "
+                              f"enough to arrive within one field stint) — dangerous "
+                              f"world, forming up while it is clear")
+                        productive = True
                     else:
                         self._cohering.discard(uid)
 

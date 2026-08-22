@@ -176,3 +176,84 @@ def test_compare_accepts_runs_of_similar_density(tmp_path):
     r = m.compare(conn, rid, rid, "forged")
     assert r["comparable"] is True
     assert r["band_ratio"] == pytest.approx(1.0)
+
+
+# ---- decision shares: offered, chosen, and merely WANTED -----------------------
+#
+# Written after the correction on 2026-08-22: v0.72.0 was justified by "cohesion was 25% of
+# ALL DECISIONS", a number that came from LIKE-matching `decisions.reasoning`. That column
+# holds the entire trace — the "saw:" observations, every weighed candidate, then "chose:" —
+# so the match counted three different populations as one:
+#
+#   CHOSEN     the candidate that won the tick                            11.6% on run #150
+#   OFFERED    weighed and possibly lost                                  11.8%
+#   WANTED     named in the observations and suppressed before weighing,  +12 points
+#              e.g. "wanted move (closing on the nearest ally (26 away))
+#              but stamina 22 < ~30: resting"
+#
+# The last group never reached the ladder at all, and counting it doubled the apparent cost
+# of the behaviour. These fixtures reproduce all three shapes verbatim.
+
+def _decisions(tmp_path, rows):
+    """`rows` are (reasoning, alternatives) pairs, stored exactly as the bot stores them."""
+    st = Storage(str(tmp_path / "d.db"))
+    st.begin_run("sha", "test/0")
+    for i, (reasoning, alts) in enumerate(rows):
+        st.conn.execute(
+            "INSERT INTO decisions(tick, world, char_uid, action, chosen_json, "
+            "alternatives_json, reasoning, strategy_version, run_id) VALUES(?,?,?,?,?,?,?,?,?)",
+            (i, "mines", "g_us_c1", "move", "{}", json.dumps(alts), reasoning, "test/0",
+             st.run_id))
+    st.conn.commit()
+    return st.conn, st.run_id
+
+
+_WON = ("saw: at (20, 6) hp 30/30 sta 34 carry 0/24\nweighed:\n"
+        "  → [+2.8] move — closing on the nearest ally (5 away)\nchose: move",
+        [{"action": "move", "score": 2.8, "why": "closing on the nearest ally (5 away)",
+          "chosen": True}])
+_LOST = ("saw: at (9, 3) hp 30/30 sta 40 carry 0/24\nweighed:\n"
+         "  → [+4.0] move — moving toward loot\n"
+         "    [+2.8] move — closing on the nearest ally (7 away)\nchose: move",
+         [{"action": "move", "score": 4.0, "why": "moving toward loot", "chosen": True},
+          {"action": "move", "score": 2.8, "why": "closing on the nearest ally (7 away)",
+           "chosen": False}])
+_WANTED = ("saw: at (31, 12) hp 24/24 sta 22; wanted move (closing on the nearest ally "
+           "(26 away)) but stamina 22 < ~30: resting\nweighed:\n"
+           "  → [+0.5] rest — rest (double regen); stamina 22\nchose: rest",
+           [{"action": "rest", "score": 0.5, "why": "rest (double regen); stamina 22",
+             "chosen": True}])
+_UNRELATED = ("saw: at (1, 1)\nweighed:\n  → [+2.5] move — pushing the frontier\n"
+              "chose: move",
+              [{"action": "move", "score": 2.5, "why": "pushing the frontier",
+                "chosen": True}])
+
+
+def test_chosen_counts_only_the_candidate_that_WON(tmp_path):
+    conn, rid = _decisions(tmp_path, [_WON, _LOST, _WANTED, _UNRELATED])
+    assert m.decision_share(conn, rid, "ally", chosen=True, mature=False) == 0.25
+
+
+def test_offered_also_counts_the_candidate_that_LOST(tmp_path):
+    conn, rid = _decisions(tmp_path, [_WON, _LOST, _WANTED, _UNRELATED])
+    assert m.decision_share(conn, rid, "ally", chosen=False, mature=False) == 0.5
+
+
+def test_a_behaviour_SUPPRESSED_before_weighing_counts_as_neither(tmp_path):
+    """The 12-point error, isolated. `_WANTED` names cohesion in its observations and never
+    weighs it: the stamina gate took the tick. Reading the trace text counts it; reading the
+    candidate list does not, and the candidate list is what the ladder actually ran."""
+    conn, rid = _decisions(tmp_path, [_WANTED])
+    assert m.decision_share(conn, rid, "ally", chosen=True, mature=False) == 0.0
+    assert m.decision_share(conn, rid, "ally", chosen=False, mature=False) == 0.0
+    row = conn.execute("SELECT reasoning FROM decisions WHERE run_id=?", (rid,)).fetchone()
+    assert "ally" in row[0], \
+        "fixture no longer reproduces the trap: the trace must MENTION the behaviour"
+
+
+def test_decision_share_refuses_an_immature_run(tmp_path):
+    """Same maturity guard the event rates carry — a share taken minutes after a deploy has
+    twice been reported as a regression."""
+    conn, rid = _decisions(tmp_path, [_WON])
+    with pytest.raises(m.TooEarly):
+        m.decision_share(conn, rid, "ally")

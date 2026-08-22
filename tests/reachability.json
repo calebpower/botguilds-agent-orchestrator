@@ -1,5 +1,5 @@
 {
-  "_note": "exempt_budget is a RATCHET: it may only ever DECREASE. Each exemption is a behaviour whose reachability is asserted only by tests that start downstream of the routing \u2014 the gap that shipped four correct-but-unreachable versions (0.54.0, 0.64.0, 0.67.0, 0.68.0). Lower it by writing a test that drives GuildBot.on_frame, never by raising the number.",
+  "_note": "exempt_budget is a RATCHET: it may only ever DECREASE. Each exemption is a behaviour whose reachability is asserted only by tests that start downstream of the routing — the gap that shipped four correct-but-unreachable versions (0.54.0, 0.64.0, 0.67.0, 0.68.0). Lower it by writing a test that drives GuildBot.on_frame, never by raising the number.",
   "behaviours": {
     "attack adjacent": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
@@ -10,13 +10,10 @@
     "beeline to a gold coin (instant banked gold)": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "closing on the nearest ally (": {
+    "cornered by undead — fighting out (fallback)": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "cornered by undead \u2014 fighting out (fallback)": {
-      "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
-    },
-    "cracking a chest \u2014 direct gold + loot (gold-rush v0.24.0)": {
+    "cracking a chest — direct gold + loot (gold-rush v0.24.0)": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
     "cracking the adjacent chest before dodging the": {
@@ -46,30 +43,33 @@
     "heading to the nearest frontier": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "hurt & cornered \u2014 desperation step to a clear tile (beats resting to death)": {
+    "hurt & cornered — desperation step to a clear tile (beats resting to death)": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
     "learning": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "loot/gold underfoot \u2014 grab it": {
+    "loot/gold underfoot — grab it": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "no goal reachable \u2014 stepping to scout": {
+    "no goal reachable — stepping to scout": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "overburdened \u2014 dropping loot to regain mobility": {
+    "overburdened — dropping loot to regain mobility": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
     "pushing north into unexplored ground": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
+    "rallying to the group centre (": {
+      "through_bot_test": "test_the_bounded_rally_is_reachable_THROUGH_THE_BOT"
+    },
     "snatching the coin underfoot, then fleeing": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "walking to a known vein \u2014 ore is the forge bottleneck": {
+    "walking to a known vein — ore is the forge bottleneck": {
       "through_bot_test": "test_ore_seek_is_reachable_THROUGH_THE_BOT_not_just_through_act"
     }
   },
-  "exempt_budget": 22
+  "exempt_budget": 21
 }

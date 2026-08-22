@@ -50,21 +50,22 @@ with `## Done` unmaintained since 2026-08-20):
   20 score tables — an omission is worse than a wrong number and far harder to notice.
 
 
-Recalculated fresh each pass. `tc` at deploy-minor **50** (`explorer/0.50.1`), counting
+Recalculated fresh each pass. `tc` at deploy-minor **73** (`explorer/0.73.0`), counting
 DEPLOYS since an item was added — a pass that ships no deploy does not advance it.
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| In-world trash talk (`say`) | 0.75 | 0.95 | 61 | **0.523** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 62 | **0.515** | 0.527 | **qualifies** |
-| Magic — CASTING (chain sound, awaiting XP) | 0.90 | 0.85 | 13 | **0.515** | 0.574 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 49 | **0.515** | 0.529 | **qualifies** |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 29 | 0.461 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 60 | 0.441 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 62 | 0.440 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 34 | 0.389 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 44 | 0.327 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 61 | 0.323 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 62 | **0.523** | 0.534 | **qualifies** |
+| Magic — CASTING (chain sound, awaiting XP) | 0.90 | 0.85 | 14 | **0.519** | 0.574 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 63 | **0.515** | 0.527 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 50 | **0.515** | 0.529 | **qualifies** |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 30 | 0.462 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 61 | 0.441 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 63 | 0.440 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 35 | 0.390 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 45 | 0.328 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 62 | 0.323 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 1 | -0.170 | 0.510 | just added |
 
 _Scored 2026-08-22 (iter 85). `tc` +1 (0.72.0 deployed). Lever from measurement again — and this
 one was found by TRACING ONE CHARACTER'S CONSECUTIVE DECISIONS, which no aggregate would have shown:

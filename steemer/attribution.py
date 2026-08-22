@@ -200,3 +200,49 @@ def compare(conn, run_a: int, run_b: int, kind: str, per: int = 10_000,
                     f"NOT COMPARABLE: loot density differs {ratio:.1f}x — this delta is "
                     f"confounded by the band, not attributable to a change"),
     }
+
+# --- decision shares --------------------------------------------------------------------
+#
+# The trap this exists to close, paid for on 2026-08-22: v0.72.0 was justified by "cohesion
+# was 25% of ALL DECISIONS on run #150". It was not. 25% was the share of decision traces in
+# which cohesion appeared as a CANDIDATE — counting every tick it was offered and LOST. The
+# share where it was actually CHOSEN was 11.6%. Offered and chosen are different questions
+# with the same-sounding English name, and the wrong one overstated the problem twofold.
+#
+# Both are legitimate measurements. `offered` sizes how often a behaviour competes, `chosen`
+# sizes what it costs. So both are here, neither is the default, and the caller has to say
+# which it means.
+
+def decision_share(conn, run_id: int, needle: str, chosen: bool = True,
+                   mature: bool = True) -> float:
+    """Fraction of this run's decisions in which `needle` names a candidate's reason.
+
+    `chosen=True` counts only the candidate that WON the tick; `chosen=False` counts a
+    mention anywhere in the trace, losing candidates included. They are not
+    interchangeable — see above.
+
+    Reads the `chosen` flag out of `alternatives_json` rather than pattern-matching
+    `decisions.reasoning`. That column stores the WHOLE trace — "saw:", every weighed
+    candidate, then "chose:" — so a LIKE against it answers "was this behaviour offered",
+    never "was it taken", no matter which of the two you meant. The first draft of this
+    function made exactly that substitution, which is the same error one layer down from
+    the one it was written to prevent.
+    """
+    if mature:
+        require_mature(conn, run_id)
+    rows = conn.execute("SELECT alternatives_json FROM decisions WHERE run_id=?",
+                        (run_id,)).fetchall()
+    if not rows:
+        return 0.0
+    hits = 0
+    for (blob,) in rows:
+        if not blob or needle not in blob:
+            continue          # cheap pre-filter; the parse below is the actual test
+        try:
+            cands = json.loads(blob)
+        except (TypeError, ValueError):
+            continue
+        if any(needle in (c.get("why") or "") and (c.get("chosen") or not chosen)
+               for c in cands):
+            hits += 1
+    return hits / len(rows)

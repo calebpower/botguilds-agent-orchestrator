@@ -44,6 +44,7 @@ CHECKS = {
     "distinct_entities": metrics.distinct_entities,
     "event_count": lambda conn, **kw: len(metrics.events(conn, **kw)),
     "frame_count": metrics.frame_count,
+    "decision_share": metrics.decision_share,
 }
 
 
