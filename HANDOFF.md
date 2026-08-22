@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.63.0` on **run #140**, repo HEAD `0d25ec1` (dashboard gained a Rivals tab), branch `main` (pushed).
+- **Live:** `explorer/0.64.0` on **run #141**, repo HEAD `9b8acb6`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -43,6 +43,23 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   confirmed / violated / **expired**. `expired` is not `violated` — frames are stale and
   "not yet" must never read as "did not" (that inference killed two characters). Alarms are
   PER ACTION FAMILY and print + persist as `bot_anomaly` rows.
+- **⚠ A LEARN-BY-REJECTION LOOP NEEDS POSITIVE EVIDENCE, OR IT RATCHETS SHUT (0.64.0).** The
+  forge blacklisted a recipe on its FIRST `wrong_materials`. That refusal is NOT deterministic
+  in what we keyed on — identical product, material kinds and quantities both succeed and fail
+  within one run — so refusals only ever removed options and had condemned **all five spear
+  recipes and all five shield_iron recipes**, including `(spear,1,1)`, which we had watched
+  work twice. Now: a `forged` event PROVES the recipe that character last attempted; proven
+  recipes are never blacklisted; unproven ones need 3 refusals; proof clears a wrongful ban.
+  **Every latch in this file should be read with that question: what restores an option?**
+  (Cause of the non-determinism is still unknown — `tier` is the suspect, we ignore it.)
+- **⚠ COMPARE STATEFUL THINGS STATEFULLY.** A replay with a FRESH strategy per frame claimed
+  97% of forge opportunities were missed; one stateful instance over the same run reproduced
+  the live counts exactly (forge 18 vs 18) and found the real cause. Cousin of the iter-71
+  rule about replaying the same frames through both versions.
+- **Depth chain status:** brewing throughput is the gate — only **1.4%** of village
+  char-frames can brew at all and **0.34%** can brew a vigor (`potion_red`) batch, though 32%
+  carry a bottle. `potion_red` carried is 4.1%, up from 0% before 0.58. The inputs are there;
+  the batch is the missing half.
 - **📡 RIVALS TAB (dashboard) — cross-guild comparison, `/api/recon`.** Reads the `spectate`
   and `track` intel feeds that had been written for months and never read back. Two findings
   from the first look, both about us:

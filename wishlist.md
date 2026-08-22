@@ -55,22 +55,21 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| In-world trash talk (`say`) | 0.75 | 0.95 | 50 | **0.520** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 51 | **0.513** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 38 | **0.511** | 0.529 | **qualifies** |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 18 | 0.447 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 49 | 0.439 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 51 | 0.438 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 23 | 0.382 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 33 | 0.324 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 50 | 0.321 | 0.330 | INELIGIBLE — ceiling<0.5 |
-| Magic — CASTING (0.63 keeps/learns forms) | 0.90 | 0.85 | 2 | 0.191 | 0.574 | clears at tc=11 |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 51 | **0.520** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 52 | **0.513** | 0.527 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 39 | **0.511** | 0.529 | **qualifies** |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 19 | 0.449 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 50 | 0.439 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 52 | 0.438 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 24 | 0.383 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 34 | 0.324 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 51 | 0.321 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Magic — CASTING (0.63 keeps/learns forms) | 0.90 | 0.85 | 3 | 0.319 | 0.574 | clears at tc=11 |
 
-_Scored 2026-08-21 (iter 76). `tc` +1 (Rivals tab deployed). **Rival-recon SHIPPED** and leaves
-the table. NOTE the 'Rival-awareness dashboard panel' below is now largely SUBSUMED by it — it was
-already INELIGIBLE on ceiling, and what remains of it is duplicate. Three items still qualify;
-`say` leads at 0.520, which is a genuinely weak field, so next pass should prefer whatever the
-loop's own measurement turns up over a thin list item._
+_Scored 2026-08-22 (iter 77). `tc` +1 (0.64.0 deployed). This pass's lever came from measurement
+again — the forge blacklist had ratcheted itself shut. Three items still qualify and the field stays
+weak (`say` 0.520 leads). **Standing note: prefer what the loop measures over a thin list item.**
+Magic CASTING is at tc=3, clears at tc=11, and still needs a character to actually HOLD a form._
 
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".

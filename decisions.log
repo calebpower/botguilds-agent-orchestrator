@@ -3633,3 +3633,47 @@ nothing we also field (so the filter was unobservable), the newest-position test
 only the COUNT, and one assertion was written `A and B or C`, which precedence makes nearly
 unfalsifiable. The Playwright test runs against an EMPTY DB on purpose — the feed comes from
 a separate service that can be down, and the panel must say so and name `./svc.sh up web`.
+
+================================================================================
+iter 77 — 2026-08-22 — the forge blacklist was ratcheting itself shut (0.64.0, run #141)
+================================================================================
+Chased DEPTH (twice-confirmed bottleneck) and found the depth chain gated on brewing
+throughput: only 1.4% of village char-frames can brew at all and 0.34% can brew a VIGOR
+(potion_red) batch — 32% carry a bottle, but the BATCH is the missing half. potion_red
+carried is up to 4.1% (from 0% pre-0.58), so 0.58/0.59 work; they are just slow.
+
+Turned to the forge, which now HAS feedstock (ore_copper in 26% of char-frames,
+ingot_copper 20%) and found a live defect instead. Run #140's learned blacklist:
+    spear ALL FIVE recipes, shield_iron ALL FIVE, shortsword (1,1)
+and `(spear,1,1)` produced `forged` events on #129 AND #140. We had condemned a recipe we
+watched work, twice.
+
+CAUSE: v0.52.0 abandoned a recipe on its FIRST `wrong_materials`, assuming the refusal is a
+function of (product, ingots, lumber). Pairing each forge action with the item KINDS it
+spent refutes that — identical product, kinds and quantities both succeed and fail inside
+one run. Against a non-deterministic signal a one-strike permanent blacklist is a RATCHET:
+refusals only ever remove options, so the forge trends to inert however well it works.
+FIX: PROOF OUTRANKS REFUSAL. A `forged` event credits the recipe that character last
+attempted (the only positive evidence this ladder gets); a proven recipe is never
+blacklisted and accrues no strikes; an unproven one now needs 3 refusals, not 1; and proof
+retroactively clears a wrongful abandonment — the `(spear,1,1)` repair. Scoped to our eids
+(rivals forge constantly; 189 such events in our history).
+HONEST GAP: I do not know WHY identical materials sometimes fail. Tier is the suspect (items
+carry one; we ignore it) and my failure attribution uses a +/-3 tick window so some labels
+may be wrong. The fix needs neither — only that refusal is unreliable and success is not.
+
+A MEASUREMENT I NEARLY SHIPPED ON. A stateless replay claimed 680 forge opportunities missed
+against 18 taken (~97%). ARTIFACT: it used a FRESH strategy per frame, which does not know
+what the live one has learned. Re-running the whole run through ONE stateful instance
+reproduced the live counts almost exactly (forge 18 vs 18, smelt 11 vs 11) and pointed at
+the blacklist. COMPARE STATEFUL THINGS STATEFULLY — this is the second cousin of iter 71's
+"replay the same frames through BOTH versions".
+ALSO caught and discarded en route: a "we die 6x more per character than rivals" comparison.
+We see every one of our own deaths but a rival's only if it happens inside our vision, so
+their count is a lower bound with unknown coverage. Not usable.
+
+GATE 737 reaper / 728 local; 5 new tests, 11 mutants killed.
+TEST-CRAFT, both recurring and both mine: three files used hand-rolled bot doubles that
+broke the moment village() needed `recently_forged` — they now use the REAL GuildBot; and
+the fail-limit test sized its loop from FORGE_FAIL_LIMIT, the FOURTH time mutation testing
+has caught me deriving a fixture from the constant under test.
