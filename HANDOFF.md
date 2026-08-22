@@ -6,7 +6,14 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.75.2` on **run #157**, repo HEAD `e8372b8`, branch `main` (pushed).
+- **Live:** `explorer/0.77.0` on **run #159**, repo HEAD `2cc4278`, branch `main` (pushed).
+- **THE ROSTER IS PINNED TO THE SPAWN STRIP, AND THE CHAIN IS NOW KNOWN** (iters 89-90):
+  un-healed chars are capped at `POISON_SAFE_DEPTH=12` (0.76.0 buys the heal FIRST, floor
+  100 < arm floor); and since 0.70.0 removed the false frontiers, the nearest TRUE frontier
+  is 64-192 tiles out — beyond `FIELD_GOAL_RANGE=20` — so nothing pulled north until
+  0.77.0's TREK (unbounded bfs to frontier, heal-gated, `TREK_SCORE=2.2`). Watch #159+:
+  healed median y, looted-out share (29%), deaths/10k (6.9), and whether treks fire at all
+  (fuel = a 120g potion buy; gold was coin-dry flat at 109 at deploy).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **THE GUILD TALKS NOW** (0.74.0–0.75.2): `say` posts ≤40-char flavour text in-world, keyed to

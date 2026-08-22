@@ -4172,3 +4172,45 @@ anywhere, casting code would be written against an unobserved mechanic (the shap
 shipped inert four times). The buildable slice is raising one tome-holder's INT until the
 refusal stops.
 GATE 876 reaper / 867 local.
+
+================================================================================
+iter 90 (2026-08-23) — explorer/0.77.0 — the frontier trek + a flaky oracle fixed
+================================================================================
+LEDGER CAUGHT ITS FIRST REAL BUG — in the measuring instrument itself. recheck_claims
+reported "run #149 sale-gold CONTRADICTED, recomputed 0.0" against data that had not
+changed, on one CLI run in three. Root cause: attribution.our_guild_id() read the NEWEST
+decision row's char_uid, but guild-level decisions (recruit/embark, 476k rows) carry NULL —
+so whenever the live bot's last write was one, the ownership filter went blind and every
+sale was dropped. A FLAKY oracle is worse than a wrong one: it cries wolf exactly as often
+as the village loop acts. Fix: WHERE char_uid IS NOT NULL. Mutation-checked; 5 consecutive
+clean CLI runs. (The recheck path was fine — three-valued verdicts worked as designed; the
+oracle underneath it raced the write head.)
+
+0.76.0 FALSIFICATION RESOLVED on #158 (58k frames): potion buys 0 -> 17 ✓, healed share
+0.5 -> 2.0% (steady-state low: potions get drunk), median fielded y UNMOVED at 3 ✗,
+looted-out UNMOVED at 29% ✗. The stated "not the only pin" branch fired.
+
+THE ACTUAL PIN, measured: since 0.70.0 removed the false frontiers, the nearest TRUE
+frontier is 192 tiles from the vale spawn strip (86 mines / 64 spire) — beyond the
+20-tile errand bound in EVERY world. Frontier offers can never fire from where the roster
+lives; nothing pulls north; looted-out wins by default. 0.70.0's fix silently removed the
+only northward pull that had been reaching the ladder (the false frontiers WERE the pull,
+wrong as they were). Median fielded y went 11 -> 3 at exactly #149/150, when 0.70 shipped.
+
+0.77.0 — FRONTIER TREK: in the not-productive branch, a HEALED character walks to the
+nearest true frontier via UNBOUNDED bfs, symmetric with _retreat (unbounded for the same
+map, other direction; the 0.57.0 bound protects against stale CONTENTS — the trek chases
+durable TERRAIN). Heal-gated: a bare char bounces off POISON_SAFE_DEPTH at y=12, and the
+test asserts it heads home BY DIRECTION. Score TREK_SCORE=2.2. One mutant survives BY
+CONSTRUCTION (score-above-gathering unobservable — trek only offered when nothing
+productive exists; the placement is the guard; documented in the test).
+
+DEPLOY STATE (#159, 4k frames): trek offers 0 — NOT inert, fuel-starved: zero healed
+chars fielded yet, gold flat 109 vs the 120 needed to buy (coin-dry stretch, 0 sales in
+4k frames). Band refresh should restart income -> potions -> treks. IF STILL 0 AT
+MATURITY: diagnose potion-holder routing (do embarks systematically field unhealed
+chars?), and check for the poverty deadlock (can't afford the potion that unlocks income).
+FALSIFICATION for 0.77 (stated in the commit): healed median y >> 4, max y approaching
+frontier lines (89/68/197), new-tiles/run up, looted-out < 29%. WATCH deaths/10k (6.9 —
+depth is danger; if trekkers die the gate gains hp terms, not deletion).
+GATE 881 reaper / 872 local.
