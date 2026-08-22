@@ -155,3 +155,21 @@ produces exactly this: a healthy connection, no stall, and holes in the sequence
 **Conclusion: this is OUR bug, not the server's.** It belongs in the client, and the fix is
 to get the per-frame work off the receive path. Left in this file only as a record of the
 retraction — a wrong report to a third party is worse than no report.
+
+## Frame `guild.inventory` is a stale/phantom manifest (2026-08-23, runs #160–#161)
+
+The village frame's `guild` dict carries live `gold` (updates every sale/buy) alongside an
+`inventory` list that appears frozen: 404 `bottle_empty` + 202 `potion_red` + 14 `club`,
+identical across runs #159–#161 and across server restarts. `drop {item_id}` in the
+village — documented in 03-actions.md as "moves an item *out of* guild inventory onto the
+character" — was rejected `no_such_item` for the first EIGHT distinct potion `item_id`s in
+that list (13913, 13914, 13949, 13965, 14116, 14126, 14128, 14259), two attempts each,
+from characters standing in the village.
+
+Either the inventory snapshot is stale (items long consumed, list never compacted), or the
+ids are re-keyed server-side, or village-`drop` does not implement the documented
+withdrawal. Any of the three makes the manifest unusable as a source of truth. Our client
+now fails closed after 8 phantom ids (explorer/0.78.1) rather than storming.
+
+Repro: connect, read any village frame's `guild.inventory`, `drop` the first item_id from
+a village character → `no_such_item`.

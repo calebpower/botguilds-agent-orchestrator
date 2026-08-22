@@ -6,7 +6,15 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.77.0` on **run #159**, repo HEAD `2cc4278`, branch `main` (pushed).
+- **Live:** `explorer/0.78.1` on **run #161**, repo HEAD `f962a4c`, branch `main` (pushed).
+- **TREK CONFIRMED** (mature #159): healed chars median y 4→21 max 125, deaths FELL to 2.5/10k,
+  xp 3.5x — but only 4.8% of char-frames are healed, so POTION THROUGHPUT now binds.
+- **⚠ THE VAULT IS A MIRAGE**: frame `guild.inventory` lists 202 potions/404 bottles that the
+  server rejects `no_such_item` on withdrawal (>=8 distinct ids; gold in the SAME dict is
+  live). Logged in server_bugs.md. 0.78.1 fails closed after 8 phantoms (_vault_dead). Do
+  NOT trust guild.inventory as a manifest.
+- **⚠ "HARMLESS TO RETRY" NEEDS A PROOF FOR THE PERMANENT CASE** — a dead id is not a stale
+  frame. 1,181-error storm in 1,083 frames on #160 from nine chars on a 6-tick cooldown.
 - **THE ROSTER IS PINNED TO THE SPAWN STRIP, AND THE CHAIN IS NOW KNOWN** (iters 89-90):
   un-healed chars are capped at `POISON_SAFE_DEPTH=12` (0.76.0 buys the heal FIRST, floor
   100 < arm floor); and since 0.70.0 removed the false frontiers, the nearest TRUE frontier

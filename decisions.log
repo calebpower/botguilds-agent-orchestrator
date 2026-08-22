@@ -4214,3 +4214,38 @@ FALSIFICATION for 0.77 (stated in the commit): healed median y >> 4, max y appro
 frontier lines (89/68/197), new-tiles/run up, looted-out < 29%. WATCH deaths/10k (6.9 —
 depth is danger; if trekkers die the gate gains hp terms, not deletion).
 GATE 881 reaper / 872 local.
+
+================================================================================
+iter 91 (2026-08-23) — 0.78.0/0.78.1 — the vault mirage
+================================================================================
+TREK CONFIRMED on mature #159 (43k frames): treks fired once income resumed; HEALED chars
+median y 4 -> 21, max 30 -> 125; deaths FELL 6.9 -> 2.5/10k; xp 2.6 -> 9.2/10k (bands 0.25
+vs 0.40 — direction real, magnitudes not comparable). Overall median y still 3 because only
+4.8% of char-frames are healed -> the constraint moved to POTION THROUGHPUT.
+
+0.78.0: discovered the guild inventory listing 202 potion_red + 404 bottle_empty — ~10x
+everything ever bought — and made the heal branch WITHDRAW (village `drop`) before buying.
+IT WENT LIVE AND DISPROVED ITSELF IN 1,083 FRAMES: 1,181 withdrawals, 1,015+ rejected
+no_such_item, all naming item 13913 — the vault head is a PHANTOM. My no-latch reasoning
+("distinct item_id cannot double-spend, bounces harmlessly") covered stale-frame repeats
+and not permanently-dead ids retried by nine characters on a six-tick cooldown. An error
+storm of my own design, shipped hours after writing "the shape the anomaly monitor exists
+to shout about" in someone else's obituary.
+
+0.78.1: refused ids -> _vault_dead (learned from the server's own rejection, per-char
+pending map so field loot-sheds cannot poison it); after VAULT_DEAD_LIMIT=8 phantoms the
+withdrawal FAILS CLOSED for the run and the shop buy takes over. Live on #161: 8 distinct
+ids tried, 16 errors total, silence after — and the ANSWER: the vault is phantom >=8 deep
+while guild.gold in the SAME dict updates live. Logged to server_bugs.md (stale manifest,
+re-keyed ids, or drop-withdrawal not implemented as documented — unusable either way).
+Healed share meanwhile 2.9% via shop buys.
+
+STANDING LESSON, third instance this session: "harmless to retry" needs a proof for the
+PERMANENT-failure case, not just the transient one. (chatter FAIL_WINDOW, say
+not_in_village, vault phantoms.)
+NEXT: potion throughput still binds. With the vault dead, the real levers are (a) BREW —
+404 bottles are listed but likely phantom too, so bottle-BUY at 2g + foraged herbs, gated
+sanely (the 0.58.0 bottle buy is gated at gold>150, inconsistent with heal-first at 100);
+(b) raise POTION_KEEP for trekkers. Also queued: tome INT slice (magic uncontested),
+ride_max_tiles logging.
+GATE 890 reaper / 881 local (0.78.1).
