@@ -3583,3 +3583,14 @@ and ingots back in v0.46.0 — were all sold as "pure loot" by the same branch o
 branch is a DEFAULT ("nothing recognised -> bank it") and every new mechanic we unlock adds
 an item it silently misfiles. Next time a chain looks blocked on supply, CHECK WHAT WE SELL
 before assuming we cannot get it.
+
+--- iter 75 note: a mangled commit message (0d9b4a2, pushed, not rewritten) ---
+That commit's body reads "A tome carries , not , so _should_sell filed it under 'pure loot ->
+bank it'". Two words are missing: it should read "A tome carries `use`, not `equip`". I wrote
+the message with `git commit -m` inside a double-quoted shell string, so the backticks around
+`use` and `equip` were taken as command substitution and their output (nothing, plus two
+"command not found" errors) replaced them.
+Left as-is: the commit is already pushed, and rewriting published history needs the operator's
+say-so. PRACTICE FIX: commit messages now always go through a heredoc file and `-F`, never an
+inline `-m` with backticks — every long message in this log already did, and this was the one
+short one that did not.
