@@ -12,6 +12,7 @@ from typing import Any
 
 from . import nav
 from .anomaly import AnomalyMonitor
+from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace
 from .storage import Storage
 from .strategy import FieldContext, Strategy, get_strategy
@@ -75,6 +76,12 @@ class GuildBot:
         # Live anomaly self-reporting: watch the action-error stream for a family
         # that spikes (the observable symptom of a desync — see steemer/anomaly.py).
         self.anomaly = AnomalyMonitor()
+        # v0.61.0: does what we predicted actually happen? Derives a checkable claim from
+        # each action we send and resolves it against later frames. See expectation.py --
+        # the last four passes each shipped a silent belief-vs-reality mismatch past a
+        # green gate, and this is the general form of the two one-off fixes (v0.49's intent
+        # latch, v0.50's server-driven learned-block) that each covered a single case.
+        self.expect = ExpectationMonitor()
 
     # -- client callbacks -----------------------------------------------------
 
@@ -235,6 +242,15 @@ class GuildBot:
         ctx = FieldContext(world=world, known=known, enemies=enemies, loot=loot,
                            gold=gold, bodies=bodies, containers=containers)
 
+        # Resolve outstanding predictions BEFORE deciding: this frame is the evidence for
+        # what we did last time, and a prediction must be judged against the world as it
+        # was when it could still have come true.
+        chars_now = frame.get("chars", []) or []
+        self.expect.observe(self.tick, chars_now)
+        alarm = self.expect.alarm(self.tick)
+        if alarm is not None:
+            self._report_anomaly(alarm)
+
         actions: list[dict[str, Any]] = []
         for char in frame.get("chars", []):
             uid = char["char_uid"]
@@ -254,4 +270,7 @@ class GuildBot:
                     moved_dir = action["dir"]
                     dx, dy = nav.DIRS[moved_dir]
                     ctx.bodies.add((cur[0] + dx, cur[1] + dy))
+        # Derive a prediction from each action we are about to send, against the character
+        # state we are sending it FROM -- the "before" a violation is measured against.
+        self.expect.record_actions(self.tick, actions, chars_now)
         return actions
