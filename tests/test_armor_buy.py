@@ -84,7 +84,9 @@ def test_respects_a_stat_requirement():
 def test_skips_a_kind_learned_not_to_FIT():
     """`wont_fit` is populated when an equip is refused for a stat requirement."""
     exp = Explorer()
-    exp.wont_fit.add("shield_wood")
+    # v0.65.0: `wont_fit` records the stat TOTAL that was refused, not a bare "no".
+    # A high bar means nobody has out-grown it yet.
+    exp.wont_fit["shield_wood"] = 999
     assert exp._afford_armor(_char(), dict(EMPTY), FRAME, gold=500) == ("fickle_pearl", 30)
 
 

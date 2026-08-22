@@ -824,13 +824,29 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.64.0"
+    version = "explorer/0.65.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
         # rejected from (wrong_slot), and kinds that fail a stat requirement.
         self.slot_wrong: dict[str, set[str]] = defaultdict(set)
-        self.wont_fit: set[str] = set()
+        # v0.65.0: kind -> the stat TOTAL of the character that failed its requirement.
+        #
+        # This was a plain set, and that made it a ratchet with a known key: the gate is a
+        # STAT requirement, and stats GROW -- `spend_xp` has fired 2,151 times, and between
+        # runs #129 and #141 our maxima went str 2->6, vit 3->8, level 6->18. A kind refused
+        # at str 2 stayed refused at str 6, forever, in all seven places this is consulted
+        # (equip x2, armour buy, forge product choice, and the sell rule, which then banks
+        # the item). Worse, being keyed on KIND alone, one weak character's refusal
+        # condemned the kind for every stronger character too.
+        #
+        # Storing the threshold makes the restoring event explicit: a character whose stats
+        # now EXCEED the ones that were refused may try again. A second refusal simply
+        # raises the bar to that character's total.
+        self.wont_fit: dict[str, int] = {}
+        # uid -> stat total, refreshed from every frame we see the character in, so
+        # on_action_error can attribute a refusal to the stats it was refused at.
+        self._stat_total: dict[str, int] = {}
         self.equipping: dict[str, tuple[str, str]] = {}   # uid -> (kind, slot) in flight
         # In-flight guild-command tracking (v0.10.0): the tick each char was last
         # embarked, and the tick recruit last fired — so a stale village frame does
@@ -938,7 +954,10 @@ class Explorer:
         if reason == "wrong_slot":
             self.slot_wrong[kind].add(slot)     # not this slot — try another next time
         elif reason == "stat_requirement":
-            self.wont_fit.add(kind)             # can't meet the requirement; stop trying
+            # Record the bar rather than a bare "no": whoever tries next with better
+            # stats deserves the attempt (v0.65.0).
+            have = self._stat_total.get(uid, 0)
+            self.wont_fit[kind] = max(self.wont_fit.get(kind, 0), have)
         elif was_upgrade:
             # v0.53.0: equipping into an OCCUPIED slot is an undocumented mechanic. Any
             # other rejection means this pair cannot be swapped -- record it so it is
@@ -978,6 +997,7 @@ class Explorer:
                     continue                      # still in flight — do not re-issue
                 else:
                     del self._village_intent[uid]  # gave up; let the char try again
+            self._stat_total[uid] = self._stat_sum(char)
             inv = char.get("inventory", [])
             eqp = char.get("equipment", {}) or {}
             # Brewables we can actually make a no-curdle batch from — the rest are
@@ -1255,6 +1275,7 @@ class Explorer:
         pos = tuple(char["pos"])
         hp, max_hp = char.get("hp", 0), char.get("max_hp", 1)
         stamina = char.get("stamina", 0)
+        self._stat_total[uid] = self._stat_sum(char)
         carry = char.get("carry", {"used": 0, "cap": 1})
         cfg = bot.config
         statuses = char.get("statuses", []) or []
@@ -1760,7 +1781,7 @@ class Explorer:
         where. Returns an equip action (with a ``_why`` note) or None."""
         for item in inv:
             kind = item["kind"]
-            if "equip" not in (item.get("uses") or []) or kind in self.wont_fit:
+            if "equip" not in (item.get("uses") or []) or self._wont_fit(kind, uid):
                 continue
             slot = next((s for s in EQUIP_SLOTS
                          if eqp.get(s) is None and s not in self.slot_wrong[kind]), None)
@@ -1780,7 +1801,7 @@ class Explorer:
         # Forging is worth nothing until its output can displace something worse.
         for item in inv:
             kind = item["kind"]
-            if "equip" not in (item.get("uses") or []) or kind in self.wont_fit:
+            if "equip" not in (item.get("uses") or []) or self._wont_fit(kind, uid):
                 continue
             slot = self._upgrade_slot(kind, eqp)
             if slot is None:
@@ -1903,7 +1924,7 @@ class Explorer:
             kind = sitem.get("kind")
             if kind not in ARMOR_KINDS or not isinstance(sitem.get("buy_price"), int):
                 continue
-            if gold < sitem["buy_price"] or kind in self.wont_fit:
+            if gold < sitem["buy_price"] or self._wont_fit(kind, char.get("char_uid")):
                 continue
             if kind in held or kind in worn:
                 continue                    # already carrying/wearing one
@@ -2119,7 +2140,7 @@ class Explorer:
             return None
         worn = {v.get("kind") if isinstance(v, dict) else v for v in eqp.values()}
         for product in FORGE_PRODUCTS:
-            if product in worn or product in self.wont_fit:
+            if product in worn or self._wont_fit(product):
                 continue
             for n_ing, n_lum in FORGE_RECIPES:
                 if (product, n_ing, n_lum) in self._forge_failed:
@@ -2164,6 +2185,29 @@ class Explorer:
         for g in by_kind.values():
             keep.update(it["item_id"] for it in g[:FORGE_RESERVE_PER_CHAR])
         return keep
+
+    def _wont_fit(self, kind: str, uid: str | None = None) -> bool:
+        """Is this kind still out of reach on stats?
+
+        Only while the candidate has not out-grown the refusal. With a `uid` the question
+        is about that character; without one (the sell rule and the forge ladder have no
+        character in hand) it is about the BEST of us, because a kind one character can
+        wear is not something to bank.
+        """
+        bar = self.wont_fit.get(kind)
+        if bar is None:
+            return False
+        have = (self._stat_total.get(uid, 0) if uid is not None
+                else max(self._stat_total.values(), default=0))
+        return have <= bar
+
+    @staticmethod
+    def _stat_sum(char: dict[str, Any]) -> int:
+        """A character's total stats -- the single number that says whether it has grown
+        since a requirement refused it. Deliberately the SUM rather than the specific stat
+        the requirement named: the frame never tells us which stat was short, and the sum
+        rises whenever `spend_xp` lands, which is exactly the event worth retrying on."""
+        return sum(v for v in (char.get("stats") or {}).values() if isinstance(v, int))
 
     @staticmethod
     def _can_learn(char: dict[str, Any]) -> bool:
@@ -2256,7 +2300,7 @@ class Explorer:
             return item["item_id"] not in (feedstock_keep or set())
         if "equip" not in uses:
             return True                     # pure loot -> bank it
-        if kind in self.wont_fit:
+        if self._wont_fit(kind):
             return True                     # equippable but fails its stat requirement
         # v0.53.0: keep it if it out-values something we are WEARING. Without this the
         # upgrade pass never gets a turn -- selling runs first for any char whose slots

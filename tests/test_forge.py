@@ -69,7 +69,7 @@ def test_it_skips_a_product_the_character_already_WEARS():
 
 def test_it_skips_a_product_learned_UNUSABLE():
     exp = Explorer()
-    exp.wont_fit.add("shield_iron")
+    exp.wont_fit["shield_iron"] = 999
     (product, _, _), _, _ = exp._choose_forge(_ing(2) + _lum(2), dict(EMPTY), stamina=40)
     assert product != "shield_iron"
 

@@ -150,7 +150,7 @@ def test_it_does_not_swap_into_a_slot_the_kind_is_known_wrong_for():
 def test_it_does_not_swap_a_kind_that_fails_its_stat_requirement():
     exp = Explorer()
     eqp = _armed(exp)
-    exp.wont_fit.add("spear")
+    exp.wont_fit["spear"] = 999
     assert exp._equip_action("u1", [_item("spear")], eqp) is None
 
 
