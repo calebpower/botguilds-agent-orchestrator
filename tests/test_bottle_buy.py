@@ -113,15 +113,20 @@ def test_arming_a_bare_character_still_outranks_the_bottle():
 
 # ---- the premise this change rests on ----------------------------------------
 
-def test_the_potion_buy_really_is_out_of_reach_at_our_gold():
-    """Not a tautology about a constant — it is the REASON this change targets bottles
-    rather than lowering the reserve. At the gold we actually run (183 on #134), the
-    v0.35.0 potion fallback cannot fire, so brewing has to be the supply."""
-    assert Explorer._afford_potion(
-        {"shop": {"stock": [{"kind": "potion_red", "buy_price": 20}]}}, 183) is None
-    assert Explorer._afford_potion(
-        {"shop": {"stock": [{"kind": "potion_red", "buy_price": 20}]}},
-        POTION_RESERVE + 20) is not None
+def test_bottles_are_still_the_cheap_route_even_now_the_potion_buy_is_reachable():
+    """This test used to assert the OPPOSITE — that the potion fallback could not fire at
+    our gold (183 on #134) and therefore brewing had to be the supply. v0.69.0 deliberately
+    changed that premise, on evidence: seven `potion_red` brewed across ~180,000 frames.
+
+    What survives is the reason bottles came FIRST: a bottle is 2 gold against a potion's
+    20, so brewing remains an order of magnitude cheaper per heal wherever it can happen.
+    Both routes are now open, which is the point."""
+    shop = {"shop": {"stock": [{"kind": "potion_red", "buy_price": 20},
+                               {"kind": "bottle_empty", "buy_price": 2}]}}
+    assert Explorer._afford_potion(shop, 183) is not None, "reachable at the gold we run"
+    assert Explorer._afford_potion(shop, POTION_RESERVE) is None, "never below the floor"
+    assert Explorer._shop_price(shop, "bottle_empty") * 10 <= \
+        Explorer._afford_potion(shop, 183)[1], "a bottle is far cheaper than a potion"
 
 
 def test_the_shop_price_is_read_from_the_frame_not_hardcoded():
@@ -136,3 +141,39 @@ def test_the_shop_price_is_read_from_the_frame_not_hardcoded():
     # merely returning the wrong answer, which is why it needs its own case.
     assert Explorer._shop_price({"shop": {"stock": [{"kind": "bottle_empty"}]}},
                                 "bottle_empty") is None
+
+
+# ---- v0.69.0: the heal ranks WITH arming, not behind a hoard we never have ----
+
+def test_the_potion_reserve_equals_the_arm_floor():
+    """Pins the INTENT, not the number: a heal ranks with arming because an un-healed
+    character is capped at POISON_SAFE_DEPTH, which gates ore and the deeper content that
+    carries the XP. Written as a literal in the source only because WEAPON_BUY_FLOOR is
+    defined further down that file — this keeps the two from drifting apart."""
+    from steemer.strategy.explorer import WEAPON_BUY_FLOOR
+    assert POTION_RESERVE == WEAPON_BUY_FLOOR
+
+
+def test_a_heal_is_bought_at_the_gold_we_actually_run():
+    """The v0.35.0 reserve of 600 needed 620 gold to fire; we have run 156-200 for the
+    whole project. The fallback was unreachable by arithmetic."""
+    shop = {"shop": {"stock": [{"kind": "potion_red", "buy_price": 20}]}}
+    assert Explorer._afford_potion(shop, 200) == ("potion_red", 20)
+    assert Explorer._afford_potion(shop, 170) == ("potion_red", 20)
+
+
+def test_a_heal_never_eats_into_arming_money():
+    """The floor is the whole safety argument: buying a heal must never leave the guild
+    unable to arm a bare character."""
+    shop = {"shop": {"stock": [{"kind": "potion_red", "buy_price": 20}]}}
+    assert Explorer._afford_potion(shop, 169) is None
+    assert Explorer._afford_potion(shop, POTION_RESERVE + 19) is None
+
+
+def test_it_still_refuses_when_the_shop_has_no_heal():
+    """Stocked with things that are NOT heals, deliberately: an EMPTY stock cannot tell a
+    kind check from no check at all, so the test would pass with the check deleted."""
+    tempting = {"shop": {"stock": [{"kind": "potion_blue", "buy_price": 18},
+                                   {"kind": "bomb", "buy_price": 60}]}}
+    assert Explorer._afford_potion(tempting, 500) is None
+    assert Explorer._afford_potion({"shop": {"stock": []}}, 500) is None

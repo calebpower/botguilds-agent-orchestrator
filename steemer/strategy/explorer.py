@@ -636,7 +636,24 @@ TOME_PREFIX = "tome"
 # and only cap the hoard. A 600 reserve lets gold climb PAST the 529 cap-test (answering
 # the operator's open "is there a gold cap?" question) while still topping up heals once
 # the guild is genuinely rich. Brewing covers heals meanwhile. (KPI alarm watches deaths.)
-POTION_RESERVE = 600       # never let the potion-buy pull the treasury below this
+# v0.69.0: 600 -> the arm floor. v0.35.0 raised this to 600 on a premise that has since
+# expired: "heals are 99.6% FREE-BREWED (4,511 drinks vs 16 buys)". That was true then and is
+# not true now. Across runs #141/#143/#145/#147 -- roughly 180,000 frames -- we brewed SEVEN
+# `potion_red` in total, and only 4.1% of character-frames carry one. Brewing is no longer the
+# supply it was: it needs a bottle AND two vigor ingredients in one pack at once, and only
+# 0.34% of village character-frames can assemble that.
+#
+# Meanwhile the reserve made the fallback unreachable by arithmetic: gold runs 156-200, a
+# potion_red costs 20, and 600 + 20 = 620 is a threshold we have never approached.
+#
+# So the heal now ranks WITH arming rather than behind a hoard we do not have. Written as the
+# weapon floor rather than a fresh number, because that is the claim: a character with no heal
+# is capped at POISON_SAFE_DEPTH, which gates ore, the deeper content that carries the XP, and
+# every vein we have failed to reach. It is bounded by POTION_KEEP=1 per character and by the
+# floor itself, so it cannot become the 0.24.0-era drain that pinned gold at ~100.
+# NB the literal, not `WEAPON_BUY_FLOOR`, only because that constant is defined further down
+# this file; a test pins the two equal so the intent cannot drift apart from the number.
+POTION_RESERVE = 150       # never let the potion-buy pull the treasury below this
 POTION_MIN_GOLD = 20       # buy a potion once we can afford one (its shop price is
 #   20g; v0.17.0 dropped the old arbitrary 25g buffer — a poison death loses the
 #   char's gear+loot, far more than 20g, so a heal is worth buying at cost).
@@ -839,7 +856,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.68.0"
+    version = "explorer/0.69.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
