@@ -66,6 +66,20 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 | Log-scale overview bars | 0.45 | 1.00 | 51 | 0.329 | 0.338 | INELIGIBLE — ceiling<0.5 |
 | Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 68 | 0.324 | 0.330 | INELIGIBLE — ceiling<0.5 |
 | Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 1 | -0.176 | 0.528 | just added |
+| RIDE the rails (`ride` on `track`; never once issued) | 0.82 | 0.90 | 1 | -0.205 | 0.554 | just added |
+
+**`ride` IS AN ACTION WE HAVE NEVER ISSUED** (found 2026-08-22 while answering "is there a
+`read` action?" — there isn't; a tome is read with `use`). From a `track` tile, `ride {dir}`
+slides to the rail's end for a FLAT cost, capped at `ride_max_tiles`. We have mapped 60
+track tiles in the mines: a ~20-tile east-west rail at y=8, a shorter one at y=10, and
+fragments at y 33-82 that are probably longer rails we have never reached. A flat-cost
+20-tile traverse is the first errand we could actually finish inside a median 10-12 tick
+stint, and it crosses exactly the stripped spawn strip we are pinned to. `_cost` already
+reads `ride_stamina`; nothing offers the action. NB `ride_max_tiles` arrives in the hello
+config and we do not log it — log it first.
+
+Also never issued: `throw`, `charge` (weapon run-up attack), `cast`, `list`/`unlist`/
+`buy_listing`.
 
 **SHIPPED this cycle:** in-world trash talk (`say`) — 0.74.0–0.75.2, `steemer/chatter.py`.
 
