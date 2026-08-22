@@ -973,7 +973,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.78.1"
+    version = "explorer/0.79.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1299,9 +1299,20 @@ class Explorer:
             # RIGHT NOW if it had one. Gating on `picks` is what makes this provably
             # useful rather than a standing 2g tax: it means the herbs are already in the
             # pack and a bottle is the only missing part. Ordered AFTER arming and
-            # armouring, so a bare character is never left bare for a bottle, and floored
-            # at WEAPON_BUY_FLOOR so the 2g can never eat into arming money.
-            if picks and bottles < BOTTLE_KEEP and gold > WEAPON_BUY_FLOOR:
+            # armouring, so a bare character is never left bare for a bottle.
+            #
+            # v0.79.0: floored at the POTION reserve, not the weapon floor. The 150 floor
+            # made this branch DEAD at the 100-150 gold this guild actually runs (zero
+            # bottle buys ever recorded), which silently killed brewing — the supply that
+            # once provided 99.6% of heals (potion_red is still the all-time top brew
+            # product, 137 of them). A 2g bottle that becomes a heal is the same purchase
+            # as the 20g shop potion at a tenth the price, so it clears the same floor the
+            # potion-buy clears, and BOTTLE_KEEP=1 with the `picks` gate keeps it from
+            # ever becoming a standing drain. The vault's 404 listed bottles are phantoms
+            # (see server_bugs.md), so the shop is the only real source.
+            # PREMISE(2026-08-23, brewing is our cheap heal supply and the shop its only
+            #   bottle source): brew products by kind; vault withdrawal rejections
+            if picks and bottles < BOTTLE_KEEP and gold - 2 >= POTION_RESERVE:
                 price = self._shop_price(frame, "bottle_empty")
                 if price is not None:
                     return [self._village_act(

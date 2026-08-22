@@ -93,11 +93,20 @@ def test_it_does_not_buy_a_bottle_the_shop_does_not_stock():
 
 # ---- it never competes with arming -------------------------------------------
 
-def test_it_will_not_spend_below_the_weapon_floor():
-    """Two gold is trivial, but the ladder still has to hold: arming a bare character is
-    the top priority and a bottle must never be the reason gold sits under that floor."""
-    assert _buys(gold=WEAPON_BUY_FLOOR) == []
-    assert _buys(gold=WEAPON_BUY_FLOOR + 1)
+def test_it_will_not_spend_below_the_POTION_floor():
+    """v0.79.0 REPLACED the old contract here, deliberately. This test used to pin the
+    bottle at the WEAPON floor (150) — "a bottle must never be the reason gold sits under
+    that floor" — and that pin is what killed brewing: 150 never holds at the 100-150 gold
+    this guild actually runs, so zero bottles were ever bought and the supply that once
+    provided 99.6% of heals died silently. The bottle is a heal at a tenth the shop price;
+    it now clears the same floor the potion-buy clears, and the drain-guard it keeps is
+    the POTION reserve."""
+    # Written out, not derived from POTION_RESERVE — a fixture sized from the constant
+    # under test agrees with itself at any value (the ratchet caught this line twice).
+    from steemer.strategy.explorer import POTION_RESERVE
+    assert POTION_RESERVE == 100, "the floor moved; re-read the numbers in this test"
+    assert _buys(gold=101) == []
+    assert _buys(gold=102)
 
 
 def test_arming_a_bare_character_still_outranks_the_bottle():
@@ -345,3 +354,26 @@ def test_an_UNRELATED_drop_error_does_not_poison_the_vault():
     exp.on_action_error(bot, {"action": "drop", "char_uid": "ghost",
                               "reason": "no_such_item"})
     assert not exp._vault_dead
+
+
+# ---- v0.79.0: the bottle clears the POTION floor, not the weapon floor --------
+
+def test_a_bottle_is_bought_at_the_gold_we_actually_run():
+    """109 is run #161's live treasury. The old gate (gold > 150) made this branch dead at
+    every gold level this guild has ever sustained — zero bottle buys recorded, ever —
+    which silently killed the brew supply that once provided 99.6% of heals."""
+    acts = _buys(gold=109)
+    assert acts and acts[0]["kind"] == "bottle_empty", \
+        f"no bottle at 109 gold with herbs in the pack: {acts}"
+
+
+def test_the_bottle_still_respects_the_potion_floor():
+    """102 fires (100 floor + 2g price); 101 must not — the floor is the drain-guard."""
+    assert not _buys(gold=101), "spent below the potion reserve on a bottle"
+    acts = _buys(gold=102)
+    assert acts and acts[0]["kind"] == "bottle_empty"
+
+
+def test_no_herbs_no_bottle_at_ANY_gold():
+    """The `picks` gate is what keeps this from being a standing 2g tax."""
+    assert not _buys(gold=500, inv=[]), "bought a bottle with nothing to brew"
