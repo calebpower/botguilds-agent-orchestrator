@@ -50,23 +50,23 @@ with `## Done` unmaintained since 2026-08-20):
   20 score tables — an omission is worse than a wrong number and far harder to notice.
 
 
-Recalculated fresh each pass. `tc` at deploy-minor **76** (`explorer/0.76.0`; six deploys since the last table), counting
+Recalculated fresh each pass. `tc` at deploy-minor **79.1** (`explorer/0.79.1`), counting
 DEPLOYS since an item was added — a pass that ships no deploy does not advance it.
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| Magic — CASTING (chain sound, awaiting XP) | 0.90 | 0.85 | 20 | **0.535** | 0.574 | **qualifies — BLOCKED, see below** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 56 | **0.517** | 0.529 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 69 | **0.516** | 0.527 | **qualifies** |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 36 | 0.465 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 67 | 0.442 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 69 | 0.441 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 7 | 0.413 | 0.510 | below 0.5 this pass |
-| Short-TTL predator memory | 0.60 | 0.90 | 41 | 0.392 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 51 | 0.329 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 68 | 0.324 | 0.330 | INELIGIBLE — ceiling<0.5 |
-| Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 1 | -0.176 | 0.528 | just added |
-| RIDE the rails (`ride` on `track`; never once issued) | 0.82 | 0.90 | 1 | -0.205 | 0.554 | just added |
+| Magic — CASTING (chain sound; INT+tome slice unblocks) | 0.90 | 0.85 | 26 | **0.544** | 0.574 | **qualifies — treasury-blocked (tome 120g)** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 62 | **0.518** | 0.529 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 75 | **0.517** | 0.527 | **qualifies** |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 42 | 0.468 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 13 | 0.458 | 0.510 | below 0.5 this pass |
+| RIDE the rails (`ride`; config now captured) | 0.82 | 0.90 | 7 | 0.448 | 0.553 | below 0.5 this pass |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 73 | 0.443 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 75 | 0.442 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 7 | 0.427 | 0.528 | below 0.5 this pass |
+| Short-TTL predator memory | 0.60 | 0.90 | 47 | 0.394 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 57 | 0.330 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 74 | 0.324 | 0.330 | INELIGIBLE — ceiling<0.5 |
 
 **`ride` IS AN ACTION WE HAVE NEVER ISSUED** (found 2026-08-22 while answering "is there a
 `read` action?" — there isn't; a tome is read with `use`). From a `track` tile, `ride {dir}`

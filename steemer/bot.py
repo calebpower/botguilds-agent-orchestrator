@@ -8,6 +8,8 @@ strategy decides; the bot remembers and records.
 
 from __future__ import annotations
 
+import json
+
 from typing import Any
 
 from . import nav
@@ -117,6 +119,22 @@ class GuildBot:
         self.config = message.get("config", {}) or {}
         self.guild = message.get("guild", {}) or {}
         self.tick = message.get("tick", 0)
+        # v0.79.1: persist the server config. It carries constants we have repeatedly
+        # NEEDED and could not answer offline — `ride_max_tiles` blocked the rail analysis
+        # for two passes because nothing ever wrote it down; it lives only in this message
+        # and was gone by the time anyone asked. Recorded through `record_learned`, which
+        # is idempotent on (topic, fact), so an unchanged config costs one no-op row and a
+        # CHANGED config (Will patches the server mid-week) leaves both versions visible
+        # with their proved_at timestamps.
+        if self.storage is not None and self.config:
+            try:
+                self.storage.record_learned(
+                    "server_config", json.dumps(self.config, sort_keys=True))
+            except Exception as e:
+                # A failed bookkeeping write must never block the hello — but it must not
+                # be silent either, or a broken learned-table write hides until the next
+                # time someone needs a config that was never saved.
+                print(f"[config] record failed ({e}) — continuing", flush=True)
         hook = getattr(self.strategy, "on_hello", None)
         if callable(hook):
             hook(self, message)
