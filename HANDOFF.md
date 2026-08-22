@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.65.1` on **run #143**, repo HEAD `fb55230`, branch `main` (pushed).
+- **Live:** `explorer/0.66.0` on **run #144**, repo HEAD `e791a9d`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -43,6 +43,18 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   confirmed / violated / **expired**. `expired` is not `violated` — frames are stale and
   "not yet" must never read as "did not" (that inference killed two characters). Alarms are
   PER ACTION FAMILY and print + persist as `bot_anomaly` rows.
+- **⚠ OWNERSHIP-FILTER EVERY EVENT-DERIVED METRIC — IT IS THE FIRST STEP, NOT A REMINDER.**
+  The `forged`/`death`/`sale` streams are WORLD-WIDE. I reported 0.64.0 confirmed on a forge
+  success rate of 35%→68%; both figures counted rival forges (run #141's `forged` items
+  included pickaxe ×5 and sickle ×3, which we never attempted). Filtered to our own eids the
+  real series is 33% / 26% / 21% / 17% across #129/#140/#141/#143 — **flat, no gain.**
+- **⚠ ASK OF ANYTHING THE STRATEGY LEARNS: DOES IT SURVIVE A DEPLOY?** A fresh process looks
+  identical to a knowledgeable one for the first few minutes, which is why this hid. Run #143:
+  one character spent 20 of 23 forge attempts re-walking a ladder run #129 had already solved.
+  **0.66.0 persists PROVEN recipes** (`learned` table, hydrated once per process) and sends
+  only the proven quantity for a product. Only POSITIVE facts are stored — a persisted failure
+  would carry a wrong belief forever, since `wrong_materials` is non-deterministic.
+  Still in-memory-only: `slot_wrong`, `wont_fit`, `_tome_failed`, `_swap_failed`, `price`.
 - **⚠ A LEARN-BY-REJECTION LOOP NEEDS POSITIVE EVIDENCE, OR IT RATCHETS SHUT (0.64.0).** The
   forge blacklisted a recipe on its FIRST `wrong_materials`. That refusal is NOT deterministic
   in what we keyed on — identical product, material kinds and quantities both succeed and fail

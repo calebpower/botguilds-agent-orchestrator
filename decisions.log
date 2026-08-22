@@ -3731,3 +3731,37 @@ THE MISTAKE IS ONE I HAVE MADE BEFORE AND WRITTEN DOWN BEFORE: `eid` is a world-
 namespace and event streams carry every guild's actions. I filtered by eid correctly for
 deaths (iter 77) and then failed to for forges one pass later. Filtering by ownership is not
 a step to remember case by case; for any event-derived metric it is the FIRST step.
+
+================================================================================
+iter 79 — 2026-08-22 — recipes that die at every deploy (0.66.0, run #144)
+================================================================================
+(The retraction of iter 78's 0.64.0 "confirmation" is recorded above, immediately after that
+entry. Short version: I counted RIVAL forges. Our real success series is 33% / 26% / 21% /
+17% across #129/#140/#141/#143 — flat output, no gain. Ownership filtering is the FIRST step
+for any event-derived metric.)
+
+WHAT THE CORRECTED DATA SHOWED INSTEAD. Run #143's 23 forge attempts, in order: ONE character
+(c16004) spent 20 of them re-walking the ladder — shield_iron (1,1)x4, (2,1)x3, (1,2)x3,
+(2,2)x3, all failing — then `spear` (1,1) worked at once, and two other characters used spear
+immediately after, which is 0.64.0's proven-sharing working WITHIN the run.
+That character held TWO ingots. Run #129 had already proven shield_iron needs (3,1), so every
+quantity it could afford was known-wrong before it began. It could not know: the knowledge
+lives in process memory and dies at every deploy, and we redeploy several times a day.
+
+0.66.0: proven recipes persist (new `learned` table), hydrated once per process; and once a
+product has a proven quantity that is the ONLY one sent — unaffordable means "not on today's
+menu", not "walk the ladder again". Discovery untouched: an unproven product still walks the
+whole ladder.
+ONLY POSITIVE FACTS ARE STORED. `wrong_materials` is not deterministic in what we key on, so
+a persisted failure would carry a wrong belief into every future run — the v0.55.0 mistake
+(remembered chest CONTENTS driving targets) in a new place. Failures stay per-run, cheap and
+self-correcting.
+GATE 761 reaper / 752 local; 11 tests, 9 mutants killed.
+
+THE GENERAL POINT, worth more than the fix: v0.55.0 persisted the MAP, and this persists
+RECIPES, and both were invisible until measured because a fresh process looks identical to a
+knowledgeable one for the first few minutes. Anything the strategy LEARNS should be asked:
+does it survive a deploy? Remaining in-memory-only: `slot_wrong`, `wont_fit`, `_tome_failed`,
+`_swap_failed`, `self.price`, `_swap_unsupported`. price re-learns in one village visit and
+slot_wrong in a few equips, so they are cheap; `wont_fit` and `_tome_failed` now carry stat
+BARS that are re-earned only by re-failing, which is the same tuition — a candidate next slice.
