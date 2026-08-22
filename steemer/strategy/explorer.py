@@ -839,7 +839,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.67.0"
+    version = "explorer/0.68.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1702,6 +1702,26 @@ class Explorer:
             # seek 3.5) and adjacent-attack (8.0), above frontier(2.5)/scout(1.0) — it fires
             # only when nothing better is underfoot. Feeds the craft chain we already run
             # (smelt ore->ingot; the forge step + arming come in later slices).
+            # v0.68.0: LEARN A SPELL FORM IN THE FIELD. The learn step lived only in
+            # village(), and run #146 showed what that costs: the character holding
+            # `tome_field` spent all 10,933 of its tome-carrying frames in vale and never
+            # once went home, so it never learned and never even earned the refusal that
+            # v0.67.0's INT investment keys on. Nothing in the chain fires for a character
+            # that does not return.
+            #
+            # `use` is not a village verb — it is how potions are drunk in the field. Scored
+            # 3.0: below adjacent harvest (3.3) and everything urgent, above the frontier
+            # push (2.5), so it fills an idle tick and never competes with survival. Reached
+            # only inside the safe, non-homing branch, so a character in trouble ignores it.
+            tome = self._tome_to_learn(uid, char.get("inventory") or [],
+                                       self._can_learn(char))
+            if tome is not None:
+                self._using[uid] = tome["kind"]
+                offer({"char_uid": uid, "action": "use", "item_id": tome["item_id"]}, 3.0,
+                      f"learning {tome['kind']} in the field — a spell FORM, and this "
+                      f"character may never walk home")
+                productive = True
+
             harvest = next((p for p in nav.neighbors(pos)
                             if ctx.known.get(p) in HARVEST_KINDS), None)
             if harvest is not None:
