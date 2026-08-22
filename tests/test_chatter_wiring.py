@@ -161,3 +161,31 @@ def test_the_treasury_is_LEARNED_in_the_village_and_carried_into_the_field():
         said += [a["text"] for a in _says(bot.on_frame(_frame(tick)))]
     assert any("139" in t for t in said), \
         f"the treasury never reached the field: {said}"
+
+
+def test_a_REJECTED_say_is_recorded_THROUGH_THE_BOT():
+    """The give-up rule is only real if the rejection reaches the counter. It runs
+    bot.on_action_error -> strategy.on_action_error -> chatter, and nothing tested that
+    chain: the mutant that drops the call left the whole suite green, which would have
+    turned "three strikes and stop" into "retry every cooldown forever" — precisely the
+    slow error-spam the rule exists to prevent."""
+    bot = _bot()
+    bot.tick = 5000
+    assert bot.chatter.recent_failures(5000) == 0
+    for i in range(GIVE_UP_AFTER):
+        bot.tick = 5000 + i
+        bot.on_action_error({"action": "say", "char_uid": "c1", "reason": "not_in_village"})
+    assert bot.chatter.recent_failures(bot.tick) == GIVE_UP_AFTER
+    assert bot.chatter.disabled
+    assert not _says(bot.on_frame(_frame(bot.tick + 1))), "kept talking after giving up"
+
+
+def test_an_unrelated_rejection_does_NOT_count_against_the_say():
+    """Two oracles: the counter must move for a `say` and stay still for anything else, or
+    an unrelated error storm would silence the guild as a side effect."""
+    bot = _bot()
+    bot.tick = 5000
+    for _ in range(GIVE_UP_AFTER * 3):
+        bot.on_action_error({"action": "move", "char_uid": "c1",
+                             "reason": "not_enough_stamina"})
+    assert bot.chatter.recent_failures(bot.tick) == 0

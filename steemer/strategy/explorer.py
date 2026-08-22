@@ -934,7 +934,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.75.1"
+    version = "explorer/0.75.2"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1049,7 +1049,7 @@ class Explorer:
         # stop — a rejected action every cooldown would be a slow error-spam of exactly the
         # kind the anomaly monitor exists to shout about.
         if message.get("action") == "say":
-            bot.chatter.note_rejected()
+            bot.chatter.note_rejected(bot.tick)
         if message.get("action") == "forge" and uid is not None:
             pend = self._forge_attempt.pop(uid, None)
             if pend is not None and pend not in self._forge_proven:

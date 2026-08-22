@@ -113,24 +113,32 @@ def test_it_stays_quiet_inside_the_cooldown():
     assert c.line(tick=SILENT_FOR * 3 + SILENT_FOR) is not None
 
 
-def test_it_gives_up_after_repeated_rejections():
+def test_it_gives_up_after_repeated_RECENT_rejections():
     """`say` is an action we have never sent. If the server does not accept it, retrying
     every cooldown is a slow error-spam — the exact shape the anomaly monitor shouts
     about, arriving forever."""
     c = Chatter()
-    for _ in range(GIVE_UP_AFTER):
-        c.note_rejected()
+    for i in range(GIVE_UP_AFTER):
+        c.note_rejected(tick=1000 + i)
     assert c.disabled
-    assert c.line(tick=SILENT_FOR * 99) is None
+    assert c.line(tick=1000 + SILENT_FOR * 2) is None
 
 
-def test_an_accepted_say_clears_the_failure_count():
+def test_ISOLATED_rejections_age_out_instead_of_silencing_the_guild():
+    """v0.75.1 counted rejections for the life of the run with no way to un-count one, so
+    three transients hours apart would have silenced the guild permanently. Run #156 shows
+    the transient that motivated this: a `say` decided in the field and rejected
+    `not_in_village`, because the character went home between the frame we read and the
+    action landing.
+
+    Three rejections, each a full window apart, must NOT stop us."""
     c = Chatter()
-    c.note_rejected()
-    c.note_accepted()
-    for _ in range(GIVE_UP_AFTER - 1):
-        c.note_rejected()
-    assert not c.disabled, "transient rejections must not permanently silence the guild"
+    window = 3 * SILENT_FOR
+    for i in range(GIVE_UP_AFTER + 2):
+        c.note_rejected(tick=1000 + i * (window + 1))
+    last = 1000 + (GIVE_UP_AFTER + 1) * (window + 1)
+    assert c.recent_failures(last) < GIVE_UP_AFTER, "aged-out failures still counted"
+    assert c.line(tick=last + window) is not None, "silenced by transients"
 
 
 # ---- v0.75.1: never state a number we do not have ----------------------------

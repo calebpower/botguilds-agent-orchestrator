@@ -30,7 +30,16 @@ from typing import Any
 
 MAX_LEN = 40                # docs/03-actions.md
 COOLDOWN = 300              # ticks between lines — occasional, not a firehose
-FAIL_LIMIT = 3              # consecutive rejections after which we stop trying entirely
+FAIL_LIMIT = 3              # rejections within FAIL_WINDOW after which we stop entirely
+FAIL_WINDOW = 3 * COOLDOWN  # ...and they must be RECENT. v0.75.1 counted rejections for the
+                            # life of the run and had no way to un-count one, so three
+                            # transients hours apart would silence the guild for good.
+                            # Run #156 shows the transient: a `say` decided in the field
+                            # and rejected `not_in_village`, because the character had gone
+                            # home between the frame we read and the action landing. Three
+                            # inside three cooldowns means the last three attempts all
+                            # failed, which is the "the server does not accept this" case
+                            # the limit was written for; isolated ones age out.
 
 # The whitelist is deliberately tighter than "what the server might send": lowercase,
 # digits, space, dash, underscore. Anything else is dropped rather than escaped, because
@@ -69,7 +78,7 @@ class Chatter:
 
     def __init__(self) -> None:
         self._last_said: int = -10 ** 9
-        self._fails: int = 0
+        self._fails: list[int] = []
         self._recent: tuple[str, dict] | None = None
 
     # -- inputs ------------------------------------------------------------------
@@ -86,16 +95,22 @@ class Chatter:
                 continue
             self._recent = (kind, dict(ev))
 
-    def note_rejected(self) -> None:
-        """The server refused a `say`. Three of those and we stop for the run."""
-        self._fails += 1
+    def note_rejected(self, tick: int = 0) -> None:
+        """The server refused a `say`. Three inside FAIL_WINDOW and we stop for the run."""
+        self._fails.append(tick)
 
-    def note_accepted(self) -> None:
-        self._fails = 0
+    def recent_failures(self, tick: int) -> int:
+        return sum(1 for t in self._fails if tick - t < FAIL_WINDOW)
 
     @property
     def disabled(self) -> bool:
-        return self._fails >= FAIL_LIMIT
+        """Whether the LAST recorded failures alone are enough to stop us.
+
+        Kept as a property because callers ask before they have a tick to hand; it reads
+        the newest failure as `now`, which is the only honest reading available without
+        one.
+        """
+        return bool(self._fails) and self.recent_failures(max(self._fails)) >= FAIL_LIMIT
 
     # -- output ------------------------------------------------------------------
 
@@ -107,7 +122,7 @@ class Chatter:
         past would burn the cooldown — and spend the one event we had to talk about — on a
         tick where nothing was ever broadcast. The offer asks; only the send commits.
         """
-        if self.disabled or tick - self._last_said < COOLDOWN:
+        if self.recent_failures(tick) >= FAIL_LIMIT or tick - self._last_said < COOLDOWN:
             return None
         variants = _IDLE_ALWAYS + (_IDLE_WITH_GOLD if gold is not None else ())
         fields: dict = {}
