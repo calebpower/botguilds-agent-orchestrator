@@ -23,6 +23,10 @@ class FieldContext:
     gold: set[tuple[int, int]] = field(default_factory=set)
     bodies: set[tuple[int, int]] = field(default_factory=set)   # tiles held by chars
     containers: set[tuple[int, int]] = field(default_factory=set)
+    # v0.70.0: the world's [width, height] from the frame, so `nav.frontier` can tell the
+    # unexplored from the edge of the map. Optional: without it nav keeps its old,
+    # edge-blind behaviour.
+    bounds: tuple[int, int] | None = None
 
 
 @runtime_checkable

@@ -312,8 +312,10 @@ class GuildBot:
 
         bodies |= set(learned)
 
+        b = frame.get("bounds")
+        bounds = (b[0], b[1]) if isinstance(b, (list, tuple)) and len(b) == 2 else None
         ctx = FieldContext(world=world, known=known, enemies=enemies, loot=loot,
-                           gold=gold, bodies=bodies, containers=containers)
+                           gold=gold, bodies=bodies, containers=containers, bounds=bounds)
 
         # Resolve outstanding predictions BEFORE deciding: this frame is the evidence for
         # what we did last time, and a prediction must be judged against the world as it

@@ -108,10 +108,31 @@ def bfs_step(
     return node
 
 
-def frontier(pos: tuple[int, int], known: dict[tuple[int, int], str]) -> bool:
-    """A *standable* seen tile that still borders the unseen — a place we can
-    actually move to in order to reveal new ground. A solid tile that happens to
-    border the unseen is not a frontier: we cannot stand on it."""
+def in_bounds(pos: tuple[int, int], bounds: tuple[int, int] | None) -> bool:
+    """Is this coordinate inside the world at all? ``bounds`` is the frame's
+    ``[width, height]``; without it every coordinate is admitted, which is the old
+    behaviour."""
+    if bounds is None:
+        return True
+    w, h = bounds
+    return 0 <= pos[0] < w and 0 <= pos[1] < h
+
+
+def frontier(pos: tuple[int, int], known: dict[tuple[int, int], str],
+             bounds: tuple[int, int] | None = None) -> bool:
+    """A *standable* seen tile that still borders the UNSEEN — a place we can actually
+    move to in order to reveal new ground. A solid tile that happens to border the unseen
+    is not a frontier: we cannot stand on it.
+
+    ``bounds`` excludes the edge of the world, and without it this function lies in a way
+    that shaped the whole bot. A neighbour merely absent from ``known`` counted as
+    unexplored — and beyond the map edge nothing is ever in `known`, so every tile on the
+    rim looked like a permanent frontier. Measured on the mines: 58 of 126 "frontier" tiles
+    sat at y=0, the home row, and `bfs_step` returns the NEAREST goal. Characters living at
+    depth 2 therefore chose the false rim frontier every time and never reached the real one
+    at depth 110-126 — or the veins at median depth 88. A self-reinforcing trap: shallow
+    characters were kept shallow by the very behaviour meant to push them outward.
+    """
     if known.get(pos) in SOLID:
         return False
-    return any(n not in known for n in neighbors(pos))
+    return any(n not in known and in_bounds(n, bounds) for n in neighbors(pos))

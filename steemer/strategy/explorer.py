@@ -856,7 +856,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.69.0"
+    version = "explorer/0.70.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1797,12 +1797,12 @@ class Explorer:
                     else:
                         self._cohering.discard(uid)
 
-                north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known), ctx, blocked)
+                north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known, ctx.bounds), ctx, blocked)
                 if north:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
                           2.5, "pushing north into unexplored ground")
                     productive = True
-                any_frontier = self._step(pos, lambda p: nav.frontier(p, ctx.known), ctx, blocked)
+                any_frontier = self._step(pos, lambda p: nav.frontier(p, ctx.known, ctx.bounds), ctx, blocked)
                 if any_frontier:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, any_frontier)},
                           2.0, "heading to the nearest frontier")
