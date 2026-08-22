@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.61.0` on **run #138**, repo HEAD `f316950`, branch `main` (pushed).
+- **Live:** `explorer/0.62.0` on **run #139**, repo HEAD `447532d`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -43,14 +43,17 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   confirmed / violated / **expired**. `expired` is not `violated` — frames are stale and
   "not yet" must never read as "did not" (that inference killed two characters). Alarms are
   PER ACTION FAMILY and print + persist as `bot_anomaly` rows.
-- **⚠ NEXT LEVER, found by that detector: 90% OF OUR PICKUPS FAIL SILENTLY.** `pickup`
-  confirms 90 against **811 violations** over 20,000 frames. `overburdened` fires 1,164 times
-  against 283 real pickups — and the server reports it as an **EVENT, not an action_error**,
-  so every error query ever run came back clean. The shed logic keys off `carry.used >= cap`,
-  which is NEVER true (0 of 8,200 char-frames near the cap): `overburdened` means "this ITEM
-  does not fit" by BULK. We re-issue a doomed pickup and nothing learns.
-  **General lesson: the server refuses through TWO channels — action_errors AND events — and
-  we had only ever watched one.**
+- **⚠ THE SERVER REFUSES THROUGH TWO CHANNELS — action_errors AND EVENTS.** We watched only
+  one for the whole project. `overburdened` is an EVENT, so 1,164 refused pickups were
+  invisible to every action_error query while a character burned hundreds of ticks. **When an
+  action fails silently, check the event stream too.**
+  Fixed in 0.62.0 by trusting the refusal (TTL, scoped to our eids): a refused character reads
+  as full AND sheds. The underlying gap was a UNITS MISMATCH — our fullness test counts SLOTS
+  (`used >= cap - 1`) while capacity is spent in BULK, so carry (19, 21) could not take a
+  bulk-3 item, was not "full" (needs 20) and was not shedding (needs 21).
+  **BAND-DEPENDENT and currently dormant:** #137 (rich) lost 1,164 pickups; #138 (starved) had
+  103 pickups, 71 successes, 0 overburdened. Do not read the absence of a delta on a starved
+  run as failure — measure when loot returns.
 - **BANDS REFRESH — now DETECTED (0.60.0), and the rule it bought.** Each field frame carries
   `next_refresh: {band, in_ticks}`; a refresh is a change in the band NUMBER **or** a JUMP UP in
   `in_ticks` (a countdown only falls). Per world; ~10 boundaries per 14,000 ticks. Loot swings

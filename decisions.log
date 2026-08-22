@@ -3508,3 +3508,44 @@ LIVE STATUS: run #138 is in a STARVED BAND (0 pickups/buys/equips/sells in 3,636
 move and embark), so the detector is correctly SILENT rather than unproven — the mechanism is
 evidenced by the 20k-frame replay. Watch for `expectation_mismatch:*` anomalies when loot
 returns.
+
+================================================================================
+iter 74 — 2026-08-21 — trust the server's `overburdened` refusal (0.62.0, run #139)
+================================================================================
+The v0.61.0 detector's find, fixed. `pickup` confirmed 90 against 811 VIOLATIONS over 20,000
+frames of #137, and ALL 1,164 `overburdened` events were the SAME character in the SAME
+state: carry (19, 21), two slots free, retrying forever.
+
+A UNITS MISMATCH in a gap neither guard covered. Our fullness test counts SLOTS
+(`used >= cap - 1`, needs 20) while the server spends capacity in BULK. At 19/21 a char
+cannot take a bulk-3 item, is not "full" by our arithmetic, and is not shedding either (needs
+21). It sat between the two and re-issued a doomed pickup nothing learned from — the
+pre-0.50.0 learned-block shape again, inferring from the wrong signal.
+
+WHY NOTHING EVER SAW IT: `overburdened` is an EVENT, not an action_error. **The server
+refuses through TWO channels and we had only ever watched one.** Every action_error query I
+have run on this came back clean while a character burned hundreds of ticks. That
+generalises past pickup and is now in the HANDOFF.
+
+FIX: trust the refusal rather than model bulk — ground items do not even expose `bulk` (only
+kind/tier), so a bulk model would be inferred and still a guess, while the verdict is a fact.
+A refused char reads as full (looting stops) AND sheds (it lightens instead of walking home
+under the load). Suppressing pickup alone would have fixed the symptom and left it stuck.
+TTL not latch (STUCK_BLOCK's reasoning); scoped to OUR eids, since a rival straining under
+its own loot must not stop us looting.
+
+STATED PLAINLY: the defect is BAND-DEPENDENT and currently DORMANT. #137 (rich band) lost
+1,164 pickups; #138 (starved) had 103 pickups, 71 successes, ZERO overburdened. The fix will
+show its value when loot returns — which is exactly when the defect costs most. Do not expect
+a visible delta on a starved run and do not read its absence as failure.
+
+GATE 711 reaper / 703 local; 9 tests, 10 mutants killed.
+
+TWO TEST-CRAFT NOTES, both caught by mutation rather than by reading:
+ * The first draft used a hand-rolled trace double that omitted `observe`, the method the
+   strategy calls FIRST. A double that drifts from the original tests the double; it now
+   uses the real DecisionTrace.
+ * The TTL test derived its tick offsets FROM OVERBURDENED_TTL, so shrinking the TTL to 1
+   left it green. THIRD TIME mutation testing has caught me doing this (VEIN_SEEK_RANGE,
+   SCARCE_LONE_KEEP, now OVERBURDENED_TTL). It is a habit, not three accidents: when a test
+   needs a magnitude, HARDCODE the policy claim and pin the constant's band separately.

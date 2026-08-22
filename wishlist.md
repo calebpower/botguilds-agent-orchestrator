@@ -55,22 +55,24 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| Rival-recon dashboard tab | 0.80 | 0.97 | 37 | **0.561** | 0.582 | **qualifies** |
-| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 48 | **0.558** | 0.574 | **qualifies** |
-| In-world trash talk (`say`) | 0.75 | 0.95 | 47 | **0.519** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 48 | **0.512** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 35 | **0.509** | 0.529 | **qualifies** |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 15 | 0.440 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 46 | 0.438 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 48 | 0.437 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 20 | 0.378 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 30 | 0.323 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 47 | 0.321 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Rival-recon dashboard tab | 0.80 | 0.97 | 38 | **0.562** | 0.582 | **qualifies** |
+| Magic / spellweaving (`cast`) | 0.90 | 0.85 | 49 | **0.558** | 0.574 | **qualifies** |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 48 | **0.520** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 49 | **0.512** | 0.527 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 36 | **0.510** | 0.529 | **qualifies** |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 16 | 0.443 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 47 | 0.438 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 49 | 0.438 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 21 | 0.379 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 31 | 0.323 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 48 | 0.321 | 0.330 | INELIGIBLE — ceiling<0.5 |
 
-_Scored 2026-08-21 (iter 73). `tc` +1 (0.61.0 deployed). **The expectation/reality mismatch
-detector SHIPPED** as 0.61.0 and leaves the table — see Done. It earned its place immediately: on its
-first run over real data it found that 90% of our pickups fail silently. **Next pass takes that
-finding, not a list item** — `overburdened` is a server refusal we never learned from._
+_Scored 2026-08-21 (iter 74). `tc` +1 (0.62.0 deployed). This pass's lever came from the
+v0.61.0 detector's own finding rather than the list. **Two items have now led for four passes
+without being built** — rival-recon tab and magic/cast, separated by 0.003, which is noise in a
+score with two significant figures. Next pass takes ONE of them; operator preference decides,
+and absent a preference I will take `cast`, since it is a whole mechanic we have never used and
+the operator's stated direction is to master mechanics and LEVEL characters._
 
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
