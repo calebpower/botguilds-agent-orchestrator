@@ -3858,3 +3858,42 @@ the OTHER reason 0.67.0 was inert on #146. The field offer makes a refusal cheap
 so persistence is no longer blocking; it joins `slot_wrong`, `wont_fit`, `_swap_failed` and
 `price` on the not-persisted list.
 GATE 782 reaper / 773 local; 7 tests, 5 mutants killed.
+
+================================================================================
+iter 82 — 2026-08-22 — a reserve defending an expired premise (0.69.0, run #148)
+================================================================================
+MAGIC FIRST — it did NOT need another lever, and establishing that mattered. Run #147
+(41,517 frames) earned exactly what 0.68.0 was built for: 2 field `stat_requirement`
+refusals. The holder c16041 DOES reach the village (247 frames). INT never rose because its
+XP was 5 against the 16 that INT costs — and its XP climbed 5 -> 25 during the run. The chain
+is SOUND and short of XP, not broken. Noted: c16038 and c16060 carry the `int` GIFT (half
+cost), which is who to pick if we ever choose a caster deliberately instead of accepting
+whoever happens to pick up a tome.
+
+THE LEVER: POTION_RESERVE was defending a premise that has expired. v0.35.0 raised it
+100 -> 600 because heals were 99.6% FREE-BREWED (4,511 drinks vs 16 buys). Good evidence,
+good reasoning, and nothing has watched it since.
+NOW, across #141/#143/#145/#147 (~180k frames): SEVEN potion_red brewed in total, 4.1% of
+char-frames carrying one. Brewing needs a bottle AND two vigor ingredients in one pack at
+once, and only 0.34% of village char-frames can assemble that.
+And the reserve made the fallback unreachable BY ARITHMETIC: gold runs 156-200, a potion_red
+costs 20, the buy needs 620. Never approached, for the entire life of the reserve.
+0.69.0 ranks the heal WITH arming (POTION_RESERVE = the weapon floor): an un-healed char is
+capped at POISON_SAFE_DEPTH, which gates ore, the deeper content carrying the XP, and every
+vein we have failed to reach. Bounded by POTION_KEEP=1/char and by the floor, so it cannot
+become the 0.24.0-era drain that pinned gold at ~100 — the buy stops below 170.
+GATE 786 reaper / 777 local; 4 tests, 5 mutants killed.
+
+ONE EXISTING TEST NOW ASSERTS THE OPPOSITE of what it did. `test_the_potion_buy_really_is_
+out_of_reach_at_our_gold` existed to justify targeting bottles in 0.58.0, and its premise is
+exactly what this commit changes. Rewritten to assert what SURVIVES — a bottle is 2 gold
+against a potion's 20, so brewing stays an order of magnitude cheaper per heal, and both
+routes are now open. Updating it was the honest outcome; leaving it would have meant keeping
+a test that contradicts the system.
+
+THE PATTERN WORTH CARRYING: this is the SECOND time a well-reasoned constant outlived its
+evidence (v0.35.0's reserve here; v0.8.0's stranded-singleton rule in 0.59.0, which was right
+for abundant items and wrong for scarce chain inputs). Both were correct when written, both
+were justified in comments that read persuasively years later, and neither had anything
+watching whether the premise still held. WHEN A CONSTANT CARRIES A JUSTIFICATION, THE
+JUSTIFICATION IS A CLAIM ABOUT THE WORLD — and claims about the world expire.

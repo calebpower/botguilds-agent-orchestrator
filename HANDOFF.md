@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.68.0` on **run #147**, repo HEAD `5cf6506`, branch `main` (pushed).
+- **Live:** `explorer/0.69.0` on **run #148**, repo HEAD `2bcf53a`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -55,6 +55,18 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   it never learned AND never earned the refusal 0.67.0 keys on. Learning is now offered in the
   FIELD too. Verified live on #147: 2 learn decisions → 2 `use` → 2 refusals EARNED.
   **Watch for: INT rising on that character, then a `learned` event, then casting.**
+- **⚠ A CONSTANT'S JUSTIFICATION IS A CLAIM ABOUT THE WORLD, AND CLAIMS EXPIRE.** Twice now a
+  well-reasoned constant has outlived its evidence: `POTION_RESERVE=600` (set in v0.35.0
+  because heals were "99.6% free-brewed" — we now brew **seven** `potion_red` per ~180k
+  frames, and the 600 floor made the buy unreachable at our 156–200 gold), and v0.8.0's
+  stranded-singleton sell rule (right for abundant items, wrong for scarce chain inputs;
+  fixed in 0.59.0). Both read persuasively in their comments years later. Nothing watched
+  either. **0.69.0 ranks the heal with arming** — an un-healed character is capped at
+  `POISON_SAFE_DEPTH`, which gates ore, deeper content and XP.
+- **Magic is SOUND and short of XP, not broken.** Run #147 earned the field refusals 0.68.0
+  was built for; the holder reaches the village; its XP climbed 5 → 25 against the 16 INT
+  costs. `c16038`/`c16060` carry the **`int` gift** (half cost) if we ever pick a caster
+  deliberately rather than accepting whoever picks up a tome.
 - **⚠⚠ "IT IS IMPLEMENTED" IS NOT AN ANSWER TO "WHY IS NOTHING HAPPENING". Ask WHERE it runs
   and FOR WHOM.** Four links in one chain have now been correct and unreachable: 0.54.0
   vein-seek (validated against a map the process did not have), 0.64.0 proof rule (events
