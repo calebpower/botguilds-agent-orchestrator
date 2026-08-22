@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.66.0` on **run #144**, repo HEAD `e791a9d`, branch `main` (pushed).
+- **Live:** `explorer/0.66.1` on **run #145**, repo HEAD `f78238a`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -43,6 +43,16 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   confirmed / violated / **expired**. `expired` is not `violated` — frames are stale and
   "not yet" must never read as "did not" (that inference killed two characters). Alarms are
   PER ACTION FAMILY and print + persist as `bot_anomaly` rows.
+- **⚠⚠ WHEN A FIX SHOWS NO EFFECT, FIRST ASK WHETHER IT EXECUTED.** v0.64.0's proof rule
+  never ran live for TWO versions: event parsing sat inside `_field()`, village frames route
+  straight to `strategy.village()`, and **every `forged` event arrives on a village frame**.
+  Fixed in 0.66.1 (parse events for every frame, one place).
+  **The suite passed before and after** — 752 tests, none asserting that a village frame's
+  events are read, because every test drove the strategy or the monitor directly and never
+  the ROUTING between them. The chain was broken in the MIDDLE, where both ends test clean.
+  **Third inert shipment** (0.48 misread, 0.54 genuinely inert, 0.64 now) and all three were
+  correct code that was never reached. Green tests measure the code you call, not the code
+  the bot runs.
 - **⚠ OWNERSHIP-FILTER EVERY EVENT-DERIVED METRIC — IT IS THE FIRST STEP, NOT A REMINDER.**
   The `forged`/`death`/`sale` streams are WORLD-WIDE. I reported 0.64.0 confirmed on a forge
   success rate of 35%→68%; both figures counted rival forges (run #141's `forged` items

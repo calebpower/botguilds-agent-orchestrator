@@ -3765,3 +3765,27 @@ does it survive a deploy? Remaining in-memory-only: `slot_wrong`, `wont_fit`, `_
 `_swap_failed`, `self.price`, `_swap_unsupported`. price re-learns in one village visit and
 slot_wrong in a few equips, so they are cheap; `wont_fit` and `_tome_failed` now carry stat
 BARS that are re-earned only by re-failing, which is the same tuition — a candidate next slice.
+
+--- iter 79 addendum: 0.66.1, and why 0.64.0 never worked ---
+0.66.0 shipped and the `learned` table stayed EMPTY while run #144 forged two spears.
+CAUSE, and it is worse than a persistence bug: event parsing lived inside `_field()`, and
+VILLAGE FRAMES NEVER REACH `_field()` — on_frame routes them straight to strategy.village().
+Forging happens IN THE VILLAGE: all six `forged` events across #143/#144 arrived on village
+frames. So `bot._forged` stayed empty, `recently_forged` was always False, and v0.64.0's
+proof-outranks-refusal rule NEVER RAN LIVE, across two versions.
+This REPLACES the softer story in the retraction above. I said 0.64.0 was "structurally right
+but bought no measured gain". The truth: it was INERT, so the corrected series
+(33%/26%/21%/17%) contains no information about it either way. And 0.66.0's persistence was
+built on a proof path that could never produce a proof.
+0.66.1 parses events for EVERY frame in one place; a test pins that the field side survived
+the move.
+
+THE PART THAT GENERALISES: the whole suite passed before AND after. 752 tests and not one
+asserted that a village frame's events are read — every test of the proof rule drove the
+strategy or the monitor directly, never the ROUTING between them. The chain was broken in the
+MIDDLE, where both ends test clean. There is now an end-to-end test walking a forge attempt
+through a village frame to a proven recipe to a persisted row, mutation-killed at every link.
+THIRD INERT SHIPMENT (0.48 misread as inert but wasn't; 0.54 genuinely inert; 0.64 now), and
+all three shared one shape: CODE THAT WAS CORRECT AND NEVER REACHED. Green tests measure the
+code you call, not the code the bot runs. When a fix shows no effect, FIRST ask whether it
+executed — before interpreting the numbers at all.
