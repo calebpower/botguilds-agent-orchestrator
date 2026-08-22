@@ -70,13 +70,18 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 **`ride` IS AN ACTION WE HAVE NEVER ISSUED** (found 2026-08-22 while answering "is there a
 `read` action?" — there isn't; a tome is read with `use`). From a `track` tile, `ride {dir}`
-slides to the rail's end for a FLAT cost, capped at `ride_max_tiles`. We have mapped 60
-track tiles in the mines: a ~20-tile east-west rail at y=8, a shorter one at y=10, and
-fragments at y 33-82 that are probably longer rails we have never reached. A flat-cost
-20-tile traverse is the first errand we could actually finish inside a median 10-12 tick
-stint, and it crosses exactly the stripped spawn strip we are pinned to. `_cost` already
-reads `ride_stamina`; nothing offers the action. NB `ride_max_tiles` arrives in the hello
-config and we do not log it — log it first.
+slides to the rail's end for a FLAT cost, capped at `ride_max_tiles`. CORRECTED after a
+proper survey (operator pushed back on "they're just horizontal", rightly): the 60 mines
+track tiles are 19 SEPARATE rails — two horizontals at y=8 (13 + 8 tiles) and one at y=10,
+a 2-D junction/curve at x51-53/y76-80, and the deep fragments are mostly VERTICAL but only
+2-3 tiles each. All 78 rail ends terminate on MAPPED ground (zero on unmapped), so they are
+genuinely short, not glimpses of longer lines. The longest ride available is 12 tiles west
+along y=8 AND IT ENDS AT A CHEST; 30 of 78 rides are >=5 tiles; chest density beside track
+is 5.0% vs 2.0% on ordinary floor. Value: a flat-cost one-action traverse of the stripped
+spawn strip (an errand that fits a 10-12 tick stint), plus the chest run — NOT a route
+north. `_cost` already reads `ride_stamina`; nothing offers the action. Build order:
+(1) log `ride_max_tiles` from the hello config; (2) check the rail line for entities (a
+blocker "gets rammed" — collision, not commute); (3) offer the ride.
 
 Also never issued: `throw`, `charge` (weapon run-up attack), `cast`, `list`/`unlist`/
 `buy_listing`.
