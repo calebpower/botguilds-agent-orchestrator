@@ -3936,3 +3936,33 @@ INHERENT to the stamina economy. The constant stays, with fresh evidence attache
 constants re-tested this week: one had expired (POTION_RESERVE), one had not. Re-testing is
 worth it precisely because you cannot tell which without looking.
 GATE 796 reaper / 787 local; 10 tests, 8 mutants killed (two on the PLUMBING).
+
+================================================================================
+iter 84 — 2026-08-22 — the ore errand was sized never to reach the ore (0.71.0, run #150)
+================================================================================
+0.70.0 MEASURED AS A CLEAR WIN, at comparable loot density (items/frame 0.442 vs 0.474):
+    our XP        52.8 -> 67.2 /10k   (+27%)
+    sale gold     40.5 -> 82.4 /10k   (+103%)
+    terrain broken   48 -> 196        (4x)
+    our deaths        6 -> 3
+    rest share     53.9% -> 47.0%
+The idle share I explicitly warned might RISE actually FELL. Removing the fake rim frontier
+let v0.36.0's depletion-aware world-hopping finally win: embarks and returns both roughly
+doubled (899 -> 2104 /10k), attacks nearly tripled. Characters stopped walking the edge of the
+map and started leaving exhausted worlds. Depth p90 also moved 6 -> 12.
+
+WHAT DID NOT MOVE IS ORE — 3 veins against 193 trees — and the reason is arithmetic:
+    veins: median depth 88, shallowest 24
+    median distance from one of our characters to the nearest vein: 30
+    within VEIN_SEEK_RANGE=14: 4.72% of mines char-frames
+The errand was sized never to reach its target. 0.71.0 gives a HEALED character 32 tiles,
+chosen to clear the measured median of 30 and pinned to that measurement by a test rather
+than to another constant.
+GATED ON THE HEAL because the two facts are one fact: veins are DEEP, depth is where poison
+kills, POISON_SAFE_DEPTH exists for exactly that, and since 0.69.0 27% carry a heal (was 4%).
+BUDGET MEASURED BEFORE SPENDING — the step v0.55.0 skipped: move failures run 0.24-0.33% of
+moves against a 5.2% baseline and the 19.4% of that regression. Long errands were dangerous
+when UNBOUNDED over a hydrated map; this is a bound raised deliberately, and a test pins that
+even a healed character will not cross the map.
+GATE 801 reaper / 792 local; 5 tests, 6 mutants killed — TWO ON THE CALL SITE, because every
+other test here passes `reach` itself and would be happy with the gate deleted.
