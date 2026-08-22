@@ -143,31 +143,41 @@ def test_the_shop_price_is_read_from_the_frame_not_hardcoded():
                                 "bottle_empty") is None
 
 
-# ---- v0.69.0: the heal ranks WITH arming, not behind a hoard we never have ----
+# ---- v0.76.0: the heal ranks ABOVE arming, and below the arm FLOOR ------------
 
-def test_the_potion_reserve_equals_the_arm_floor():
-    """Pins the INTENT, not the number: a heal ranks with arming because an un-healed
-    character is capped at POISON_SAFE_DEPTH, which gates ore and the deeper content that
-    carries the XP. Written as a literal in the source only because WEAPON_BUY_FLOOR is
-    defined further down that file — this keeps the two from drifting apart."""
+def test_the_potion_reserve_sits_BELOW_the_arm_floor():
+    """v0.69.0 pinned these EQUAL, reasoning that a heal ranks with arming. The arithmetic
+    made that strictly worse than it sounded: the weapon fires at `gold > 150` while
+    `_afford_potion` needs `gold - 20 >= 150`, i.e. 170. So the heal was HARDER to afford
+    than the weapon and was checked after it, and with a bare bench there is always someone
+    to arm — the surplus went at 151 every time and 170 was never reached. Run #157: zero
+    potions bought, zero brewed, gold sitting at 149.
+
+    The heal must therefore have first call on gold the weapon cannot touch."""
     from steemer.strategy.explorer import WEAPON_BUY_FLOOR
-    assert POTION_RESERVE == WEAPON_BUY_FLOOR
+    assert POTION_RESERVE < WEAPON_BUY_FLOOR, \
+        "the heal must be affordable at gold the arm floor has already refused"
 
 
-def test_a_heal_is_bought_at_the_gold_we_actually_run():
-    """The v0.35.0 reserve of 600 needed 620 gold to fire; we have run 156-200 for the
-    whole project. The fallback was unreachable by arithmetic."""
+def test_a_heal_is_bought_at_THE_GOLD_WE_ACTUALLY_RAN():
+    """149 is not a round number, it is the treasury on run #157 at the moment the roster
+    was pinned to the bottom 12 rows of the map for want of a 20-gold potion."""
     shop = {"shop": {"stock": [{"kind": "potion_red", "buy_price": 20}]}}
+    assert Explorer._afford_potion(shop, 149) == ("potion_red", 20)
     assert Explorer._afford_potion(shop, 200) == ("potion_red", 20)
-    assert Explorer._afford_potion(shop, 170) == ("potion_red", 20)
 
 
-def test_a_heal_never_eats_into_arming_money():
-    """The floor is the whole safety argument: buying a heal must never leave the guild
-    unable to arm a bare character."""
+def test_the_heal_still_has_a_floor_of_its_own():
+    """Lowering the reserve is not removing it. The 0.24.0-era drain pinned gold at ~100 by
+    spending without one, and POTION_KEEP=1 per character plus this floor are what keep the
+    v0.76.0 reordering a one-off redirection rather than a standing leak."""
     shop = {"shop": {"stock": [{"kind": "potion_red", "buy_price": 20}]}}
-    assert Explorer._afford_potion(shop, 169) is None
-    assert Explorer._afford_potion(shop, POTION_RESERVE + 19) is None
+    # Written out, not derived from POTION_RESERVE. Sized from the constant, this test
+    # agreed with itself for any value — the mutant that sets the reserve to ZERO, which is
+    # precisely the 0.24.0 drain, left it green.
+    assert Explorer._afford_potion(shop, 119) is None, "spent below the 100 floor"
+    assert Explorer._afford_potion(shop, 120) == ("potion_red", 20)
+    assert POTION_RESERVE == 100, "the floor moved; re-read the numbers in this test"
 
 
 def test_it_still_refuses_when_the_shop_has_no_heal():
@@ -177,3 +187,39 @@ def test_it_still_refuses_when_the_shop_has_no_heal():
                                    {"kind": "bomb", "buy_price": 60}]}}
     assert Explorer._afford_potion(tempting, 500) is None
     assert Explorer._afford_potion({"shop": {"stock": []}}, 500) is None
+
+
+# ---- v0.76.0: the ORDER, which is where the bug actually lived ----------------
+
+def _bare_frame(gold):
+    """A bare-handed, heal-less character in a shop stocking both. This is run #157's
+    situation: someone always needs arming, so the arm branch always had a claim on the
+    surplus, and the heal branch below it never saw gold it could use."""
+    f = _frame(gold, [], stock=[{"kind": "potion_red", "buy_price": 20},
+                                {"kind": "club", "buy_price": 15}])
+    f["chars"][0]["equipment"]["hand"] = None
+    return f
+
+
+def test_the_HEAL_is_bought_before_the_weapon():
+    """The lever of v0.76.0, stated as an ordering rather than as a number.
+
+    A weapon buys marginal damage in content the character is not allowed to walk to; a
+    heal buys the walk. Measured on #157: characters carrying a heal ran to a median y of
+    ~50, those without to a median of 0.
+    """
+    acts = [a for a in Explorer().village(_Bot(), _bare_frame(149))
+            if a.get("action") == "buy"]
+    assert acts, "bought nothing at 149 gold with both items in stock"
+    assert acts[0]["kind"] == "potion_red", \
+        f"armed before healing — the ordering bug is back: {acts}"
+
+
+def test_a_HEALED_character_then_gets_armed():
+    """The other side, and the reason this is a REORDERING rather than a deprioritising of
+    arming: once the heal is in the pack, the same gold goes to the weapon. Without this
+    the suite would be equally happy with a bot that never armed anyone again."""
+    f = _bare_frame(WEAPON_BUY_FLOOR + 50)
+    f["chars"][0]["inventory"] = [{"kind": "potion_red", "item_id": "p1", "uses": ["use"]}]
+    acts = [a for a in Explorer().village(_Bot(), f) if a.get("action") == "buy"]
+    assert acts and acts[0]["kind"] == "club", f"expected to arm a healed char: {acts}"

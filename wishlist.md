@@ -50,22 +50,32 @@ with `## Done` unmaintained since 2026-08-20):
   20 score tables — an omission is worse than a wrong number and far harder to notice.
 
 
-Recalculated fresh each pass. `tc` at deploy-minor **73** (`explorer/0.73.0`), counting
+Recalculated fresh each pass. `tc` at deploy-minor **76** (`explorer/0.76.0`; six deploys since the last table), counting
 DEPLOYS since an item was added — a pass that ships no deploy does not advance it.
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| In-world trash talk (`say`) | 0.75 | 0.95 | 62 | **0.523** | 0.534 | **qualifies** |
-| Magic — CASTING (chain sound, awaiting XP) | 0.90 | 0.85 | 14 | **0.519** | 0.574 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 63 | **0.515** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 50 | **0.515** | 0.529 | **qualifies** |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 30 | 0.462 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 61 | 0.441 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 63 | 0.440 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 35 | 0.390 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 45 | 0.328 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 62 | 0.323 | 0.330 | INELIGIBLE — ceiling<0.5 |
-| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 1 | -0.170 | 0.510 | just added |
+| Magic — CASTING (chain sound, awaiting XP) | 0.90 | 0.85 | 20 | **0.535** | 0.574 | **qualifies — BLOCKED, see below** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 56 | **0.517** | 0.529 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 69 | **0.516** | 0.527 | **qualifies** |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 36 | 0.465 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 67 | 0.442 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 69 | 0.441 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 7 | 0.413 | 0.510 | below 0.5 this pass |
+| Short-TTL predator memory | 0.60 | 0.90 | 41 | 0.392 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 51 | 0.329 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 68 | 0.324 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 1 | -0.176 | 0.528 | just added |
+
+**SHIPPED this cycle:** in-world trash talk (`say`) — 0.74.0–0.75.2, `steemer/chatter.py`.
+
+**MAGIC IS BLOCKED, not deprioritised.** It has topped the table for many passes and cannot
+be built: on run #157, every character holds **0 spells**, there are **0 `learned` events**,
+INT is **1–2** across the roster and nothing referenced a tome all run. There is no spell in
+existence to cast, so any casting code would be written against an unobserved mechanic — the
+shape that shipped inert four times (0.54.0, 0.64.0, 0.67.0, 0.68.0). The unblock is a
+concrete, separable slice: get one tome-holder's INT high enough that `use` on a tome is not
+refused, and watch for the `learned` event. That slice, not casting, is what to build first.
 
 _Scored 2026-08-22 (iter 85). `tc` +1 (0.72.0 deployed). Lever from measurement again — and this
 one was found by TRACING ONE CHARACTER'S CONSECUTIVE DECISIONS, which no aggregate would have shown:

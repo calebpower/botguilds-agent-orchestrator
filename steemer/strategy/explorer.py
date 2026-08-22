@@ -711,7 +711,32 @@ TOME_PREFIX = "tome"
 # PREMISE(2026-08-22, brewing does NOT supply our heals so the shop must): count our
 #   `brewed` potion_red across the last ~180k frames; expect < 20. If brewing recovers,
 #   this reserve should rise again — v0.35.0 was right for the world it measured.
-POTION_RESERVE = 150       # never let the potion-buy pull the treasury below this
+# v0.76.0 — MEASURED ON RUN #157, and it is the largest single finding of the project so
+# far. A heal is not a safety item, it is the PASSPORT NORTH:
+#
+#     fielded char-frames carrying a heal:      0.5%   median y ~50, ranging past y=70
+#     fielded char-frames carrying none:       99.5%   median y   0, 79% at y 0-9
+#
+# `POISON_SAFE_DEPTH` pulls an un-healed character home from y>=12, exactly as designed —
+# so with almost nobody healed, the whole roster is pinned to the bottom 12 rows of a
+# 199-row map. That is why 31% of #157's decisions were "world looted-out — home to
+# re-embark" (the spawn strip really is stripped), why 30% of field visits lasted <=5
+# ticks, and why XP is flat: the content worth XP is north of a line we cannot cross.
+#
+# v0.69.0 set this EQUAL to WEAPON_BUY_FLOOR, reasoning that a heal ranks WITH arming.
+# The arithmetic made that strictly worse than it sounds: the weapon fires at gold > 150
+# while `_afford_potion` needs gold - 20 >= 150, i.e. 170 — so the heal is HARDER to
+# afford than the weapon, and is checked after it. With a bare bench there is always
+# someone to arm, so the surplus is spent at 151 every time and 170 is never reached.
+# Run #157: 0 potions bought, 0 brewed, gold sitting at 149.
+#
+# So the heal now sits BELOW the arm floor and is checked FIRST. It buys map access; a
+# weapon buys marginal damage in content we are not allowed to walk to. Bounded by
+# POTION_KEEP=1 per character, so this is a one-off redirection that stops of its own
+# accord once the roster is healed, not a standing drain.
+# PREMISE(2026-08-22, an un-healed character cannot leave the spawn strip): compare the
+#   y-distribution of fielded char-frames with and without a potion_red -- see decisions.log
+POTION_RESERVE = 100       # never let the potion-buy pull the treasury below this
 POTION_MIN_GOLD = 20       # buy a potion once we can afford one (its shop price is
 #   20g; v0.17.0 dropped the old arbitrary 25g buffer — a poison death loses the
 #   char's gear+loot, far more than 20g, so a heal is worth buying at cost).
@@ -934,7 +959,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.75.2"
+    version = "explorer/0.76.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1167,7 +1192,21 @@ class Explorer:
                         bot, uid, {"char_uid": uid, "action": "sell",
                                    "item_id": item["item_id"]},
                         f"selling {item['kind']} (tier {item.get('tier')}) to bank gold")]
-            # 3) still bare-handed with nothing to equip? buy the best weapon we
+            # 3) HEAL FIRST (v0.76.0). This used to sit below arming and armouring, and
+            #    the ordering was the whole bug: see POTION_RESERVE. A character with no
+            #    heal is confined to the bottom 12 rows of the map, so this is the cheapest
+            #    20 gold we can spend — it is the difference between a roster that can
+            #    reach the content carrying the XP and one that cannot.
+            potions_held = sum(1 for i in inv if i["kind"] == "potion_red")
+            if potions_held < POTION_KEEP:
+                buy = self._afford_potion(frame, gold)
+                if buy is not None:
+                    kind, price = buy
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "buy", "kind": kind},
+                        f"buying a {kind} ({price}g) — an un-healed char is capped at "
+                        f"POISON_SAFE_DEPTH and never reaches the content worth XP")]
+            # 3a) still bare-handed with nothing to equip? buy the best weapon we
             #    can AFFORD and qualify for (v0.13.0). The old gate was a hardcoded
             #    `gold >= 45` = shortsword's price, so a broke guild NEVER bought
             #    the 15-gold club and instead drained gold into 20-gold potions —
@@ -1193,20 +1232,6 @@ class Explorer:
                         bot, uid, {"char_uid": uid, "action": "buy", "kind": kind},
                         f"buying {kind} ({price}g; armouring an empty slot -- we have "
                         f"never bought armor and rivals field ~60% armored)")]
-            # 4) HEAL FROM SURPLUS (v0.29.0): the 0.24.0 hoard froze potion-buying;
-            #    now that a stockpile exists (0.28.0), spend its SURPLUS on the one
-            #    thing that outruns poison's DoT — a field heal for a potion-less
-            #    char — but only while gold stays above POTION_RESERVE, so the hoard
-            #    floor holds and keeps climbing. Run #84 proved the need: a poison
-            #    cycle bled potion-less chars out mid-retreat (deaths 0.2 -> 2.23/1k).
-            potions_held = sum(1 for i in inv if i["kind"] == "potion_red")
-            if potions_held < POTION_KEEP:
-                buy = self._afford_potion(frame, gold)
-                if buy is not None:
-                    kind, price = buy
-                    return [self._village_act(
-                        bot, uid, {"char_uid": uid, "action": "buy", "kind": kind},
-                        f"buying a {kind} ({price}g from surplus; a heal to outrun poison's tick)")]
             # 4b) brew looted ingredients into potions — but only with a bottle we
             #     already hold; the bottle-BUY is frozen too (hoard). Free potions
             #     from foraged herbs still help protect a char's carried loot.
