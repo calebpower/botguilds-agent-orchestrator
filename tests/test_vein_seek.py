@@ -316,3 +316,28 @@ def test_the_HEAL_GATE_is_applied_at_the_call_site_not_just_available():
     assert seeks([{"kind": "potion_red", "item_id": "p1"}]) is True, \
         "a healed character reaches the vein 25 tiles away"
     assert seeks([]) is False, "an un-healed one does not"
+
+
+def test_ore_seek_is_reachable_THROUGH_THE_BOT_not_just_through_act():
+    """Drives `GuildBot.on_frame`, the entry point the live loop actually calls.
+
+    Every other test in this file calls `Explorer.act` or `_ore_step` directly. That is
+    exactly the gap that let four behaviours ship correct and unreachable — 0.64.0's proof
+    rule was parsed only on frames it never saw, and no unit test could tell, because they
+    all started downstream of the routing.
+    """
+    from steemer.bot import GuildBot
+
+    known_tiles = [[x, 0, "floor", 0, 0] for x in range(12)] + [[12, 0, "vein", 0, 0]]
+    bot = GuildBot("explorer")
+    bot.tick = 500
+    actions = bot.on_frame({
+        "type": "frame", "world": "mines", "tick": 500, "events": [], "bounds": [64, 176],
+        "chars": [{"char_uid": "u1", "eid": 7, "pos": [0, 0], "hp": 30, "max_hp": 30,
+                   "stamina": 40, "level": 3, "stats": {}, "gifts": [], "statuses": [],
+                   "spells": [], "spell_cap": 1, "carry": {"used": 1, "cap": 21},
+                   "inventory": [], "equipment": {"hand": {"kind": "club"}}}],
+        "visible": {"tiles": known_tiles, "entities": [], "items": [], "gold": []}})
+    assert actions, "the bot produced no action at all"
+    assert actions[0].get("action") == "move"
+    assert actions[0].get("dir") == "E", "should step along the corridor toward the vein"

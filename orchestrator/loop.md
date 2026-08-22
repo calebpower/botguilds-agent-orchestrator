@@ -115,12 +115,49 @@ keep playing** — so protection is layered:
 
 ## Metric attribution
 
-The world is shared, persistent, and noisy, so there is no clean simultaneous
-A/B on one guild. Use **sequential before/after windows** on **rate** metrics
-(per-hour), each long enough to gather signal. State the uncertainty honestly in
-`decisions.log`; a swing inside noise is not a result. `runs` (git sha + strategy
-version + window) is the attribution backbone; `analyze.py` surfaces per-run
-gold delta and error rate.
+**Ad-hoc SQL for a number you intend to REPORT is a defect.** Ask through
+`steemer/attribution.py`, where the safe answer is the one you get by not thinking:
+`ours_only` defaults true, run-scoped questions raise `TooEarly` under 20k
+frames, `compare()` hands back the loot-band confounder alongside every delta,
+and `distinct_entities()` answers "how many" rather than "how often".
+
+This section used to be three paragraphs of advice about sequential windows and
+honest uncertainty. That advice was correct, was in place the whole time, and
+eleven attribution errors happened anyway — including one that reached the
+operator as a confirmed result and had to be retracted, because it counted rival
+forges. Prose cannot fail. Move the rule into a signature or a test.
+
+Still true, and still yours to judge: the world is shared and noisy, there is no
+clean simultaneous A/B, and **a swing inside noise is not a result**. `runs`
+(git sha + strategy version + window) remains the attribution backbone.
+
+### Every reported number goes in the ledger
+
+When you report a figure to the operator, record it:
+
+```python
+claims.record("XP rose to 67/10k", "rate_per",
+              {"run_id": 149, "kind": "xp"}, value=67.2, iteration="iter-84")
+```
+
+Then `uv run python tools/recheck_claims.py` each pass. It re-runs every recorded
+question against a database that is immutable history, so a disagreement can only
+mean the original was wrong. This is `steemer/expectation.py` pointed at the loop
+instead of the bot — the loop's error rate is currently the larger one.
+
+### Four checks that now fail on their own
+
+- `tests/test_reachability.py` — a new behaviour must say how it is reached, by a
+  test that drives `GuildBot.on_frame` or a written exemption. Four versions
+  shipped correct and unreachable before this existed.
+- `tests/test_test_hygiene.py` — ratchets against fixtures derived from the
+  constant under test (caught four times) and hand-rolled bot doubles (three).
+- `tests/test_premises.py` — a constant justified by a measurement carries a
+  `# PREMISE(date, claim): query` line and goes stale after 45 days.
+- `tests/test_attribution.py` — pins the guardrails above.
+
+All three ratchet budgets **may only ever decrease**. Lowering one means fixing a
+test; raising one is the same mistake as a fixture that moves with its constant.
 
 ## Lab notebook (`findings.jsonl`)
 

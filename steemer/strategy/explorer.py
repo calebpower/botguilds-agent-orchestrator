@@ -653,6 +653,9 @@ TOME_PREFIX = "tome"
 # floor itself, so it cannot become the 0.24.0-era drain that pinned gold at ~100.
 # NB the literal, not `WEAPON_BUY_FLOOR`, only because that constant is defined further down
 # this file; a test pins the two equal so the intent cannot drift apart from the number.
+# PREMISE(2026-08-22, brewing does NOT supply our heals so the shop must): count our
+#   `brewed` potion_red across the last ~180k frames; expect < 20. If brewing recovers,
+#   this reserve should rise again — v0.35.0 was right for the world it measured.
 POTION_RESERVE = 150       # never let the potion-buy pull the treasury below this
 POTION_MIN_GOLD = 20       # buy a potion once we can afford one (its shop price is
 #   20g; v0.17.0 dropped the old arbitrary 25g buffer — a poison death loses the
@@ -806,6 +809,10 @@ VEIN_SEEK_SCORE = 2.7
 FIELD_GOAL_RANGE = 20
 
 
+# PREMISE(2026-08-22, frame staleness still makes a bare-cost move fail): shown-stamina at
+#   `not_enough_stamina` move failures; expect a max near 30 for a cost-20 move. Re-measured
+#   2026-08-22 (max 29-30, median 26-28) and deliberately LEFT UNCHANGED — see the negative
+#   result in decisions.log iter 83 before re-litigating this.
 MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina before
 #   stepping — headroom so a ~1-tick-stale frame reading still affords the move on
 #   the server (moves failed not_enough_stamina at shown-sta up to ~29 for a cost-20
