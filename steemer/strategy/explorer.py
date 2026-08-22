@@ -598,6 +598,18 @@ BOTTLE_KEEP = 1            # empty bottles to carry per character (one brew's wo
 # and ingots. Bounded exactly as that fix was: at most SCARCE_LONE_KEEP per KIND per
 # character, so this can never grow into the carry-clog the original rule exists to prevent.
 SCARCE_LONE_KEEP = 2
+
+# v0.63.0 TOMES. Magic has been "blocked" on this list for fifty passes, and the block was
+# never cost. A tome teaches a spell FORM by being `use`d (docs/06), and we have SOLD 74 of
+# them -- tome_ring x22, tome_step x16, tome_field x14, tome_veil x13, tome_bolt x9, most
+# recently on runs #130/#135/#137 -- for 36-44 gold apiece, against a shop price of 120-150.
+# We have never once cast a spell, and `learned` events in our whole history number ZERO.
+#
+# The mechanism is the same leak as `bone` and raw `ore`: a tome carries `use`, not `equip`,
+# so `_should_sell` files it under "pure loot -> bank it". Buying one is out of reach (150g
+# against a 150g arm floor, so it would strand a bare character), but we do not need to buy
+# what keeps falling into our hands.
+TOME_PREFIX = "tome"
 # v0.29.0: heal from SURPLUS. The 0.24.0 hoard froze the potion-buy to stockpile;
 # 0.28.0 froze the last spend (clubs) and the treasury finally climbed (run #84
 # gold mean 5.7 -> 68, median 2 -> 92, climbing past 155 with ZERO drops). But the
@@ -807,7 +819,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.62.0"
+    version = "explorer/0.63.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -837,6 +849,10 @@ class Explorer:
         # uid -> the (product, n_ingot, n_lumber) most recently attempted, so
         # on_action_error can attribute a rejection to the recipe that earned it.
         self._forge_attempt: dict[str, tuple[str, int, int]] = {}
+        # v0.63.0: (uid, tome_kind) the server refused -- INT gates which tomes a character
+        # may use, so a refusal is durable information about that character.
+        self._tome_failed: set[tuple[str, str]] = set()
+        self._using: dict[str, str] = {}     # uid -> kind of the `use` in flight
         # v0.53.0: kind -> the shop's buy_price, learned from every village frame we see.
         # This is the only QUALITY ranking the game exposes: items carry no damage or
         # armour number, just `tier` -- and run #129 showed tier is not ordered, since a
@@ -884,6 +900,11 @@ class Explorer:
             pend = self._forge_attempt.pop(uid, None)
             if pend is not None:
                 self._forge_failed.add(pend)
+        # v0.63.0: a refused `use` of a tome is durable information about this character.
+        if message.get("action") == "use" and uid is not None:
+            kind = self._using.pop(uid, None)
+            if kind is not None and kind.startswith(TOME_PREFIX):
+                self._tome_failed.add((uid, kind))
         if message.get("action") != "equip":
             return
         pend = self.equipping.get(message.get("char_uid"))
@@ -954,17 +975,31 @@ class Explorer:
             feedstock_keep = self._feedstock_keep_ids(inv)
             # v0.59.0: lone VIGOR herbs and raw ORE are half a pair, not clutter.
             scarce_keep = self._scarce_keep_ids(inv)
+            # v0.63.0: can this character still take a new spell form? At the cap, learning
+            # forgets the oldest (docs/06), so a tome is only worth holding under it.
+            can_learn = self._can_learn(char)
             # 1) EQUIP carried gear into empty slots — BEFORE selling, or we sell
             #    the weapons/armor we ought to be wearing (the original bug: 0
             #    equips ever, everyone bare-handed and unarmored).
             eq = self._equip_action(uid, inv, eqp)
             if eq is not None:
                 return [self._village_act(bot, uid, eq, eq.pop("_why"))]
+            # 1b) LEARN A SPELL FORM (v0.63.0), ordered before selling for the same reason
+            #     equipping is: otherwise the tome is banked for 36 gold before anything can
+            #     use it, which is exactly what happened 74 times.
+            tome = self._tome_to_learn(uid, inv, can_learn)
+            if tome is not None:
+                self._using[uid] = tome["kind"]
+                return [self._village_act(
+                    bot, uid, {"char_uid": uid, "action": "use",
+                               "item_id": tome["item_id"]},
+                    f"learning {tome['kind']} — a spell FORM; we have sold 74 of these "
+                    f"and never cast once")]
             # 2) sell what we can't use: loot, gear that won't fit, and brewables
             #    that can't form a batch (stranded singletons).
             for item in inv:
                 if self._should_sell(item, eqp, brew_keep, smelt_keep, feedstock_keep,
-                                     scarce_keep):
+                                     scarce_keep, can_learn):
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "sell",
                                    "item_id": item["item_id"]},
@@ -2100,6 +2135,33 @@ class Explorer:
         return keep
 
     @staticmethod
+    def _can_learn(char: dict[str, Any]) -> bool:
+        """Room for another spell form? `spell_cap` is 1 + B(INT)//4 (docs/06), and at the
+        cap a new form FORGETS the oldest, so learning there is a trade rather than a gain
+        -- and not one we can evaluate until we have cast anything at all."""
+        cap = char.get("spell_cap")
+        if not isinstance(cap, int):
+            return False                    # unknown capability -> do not guess
+        return len(char.get("spells") or []) < cap
+
+    def _tome_to_learn(self, uid: str, inv: list[dict[str, Any]],
+                       can_learn: bool) -> dict[str, Any] | None:
+        """The first carried tome this character could learn from, or None.
+
+        Skips kinds the server has already refused for this character: INT gates which
+        tomes you can use (docs/06), so a refusal is durable information about THIS
+        character, not about the tome -- the same learn-by-rejection the equip slots and
+        the forge recipes use.
+        """
+        if not can_learn:
+            return None
+        for item in inv:
+            kind = item.get("kind") or ""
+            if kind.startswith(TOME_PREFIX) and (uid, kind) not in self._tome_failed:
+                return item
+        return None
+
+    @staticmethod
     def _scarce_keep_ids(inv: list[dict[str, Any]]) -> set[str]:
         """Item ids of SCARCE chain inputs to hold even when they are stranded.
 
@@ -2129,7 +2191,8 @@ class Explorer:
     def _should_sell(self, item: dict[str, Any], eqp: dict[str, Any],
                      brew_keep: set[str], smelt_keep: set[str],
                      feedstock_keep: set[str] | None = None,
-                     scarce_keep: set[str] | None = None) -> bool:
+                     scarce_keep: set[str] | None = None,
+                     can_learn: bool = False) -> bool:
         """Sell only what we can't use. Keep: field supplies (KEEP), medicinal
         drinks (potions/vials/elixirs/tonics), brew ingredients that can still form
         a batch (`brew_keep`), ore that can still form a smelt pair (`smelt_keep`),
@@ -2146,6 +2209,11 @@ class Explorer:
         # v0.59.0: a stranded SCARCE input is half a pair, not clutter -- keep a couple.
         if item["item_id"] in (scarce_keep or set()):
             return False
+        # v0.63.0: a tome is a SPELL FORM, not loot. Kept only while this character can
+        # actually learn from it -- at the cap a new form would forget the old one, so
+        # there it really is surplus and the anti-clog rule stands.
+        if kind.startswith(TOME_PREFIX):
+            return not can_learn
         if "brew" in uses:
             return item["item_id"] not in brew_keep   # sell stranded brewables
         if "smelt" in uses:
