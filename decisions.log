@@ -4045,3 +4045,78 @@ a premise before advising, and picking a read-only lever when the world cannot b
 OPERATOR PRONOUNS: they/them (stated 2026-08-22). The generated doc had defaulted to "his";
 fixed, and saved to memory — generated prose is where this slips.
 GATE 834 reaper / 825 local.
+
+================================================================================
+iter 88 (2026-08-22) — explorer/0.73.0 .. 0.75.2 — bounded rally, and flavour text
+================================================================================
+FOUR DEPLOYS, and the last three are one feature learning where it lives.
+
+0.73.0 — BOUNDED THE COHESION RALLY. 0.72.0 fixed the mutual pursuit by rallying to the
+group's CENTRE and proved convergence in simulation. In play it did nothing: spread median
+43 -> 39 tiles, frames with the group tight (<=6) 1.7% -> 1.3%, while cohesion's share of
+CHOSEN decisions went UP 11.6% -> 18.4%. A rally is not a one-tick action — it needs
+consecutive ticks, and a field stint is median 10-12 (tools/field_stints.py, added). The
+distance to the centre is median 13, p75 22. So it was started constantly and finished
+never. COHESION_RANGE = 8 declines what cannot land. Also fixed: the GATE measured the
+nearest ally while the STEP walked to the centre, and the trace named the ally distance
+while closing on the centre.
+
+*** THE CORRECTION THAT SHAPED THE PASS. *** 0.72.0 was justified by "cohesion was 25% of
+ALL DECISIONS". It was not. That LIKE-matched `decisions.reasoning`, which stores the whole
+trace, so it merged three populations: CHOSEN (11.6%), offered-and-lost (+0.2), and WANTED
+BUT SUPPRESSED by the stamina gate before ever being weighed (+12). The last never reached
+the ladder. attribution.decision_share() now answers chosen vs offered separately, off the
+`chosen` flag in alternatives_json — and its FIRST DRAFT made the same substitution it
+exists to prevent, caught by its own test. Both figures are in claims.jsonl.
+
+0.74.0 / 0.74.1 / 0.75.0 / 0.75.1 / 0.75.2 — IN-WORLD FLAVOUR TEXT (`say`), top of the
+wishlist at 0.523. The first thing this bot does for the operator rather than for itself.
+It only says things the server told us, filtered to our own char_uids; server-supplied item
+names are whitelisted before we rebroadcast them under our guild's name; it fails closed.
+
+Where it lives took four attempts, and every failure was the SAME failure:
+  village, after the ladder   — 0 says in 1545 frames. 429 of 541 village ticks were an
+                                embark; the rest had nobody home.
+  village, riding along       — 3 says, ALL REJECTED `not_in_village`. docs/03-actions.md
+                                gives `say` a scope of "map". I had read that as
+                                "map-visible" rather than as WHERE IT IS LEGAL. The scope
+                                column had the answer before the module was written.
+  field at 0.6 (above REST)   — 0 says. Rest is almost never the alternative; scout (1.0)
+                                is offered on nearly every idle tick.
+  field at 1.1 (above SCOUT)  — 0 says. The looted-out walk home (1.5) and the frontier
+                                steps (2.0/2.5) are always there too.
+  field at 2.1                — works. Above every idle FILLER, below everything ever
+                                load-bearing.
+LESSON, and it is the same one cohesion taught this pass from the other direction: "score
+it below everything so it cannot cost anything" keeps producing a behaviour that CANNOT
+HAPPEN. State the cost instead. Here it is one action, one character, once per 300 ticks,
+guild-wide — under 0.1% of what we issue.
+
+Two false claims of my own, both shipped and both caught live:
+  * "it only displaces an idle rest" — FALSE. Rest is also the RECOVERY action and wins
+    exactly when a character can afford nothing else. Gated on full hp and stamina.
+  * "5 of us, 0g banked." — broadcast while the guild held 139. Guild gold arrives only on
+    VILLAGE frames and `gold: int = 0` stood in for a fact. Gold is None when unknown now,
+    and the gold lines are simply not offered.
+
+MUTATION TESTING EARNED ITS KEEP SIX TIMES this pass. Tests that passed for the wrong
+reason: a rally fixture at y=40 took the poison-retreat branch and never reached cohesion;
+a say at 5/60 stamina was merely unaffordable; one at 4/30 hp took the retreat branch. An
+oracle that could not fail: the "chatter costs nothing" sequence had work every 50 ticks,
+which a 300-tick cooldown never collided with — rebuilt twice before the mutant died. Dead
+code found: a "did this character already act" guard whose removal left the whole suite
+green, and `note_accepted`, which nothing ever called.
+
+tests/support.py — adding `bot.chatter` broke 13 tests across three files at once, each
+with its own four-attribute `_Bot`. Replaced with a real GuildBot: it cannot drift, because
+it is the thing.
+tests/reachability.json — the field detector only reads `offer(...)`, so the entire VILLAGE
+loop was invisible to it, including v0.68.0's learn step, one of the four failures the file
+cites. Village detector added with its own decrease-only budget, seeded at its true count
+(9) rather than at zero, plus a self-test that a detector matching nothing is caught.
+Field exemptions 22 -> 21 (cohesion converted to a through-the-bot test).
+
+OPERATOR: replaced /usr/local/bin/reaper with the new build. The first binary staged was
+the linux-gnu one and this workstation is FreeBSD 15.1; it ran under the linuxulator and
+passed a full gate, then the FreeBSD build replaced it. Old binary kept in the scratchpad.
+GATE 874 reaper / 865 local.

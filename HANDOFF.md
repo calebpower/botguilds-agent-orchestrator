@@ -6,9 +6,32 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.72.0` on **run #151**, repo HEAD `6feddb7`, branch `main` (pushed).
+- **Live:** `explorer/0.75.2` on **run #157**, repo HEAD `e8372b8`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
+- **THE GUILD TALKS NOW** (0.74.0–0.75.2): `say` posts ≤40-char flavour text in-world, keyed to
+  events the server actually sent us. It is the first thing the bot does for the OPERATOR
+  rather than for itself. `steemer/chatter.py`; scored `SAY_SCORE=2.1`, above the idle fillers
+  and below anything load-bearing; gated on full hp+stamina; fails closed on three rejections
+  inside three cooldowns.
+- **⚠ "SCORE IT BELOW EVERYTHING SO IT CANNOT COST ANYTHING" MEANS "IT WILL NEVER HAPPEN."**
+  Learned twice in one pass, from opposite directions. Cohesion rallied forever and finished
+  never; flavour text was placed under the ladder four times and fired zero times in 1,545
+  frames. **Rest is not the floor — `scout` (1.0) is offered on nearly every idle tick**, and
+  the looted-out walk home (1.5) and frontier steps (2.0/2.5) are almost always there too.
+  State the cost plainly instead: one say is <0.1% of the actions we issue.
+- **⚠ AN ERRAND MUST BE SIZED AGAINST UNINTERRUPTED TIME, NOT AGAINST DISTANCE.** A field stint
+  is **median 10–12 ticks** (`tools/field_stints.py`); only 3–13% reach 60. `COHESION_RANGE=8`
+  comes from that. `VEIN_SEEK_RANGE=14` and the healed 32 have NOT been re-derived and are the
+  obvious next candidates.
+- **⚠ `decisions.reasoning` STORES THE WHOLE TRACE.** A `LIKE` against it answers "was this
+  behaviour OFFERED", never "was it TAKEN" — and it also matches behaviours the stamina gate
+  suppressed before they were weighed. Use `attribution.decision_share(..., chosen=True|False)`,
+  which reads the `chosen` flag out of `alternatives_json`. This is what made 0.72.0's "cohesion
+  was 25% of all decisions" wrong: chosen was 11.6%.
+- **⚠ CHECK THE SCOPE COLUMN IN `docs/03-actions.md` BEFORE BUILDING ON AN ACTION.** `say` is
+  scoped **map**, meaning where it is LEGAL, not "map-visible". Three rejected actions and two
+  deploys went to learning that; the table had it all along.
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
   playing the BotGuilds multiplayer game (`bot.willmorrison.net`, ZeroMQ wire + HTTPS API).
   The strategy is `steemer/strategy/explorer.py`. Each loop pass: measure → diagnose → ship
