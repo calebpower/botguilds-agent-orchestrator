@@ -3822,3 +3822,39 @@ declared inert from 28 offers — but I applied it only to the shadow harness an
 queries. RULE: a run younger than ~20k frames cannot support a claim that something STOPPED;
 re-measure at full length before diagnosing. The cost this time was only my own time, but the
 same haste produced a false regression diagnosis in iter 71.
+
+================================================================================
+iter 81 — 2026-08-22 — a character that never walks home never learns (0.68.0, run #147)
+================================================================================
+v0.67.0 raised INT exactly ZERO times on run #146, and the cause was upstream of everything
+it did: THE TOME HOLDER NEVER WENT TO THE VILLAGE. `tome_field` sat in c16041's pack for all
+10,933 of its tome-carrying frames, every one in vale (village share 0.4%). The learn step
+lived only in `village()`, so it never learned — and never earned the `stat_requirement`
+refusal that 0.67.0's INT investment keys on. The whole chain was waiting on an event that
+could not occur.
+
+0.68.0 offers the learn in the FIELD. `use` is not a village verb — it is already how potions
+are drunk out there. Scored 3.0: below adjacent harvest (3.3) and everything urgent, above
+the frontier push (2.5), inside the safe non-homing branch, so a hurt character does not stop
+to read (tested).
+VERIFIED LIVE within minutes on #147: 2 learn decisions -> 2 `use` actions -> 2
+`stat_requirement` refusals. The refusal is now EARNED, which is the input 0.67.0 was missing.
+And the holder does reach the village occasionally (11% of its frames on #147), so the XP
+spend that follows is reachable. Chain should now close without further changes — watching
+rather than building.
+
+*** FOURTH TIME A LINK WAS CORRECT AND UNREACHABLE. THIS IS THE PATTERN OF THE PROJECT. ***
+  v0.54.0 vein-seek   — validated against a map the PROCESS did not have
+  v0.64.0 proof rule  — events parsed only on frames it never saw
+  v0.67.0 INT buy     — keyed on state that dies at deploy
+  v0.68.0 learn step  — running in a place the character never goes
+Always the same shape: code that executes somewhere the subject is not. "It is implemented"
+is no longer an acceptable answer to "why is nothing happening" — the questions are WHERE does
+this run, and FOR WHOM. Before shipping a behaviour, name the frame it fires on and the
+character it fires for, and check that character actually gets there.
+
+NOT FIXED, written down instead: `_tome_failed` is still in-memory and dies at every deploy —
+the OTHER reason 0.67.0 was inert on #146. The field offer makes a refusal cheap to re-earn,
+so persistence is no longer blocking; it joins `slot_wrong`, `wont_fit`, `_swap_failed` and
+`price` on the not-persisted list.
+GATE 782 reaper / 773 local; 7 tests, 5 mutants killed.

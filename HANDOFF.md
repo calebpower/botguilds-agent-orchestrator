@@ -6,7 +6,7 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.67.0` on **run #146**, repo HEAD `8568444`, branch `main` (pushed).
+- **Live:** `explorer/0.68.0` on **run #147**, repo HEAD `5cf6506`, branch `main` (pushed).
   Bot writing frames ~12/s, staleness <1s. **FOUR services up: bot / web / dash / watch** —
   `watch` is the always-on supervisor (`tools/healthcheck.py --watch 60 --fix`).
 - **What this project is:** a persistent improvement loop for a bot ("Stanley_Steemer" guild)
@@ -50,7 +50,18 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   tomes you may use, `max_mana`, `spell_cap` and `essence_cap`. Magic was locked out by our
   own XP policy, not by the game. 0.67.0 raises INT **only** for a character carrying a tome
   it has already been refused (an untried tome is a guess, and survival stats are the cost).
-  **Watch for: `learned` events, non-empty `spells`, then casting.**
+  **0.68.0 then found the link above it:** the tome holder never went to the village
+  (10,933 tome-carrying frames, all in vale) and the learn step lived only in `village()`, so
+  it never learned AND never earned the refusal 0.67.0 keys on. Learning is now offered in the
+  FIELD too. Verified live on #147: 2 learn decisions → 2 `use` → 2 refusals EARNED.
+  **Watch for: INT rising on that character, then a `learned` event, then casting.**
+- **⚠⚠ "IT IS IMPLEMENTED" IS NOT AN ANSWER TO "WHY IS NOTHING HAPPENING". Ask WHERE it runs
+  and FOR WHOM.** Four links in one chain have now been correct and unreachable: 0.54.0
+  vein-seek (validated against a map the process did not have), 0.64.0 proof rule (events
+  parsed only on frames it never saw), 0.67.0 INT buy (keyed on state that dies at deploy),
+  0.68.0 learn step (running where the character never goes). Before shipping a behaviour,
+  name the frame it fires on and the character it fires for, and check that character gets
+  there.
 - **⚠ A RUN YOUNGER THAN ~20k FRAMES CANNOT SUPPORT "SOMETHING STOPPED".** I raised two false
   alarms in one pass ("forging has stopped entirely", "terrain_hit collapsed 519→8") from
   minutes-old samples; full-run figures were unremarkable (terrain_hit 114.6→101.3/10k).

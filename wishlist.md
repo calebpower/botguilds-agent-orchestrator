@@ -55,21 +55,21 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| In-world trash talk (`say`) | 0.75 | 0.95 | 56 | **0.522** | 0.534 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 57 | **0.514** | 0.527 | **qualifies** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 44 | **0.513** | 0.529 | **qualifies** |
-| Magic — CASTING (forms now one stat away) | 0.90 | 0.85 | 8 | 0.478 | 0.574 | clears at tc=11 |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 24 | 0.456 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 55 | 0.440 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 57 | 0.439 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 29 | 0.386 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 39 | 0.326 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 56 | 0.322 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| In-world trash talk (`say`) | 0.75 | 0.95 | 57 | **0.522** | 0.534 | **qualifies** |
+| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 58 | **0.514** | 0.527 | **qualifies** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 45 | **0.514** | 0.529 | **qualifies** |
+| Magic — CASTING (forms one stat away) | 0.90 | 0.85 | 9 | 0.489 | 0.574 | clears at tc=11 |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 25 | 0.457 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 56 | 0.440 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 58 | 0.440 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 30 | 0.387 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 40 | 0.326 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 57 | 0.322 | 0.330 | INELIGIBLE — ceiling<0.5 |
 
-_Scored 2026-08-22 (iter 80). `tc` +2 (0.66.1 and 0.67.0 deployed). Levers from measurement
-again. **Magic CASTING is no longer blocked on a tome drop** — two dropped on #145 and we kept both;
-it is blocked on INT, which 0.67.0 now buys for the refused holder. It clears at tc=11, by which
-point we should know whether a form was learned._
+_Scored 2026-08-22 (iter 81). `tc` +1 (0.68.0 deployed). Lever from measurement again. Magic
+CASTING clears at tc=11, two deploys away — and by then we should know whether a form was actually
+learned. If INT is still not rising, the honest move is to fix that before scoring casting at all,
+since a casting slice with no form to cast would be the FIFTH unreachable link in this chain._
 
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
