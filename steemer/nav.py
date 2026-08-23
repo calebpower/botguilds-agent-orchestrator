@@ -158,6 +158,17 @@ BREAK_COST = 5
 STALE_COST = 3
 
 
+# v0.84.0 — DANGER is a price, not a wall. Two wizards died boxed in on run #170: one
+# RESTED six ticks at full stamina while a rat and wolf ate it (the retreat and the
+# desperation step both found nothing, because predator-adjacency is absolute in
+# `blocked`); the other bounced the same doomed move four times. The operator's
+# screenshot, with corpses. An `avoid` tile costs AVOID_COST — roughly one eaten hit —
+# so a cornered escape becomes a PLANNED route through the least-dangerous corridor,
+# and a route that must cross strike range crosses it once, on purpose, instead of
+# never. Absolute `blocked` remains for what is truly impassable (bodies, learned walls).
+AVOID_COST = 8
+
+
 def weighted_step(
     start: tuple[int, int],
     is_goal: Callable[[tuple[int, int]], bool],
@@ -166,6 +177,7 @@ def weighted_step(
     breakable: frozenset[str] = frozenset(),
     max_cost: int | None = None,
     fresh: "set[tuple[int, int]] | None" = None,
+    avoid: Iterable[tuple[int, int]] = (),
 ) -> tuple[int, int] | None:
     """Dijkstra over remembered tiles; return the next tile toward the CHEAPEST goal.
 
@@ -177,6 +189,7 @@ def weighted_step(
     the search frontier by path cost, the weighted analogue of ``max_depth``.
     """
     blocked_set = set(blocked)
+    avoid_set = set(avoid)
     came_from: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
     dist: dict[tuple[int, int], int] = {start: 0}
     heap: list[tuple[int, int, tuple[int, int]]] = [(0, 0, start)]
@@ -199,6 +212,8 @@ def weighted_step(
                 step_cost = BREAK_COST
             elif is_walkable(nxt, known, blocked_set) or (is_goal(nxt) and kind not in SOLID):
                 step_cost = 1 if fresh is None or nxt in fresh else STALE_COST
+                if nxt in avoid_set:
+                    step_cost += AVOID_COST
             else:
                 continue
             nd = d + step_cost

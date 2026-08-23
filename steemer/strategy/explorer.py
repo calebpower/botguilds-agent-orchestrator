@@ -1011,7 +1011,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.83.2"
+    version = "explorer/0.84.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1674,9 +1674,14 @@ class Explorer:
         # since standing there already incurs the hit). The char cracks the chest, then
         # the dodge steps it out next tick.
         chest_access = {n for c in ctx.containers for n in nav.neighbors(c)}
+        # v0.84.0: strike-range tiles are kept as their OWN set too. `blocked` treats them
+        # as walls, which is right for every opportunistic goal — but a cornered escape
+        # needs them priced, not banned, so the planner can cross one on purpose.
+        strike = set()
         for mp, en in ctx.enemies.items():
             if self._is_melee_predator(en.get("kind")):
-                blocked |= (set(nav.neighbors(mp)) - chest_access)
+                strike |= (set(nav.neighbors(mp)) - chest_access)
+        blocked |= strike
 
         trace.observe(f"at {pos} hp {hp}/{max_hp} sta {stamina} "
                       f"carry {carry['used']}/{carry['cap']}"
@@ -1735,6 +1740,22 @@ class Explorer:
             # tiebreak toward home (lower y). Scored 8.0 < the retreat (8.5) so a known homeward
             # step always wins; this fires ONLY when the retreat found none. Urgent (no stamina
             # margin) — a possibly-bounced step beats resting to death.
+            # v0.84.0 PLANNED ESCAPE (the operator's mob-box screenshot, with corpses:
+            # two wizards died boxed in on run #170 — one RESTED six ticks at full
+            # stamina, one bounced the same doomed move four times). Danger becomes a
+            # PRICE: strike-range tiles cost nav.AVOID_COST (~one eaten hit) instead of
+            # being walls, so the router finds the least-dangerous corridor HOME and
+            # crosses strike range once, on purpose, when that is the only way out.
+            # Bodies and learned walls stay absolute. Scored 8.2: above the one-step
+            # desperation (8.0), below the clean retreat (8.5) — a safe route still wins.
+            esc_step = nav.weighted_step(pos, lambda p: p[1] == 0, ctx.known,
+                                         blocked - strike, fresh=ctx.fresh, avoid=strike)
+            if esc_step is not None:
+                offer({"char_uid": uid, "action": "move",
+                       "dir": nav.step_dir(pos, esc_step)}, 8.2,
+                      "hurt & boxed in — planned escape through the least-dangerous "
+                      "corridor (crossing strike range beats resting to death)",
+                      urgent=True)
             esc = [n for n in nav.neighbors(pos)
                    if n not in blocked and ctx.known.get(n) not in nav.SOLID]
             if esc:

@@ -46,6 +46,9 @@
     "heading to the nearest frontier": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
+    "hurt & boxed in — planned escape through the least-dangerous": {
+      "through_bot_test": "test_the_boxed_wizard_geometry_now_ESCAPES_instead_of_resting"
+    },
     "hurt & cornered — desperation step to a clear tile (beats resting to death)": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
