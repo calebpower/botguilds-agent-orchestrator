@@ -104,6 +104,18 @@ def test_fodder_is_EXEMPT_from_the_gate():
     assert _embarks(acts), "fodder was band-gated — the sacrifice doctrine broke"
 
 
+def test_a_LEVELED_bare_hander_is_still_green():
+    """v0.92.2: the level clause was the loophole — #182's victims were level 2-5 (cheap
+    early spend_xp) and all bare-handed. Level must not exempt anyone; only a weapon
+    does."""
+    bot = _bot()
+    _mark_dangerous(bot, "vale")
+    _mark_dangerous(bot, "mines")
+    vet = _recruit("vet", level=5)
+    acts = bot.on_frame(_village([vet], PAD))
+    assert not _embarks(acts), f"a bare-handed level-5 embarked into a hot band: {acts}"
+
+
 def test_an_armed_level1_is_not_green():
     bot = _bot()
     _mark_dangerous(bot, "vale")

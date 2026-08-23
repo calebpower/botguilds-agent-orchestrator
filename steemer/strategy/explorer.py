@@ -1107,7 +1107,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
 
 
 class Explorer:
-    version = "explorer/0.92.1"
+    version = "explorer/0.92.2"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1771,6 +1771,17 @@ class Explorer:
                 for cand in ordered:
                     cch = here_chars.get(cand)
                     crole = role_of(cch, seats) if cch is not None else None
+                    # v0.92.2: green = BARE HANDS, any level, any nominal role except
+                    # fodder. #182 closed two loopholes at once: the level clause
+                    # (victims were level 2-5 — cheap early spend_xp promotes past
+                    # level<=1 in minutes) and the GUARDIAN branch (a level-5 bare-
+                    # hander is a "guardian" by title and shipped un-gated — c19219
+                    # died exactly this way). A bare-handed char routes through the
+                    # gated generic branch whatever its title; wizards keep their own
+                    # stricter gate.
+                    green = (cch is not None
+                             and not ((cch.get("equipment") or {}).get("hand"))
+                             and crole != "fodder")
                     if crole == "wizard":
                         # v0.87.0 PAIR-EMBARK (operator): a guardian standing HERE ships
                         # out WITH the wizard in one embark — the party forms at the
@@ -1811,7 +1822,7 @@ class Explorer:
                         uid = cand
                         target = min(w_opts, key=lambda m: (threat(m), by_world.get(m, 0)))
                         break
-                    if crole == "guardian":
+                    if crole == "guardian" and not green:
                         # v0.87.0 (operator): "at least two guardians per world" — a
                         # guardian reinforces the open world with the FEWEST guardians
                         # (worlds under 2 first, then threat, then headcount).
@@ -1833,9 +1844,6 @@ class Explorer:
                     # (sacrifice doctrine, operator-directed) and so is anyone armed or
                     # level 2+ — this gate is about newborn legs vs chaser speed, not
                     # about avoiding fights.
-                    green = (cch is not None and (cch.get("level") or 0) <= 1
-                             and not ((cch.get("equipment") or {}).get("hand"))
-                             and crole != "fodder")
                     g_opts = ([m for m in open_maps
                                if not self._world_is_dangerous(m, tick)]
                               if green else open_maps)

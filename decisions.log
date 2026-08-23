@@ -4657,3 +4657,21 @@ runs (#179 44/44, #180 19/19 at 1e-6); stint shadow flowing on #181 (10,958 scor
 by 27.8k frames — the >=2000 scored-decisions floor is met); remaining: stint parity
 extension for the checker, shadow.py zero-diff replay, live calibration on >=30 deaths,
 tick p95 — after #181/#182 close.
+
+ITER 71 (2026-08-23, explorer/0.92.2): THE CLASSIFIER LEAKED, NOT THE LATCH. #182 (death
+latch live) matured in ~35 min: 22 our-deaths — and the latch WAS hot at 21/22 victims'
+embarks, so 0.92.1 did its job; the GREEN CLASSIFIER waved the victims through. Victim
+sheets at embark: level 2-5, stats 8-11, hand=None on EVERY one. Loophole 1: green
+required level<=1, but a fresh recruit banks cheap spend_xp (8-16 XP at v<=2, verified
+formula) and is level 2+ within minutes — level is not youth. Loophole 2: role_of calls
+level>=5 a GUARDIAN, and the guardian embark branch ran BEFORE the gate — c19219
+(level 5, bare hands) shipped as a "guardian" into the band. 0.92.2: green = BARE HANDS
++ not fodder, any level, any title; guardian branch requires not-green; wizard gate
+unchanged (stricter). 2 mutants killed (title bypass, level clause restored); the
+level-5 test caught the guardian loophole BEFORE deploy this time — the test-first
+discipline paying out. STRATEGIC NOTE: 5/30 armed at gold 115 (arm floor 150) means
+latched worlds now hold most of the roster home in <=900-tick stretches. The binding
+constraint on fielding breadth is the ARM RATE — forge-to-arm (M3a) or income raises
+armed share and un-gates the roster. Ride-the-rails (top qualifier 0.523) deferred a
+FOURTH pass on the same measurement-isolation grounds; if #183 is clean it ships next
+pass, no further deferrals.

@@ -6,7 +6,16 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.92.1` on **run #182** (pushed; see git log).
+- **Live:** `explorer/0.92.2` on **run #183** (pushed; see git log).
+- **GREEN = BARE HANDS (0.92.2)**: #182 proved the death latch WORKS (hot at 21/22
+  victims' embarks) but the classifier leaked twice: cheap spend_xp promotes recruits
+  past level<=1 in minutes, and role_of calls a bare-handed level-5 a "guardian" who
+  shipped through the un-gated guardian branch. Green is now bare-hands + not-fodder at
+  ANY level/title; guardian branch requires not-green. ⚠ 5/30 armed at gold 115 → the
+  ARM RATE is the binding constraint on fielding breadth now (forge-to-arm/M3a or income
+  un-gates the roster). MEASURE #183: deaths finally down? fielding not frozen?
+- **RAILS COMMITMENT**: ride-the-rails (0.523, top qualifier 4 passes running) SHIPS
+  next pass if #183 is clean — no further measurement-isolation deferrals.
 - **DEATH LATCH (0.92.1)**: #181 proved the 0.92.0 green gate NEVER FIRED — median
   embark->death gap 38 ticks; the census predicate (>=2 predators in one view) can't see
   a spread-out chaser band that kills serially. Now one of OUR corpses latches its world
