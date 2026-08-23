@@ -1046,6 +1046,19 @@ def api_observed(db_path: str) -> dict:
         conn.close()
 
 
+def _slot_kind(v):
+    """A frame's equipment slot is an OBJECT ({item_id, kind, tier, uses, desc}) —
+    always has been (reference AGENTS.md documents it), but the dashboard only started
+    rendering non-null slots when the 0.92.x arming finally equipped chars, at which
+    point esc(object) printed '[object Object]'. Reduce to the kind string here, the way
+    inventory already is; tolerate a legacy bare-string slot and null."""
+    if v is None:
+        return None
+    if isinstance(v, dict):
+        return v.get("kind")
+    return v
+
+
 def api_roster(db_path: str) -> dict:
     """The full character roster with per-character detail, unioned from the latest
     frame of EACH world (a char is only ever in one world's frame at a time). For
@@ -1099,7 +1112,7 @@ def api_roster(db_path: str) -> dict:
                 "level": c.get("level"), "xp": c.get("xp"),
                 "role": role_of(c, _seats),   # v0.88.0: seat-aware (same pure ranking as the bot)
                 "stats": c.get("stats") or {}, "gifts": list(c.get("gifts") or []),
-                "equipment": {k: eq.get(k) for k in
+                "equipment": {k: _slot_kind(eq.get(k)) for k in
                               ("hand", "offhand", "outfit", "trinket", "boots")},
                 "inventory": [it.get("kind") for it in (c.get("inventory") or [])
                               if it.get("kind")],
