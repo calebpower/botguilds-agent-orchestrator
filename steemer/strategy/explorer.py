@@ -1104,7 +1104,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
 
 
 class Explorer:
-    version = "explorer/0.91.0"
+    version = "explorer/0.92.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1816,8 +1816,29 @@ class Explorer:
                                      key=lambda m: (min(guardian_count.get(m, 0), 2),
                                                     threat(m), by_world.get(m, 0)))
                         break
+                    # v0.92.0 GREEN-RECRUIT BAND GATE. Run #180, first hours: 16
+                    # deaths, ALL fresh recruits, ALL shallow — vale's band 0 (the spawn
+                    # strip is itself a numbered band strip) rolled a chaser pit
+                    # (lava_ant x8, spider_brown x4, delver x2; chaser_score ~0.93) and
+                    # level-1 unarmed replacements from the #179 refill walked straight
+                    # into it and were run down fleeing (11/16). Zero were fodder by
+                    # choice — the doctrine wasn't the cause, the door was. Mirror of
+                    # the 0.87.1 wizard gate: a GREEN char (level<=1 AND bare hands)
+                    # only embarks into non-dangerous worlds; if none is open it waits
+                    # in the village exactly as a gated wizard does. Fodder is exempt
+                    # (sacrifice doctrine, operator-directed) and so is anyone armed or
+                    # level 2+ — this gate is about newborn legs vs chaser speed, not
+                    # about avoiding fights.
+                    green = (cch is not None and (cch.get("level") or 0) <= 1
+                             and not ((cch.get("equipment") or {}).get("hand"))
+                             and crole != "fodder")
+                    g_opts = ([m for m in open_maps
+                               if not self._world_is_dangerous(m, tick)]
+                              if green else open_maps)
+                    if not g_opts:
+                        continue          # every open world is hot — the recruit waits
                     uid = cand
-                    target = min(open_maps, key=lambda m: (threat(m), by_world.get(m, 0)))
+                    target = min(g_opts, key=lambda m: (threat(m), by_world.get(m, 0)))
                     break
                 if uid is None:
                     return []
