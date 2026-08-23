@@ -6,7 +6,22 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.91.0` on **run #180** (pushed; see git log).
+- **Live:** `explorer/0.92.0` on **run #181** (pushed; see git log).
+- **GREEN-RECRUIT BAND GATE (0.92.0)**: #180's first hours: 16 our-deaths, ALL fresh
+  recruits, ALL shallow — vale band 0 rolled a chaser pit (lava_ant/spider_brown/delver,
+  chaser ~0.93) and level-1 bare-handed replacements were run down fleeing (11/16); 0/16
+  were fodder-by-choice. BANDS ARE NUMBERED Y-STRIPS (payload band: 0..3) — the spawn
+  strip is band 0 with its own roll. Gate: green (lvl<=1 + bare hands + not fodder)
+  embark only into non-dangerous worlds, else wait like gated wizards; fodder + armed
+  exempt. MEASURE on #181: recruit deaths in hot bands ~0, recruit rate down.
+- **ML BATCH 2 RULED — ALL FIVE ACCEPTED + DEPLOYED**: stint_survival AUC 0.956 (honest
+  baseline 0.847 — the coded age-only baseline's sign was BACKWARDS at 0.153:
+  survivorship, fresh stints die young), move_fail 0.844 vs 0.750, income_spot 0.906 vs
+  0.830, dph_profile (18 kinds), terrain_regrowth (hazard DECAYS 9e-6 -> 3.6% by gap —
+  flat STALE_COST=3 is mispriced both ways: future lever). death_risk/mob_move v2
+  rejected AGAIN (constants win). stint_survival shadow ACTIVE from this restart (intel
+  kind='model_score', model='stint_survival'). Pass 4 shadow acceptance: >=3 runs with
+  stint scores + parity + zero-diff. Eval snapshot: models/evals/eval-2026-08-23.json.
 - **PORTAL VANISH SPIRAL KILLED (0.91.0)**: run #179 ate itself from tick ~2170k — a
   WALKABLE portal at vale (63,0) on the spawn strip teleported commuting chars deep
   ((57,44)); they died or VANISHED rosterless with no death event while the server kept

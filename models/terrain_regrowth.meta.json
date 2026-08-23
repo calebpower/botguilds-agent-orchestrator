@@ -1,0 +1,15 @@
+{
+ "trained_at_epoch": 1787506355.688977,
+ "git_sha": "unknown",
+ "schema_version": 1,
+ "split": {
+  "train": [],
+  "cal": [],
+  "test": []
+ },
+ "metrics": {
+  "buckets": 4
+ },
+ "baselines": {},
+ "runs_merged": 40
+}

@@ -1,10 +1,9 @@
 {
- "trained_at_epoch": 1787505645.4683487,
+ "trained_at_epoch": 1787506269.5178418,
  "git_sha": "unknown",
  "schema_version": 1,
  "split": {
   "train": [
-   138,
    139,
    140,
    141,
@@ -32,14 +31,15 @@
    163,
    164,
    165,
-   166,
+   166
+  ],
+  "cal": [
    167,
    168,
-   169
+   169,
+   170
   ],
-  "cal": [],
   "test": [
-   170,
    171,
    172,
    173,
@@ -51,10 +51,13 @@
   ]
  },
  "metrics": {
-  "brier": 0.2819360142167316,
-  "test_refreshes": 366
+  "auc": 0.8436711030202353,
+  "ece": 0.03485423555199227,
+  "test_rows": 324926,
+  "test_positives": 14832,
+  "recall_at_fpr10": 0.5513079827400216
  },
  "baselines": {
-  "climatology_brier": 0.6745679210576362
+  "stamina_only_auc": 0.7503268410097717
  }
 }

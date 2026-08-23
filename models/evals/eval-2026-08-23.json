@@ -1,0 +1,97 @@
+{
+ "death_risk": {
+  "metrics": {
+   "auc": 0.8978722387559327,
+   "ece": 0.003107072868632463,
+   "test_positives": 3955,
+   "test_rows": 224180,
+   "recall_at_fpr10": 0.8070796460176991
+  },
+  "baselines": {
+   "heuristic_auc": 0.9397245794619599
+  },
+  "accepted": false
+ },
+ "band_forecast": {
+  "metrics": {
+   "brier": 0.2819360142167316,
+   "test_refreshes": 366
+  },
+  "baselines": {
+   "climatology_brier": 0.6745679210576362
+  },
+  "accepted": true,
+  "classes": [
+   "calm",
+   "melee",
+   "undead"
+  ]
+ },
+ "mob_move": {
+  "metrics": {
+   "exact": 0.7586007602834945,
+   "toward_recall": 0.16618282970961118,
+   "test_pairs": 704211
+  },
+  "baselines": {
+   "rule_exact": 0.7457835790693415,
+   "rule_toward_recall": 0.18554208514952727
+  },
+  "accepted": false
+ },
+ "stint_survival": {
+  "metrics": {
+   "auc": 0.956272552717353,
+   "ece": 0.04424297517451699,
+   "test_rows": 204567,
+   "test_positives": 118606,
+   "recall_at_fpr10": 0.883766419911303
+  },
+  "baselines": {
+   "age_only_auc": 0.15348538607014953
+  },
+  "accepted": true
+ },
+ "move_fail": {
+  "metrics": {
+   "auc": 0.8436711030202353,
+   "ece": 0.03485423555199227,
+   "test_rows": 324926,
+   "test_positives": 14832,
+   "recall_at_fpr10": 0.5513079827400216
+  },
+  "baselines": {
+   "stamina_only_auc": 0.7503268410097717
+  },
+  "accepted": true
+ },
+ "income_spot": {
+  "metrics": {
+   "auc": 0.9061839276546674,
+   "ece": 0.04458467574800159,
+   "test_rows": 204567,
+   "test_positives": 10084,
+   "recall_at_fpr10": 0.721241570805236
+  },
+  "baselines": {
+   "items_w6_auc": 0.8303287269165223
+  },
+  "accepted": true
+ },
+ "dph_profile": {
+  "accepted": true,
+  "metrics": {
+   "kinds": 18,
+   "total_samples": 11856
+  }
+ },
+ "terrain_regrowth": {
+  "accepted": true,
+  "metrics": {
+   "0-50": 9.005140863883335e-06,
+   "1000+": 0.03644967897164582,
+   "201-1000": 0.006662068091755647,
+   "51-200": 0.0006134569431352688
+  }
+ }
+}

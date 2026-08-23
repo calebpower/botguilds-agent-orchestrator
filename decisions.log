@@ -4613,3 +4613,28 @@ recorded AFTER it closes at deploy. ALSO THIS PASS (committed 9880083, pushed): 
 income_spot; dph_profile + terrain_regrowth aggregation tables), 22 remaining candidates
 wishlisted (9 ceiling-ineligible, named). Training session running in reaper (re-extract
 + six-model train); verdicts land next pass.
+
+ITER 69 (2026-08-23, explorer/0.92.0): TWO THREADS CLOSED. (1) GREEN-RECRUIT BAND GATE —
+run #180's first hours: 16 our-deaths, ALL fresh recruits, ALL shallow (y 0-17), killed
+by a chaser-pit band (lava_ant x8 / spider_brown x4 / delver x2, chaser ~0.93); 11/16
+died FLEEING; 0/16 chose a fodder action, so the sacrifice doctrine was NOT the cause —
+the door was. Mechanic discovered: band payloads carry indices 0..3 per world — bands
+are numbered Y-STRIPS; the spawn strip is band 0 with its own composition roll. LEVER:
+green (level<=1 AND bare-handed AND not fodder) chars embark only into worlds
+_world_is_dangerous rejects; no safe world -> they wait, like gated wizards. Fodder and
+armed/leveled exempt; stale reads un-gate. 6 tests, 4/4 mutants killed; the first draft
+was VACUOUS (recruit branch returns early below roster cap — fixtures now AT cap with
+the hot world as the default tiebreak). (2) ML BATCH 2 TRAINING RULED — ALL FIVE
+ACCEPTED: stint_survival AUC 0.956 (HONESTY: coded baseline sign was BACKWARDS, 0.153;
+honest 1-D baseline 0.847, still beaten +0.109 — and the sign flip itself is a finding:
+stints show survivorship, old stints keep living, fresh recruits die young, exactly the
+green-gate pathology); move_fail 0.844 vs 0.750; income_spot 0.906 vs 0.830;
+dph_profile 18 kinds/11,856 samples; terrain_regrowth hazard DECAYS 9e-6 -> 0.036
+across gap buckets (flat STALE_COST=3 is mispriced both ways — future lever). death_risk
+v2 + mob_move v2 REJECTED again (constants keep the crown); band_forecast re-accepted,
+identical coefficients. Artifacts committed with birth certificates; eval snapshot at
+models/evals/. stint_survival's shadow consumer (wired at 0.90.0) ACTIVATES on this
+deploy's restart. Registry canary earned its keep once more: it rejected the eval
+snapshot dropped into models/ (schema None) -> models/evals/ subdir. NEXT: #180+#181
+measure portal-block (transits 0 on #180 already) + green gate (recruit deaths, recruit
+rate); ML Pass 4 shadow acceptance now needs >=3 runs WITH stint scores flowing.
