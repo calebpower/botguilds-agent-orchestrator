@@ -1,5 +1,5 @@
 {
-  "_note": "exempt_budget is a RATCHET: it may only ever DECREASE. Each exemption is a behaviour whose reachability is asserted only by tests that start downstream of the routing — the gap that shipped four correct-but-unreachable versions (0.54.0, 0.64.0, 0.67.0, 0.68.0). Lower it by writing a test that drives GuildBot.on_frame, never by raising the number.",
+  "_note": "exempt_budget is a RATCHET: it may only ever DECREASE. Each exemption is a behaviour whose reachability is asserted only by tests that start downstream of the routing \u2014 the gap that shipped four correct-but-unreachable versions (0.54.0, 0.64.0, 0.67.0, 0.68.0). Lower it by writing a test that drives GuildBot.on_frame, never by raising the number.",
   "behaviours": {
     "attack adjacent": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
@@ -10,10 +10,10 @@
     "beeline to a gold coin (instant banked gold)": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "cornered by undead — fighting out (fallback)": {
+    "cornered by undead \u2014 fighting out (fallback)": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "cracking a chest — direct gold + loot (gold-rush v0.24.0)": {
+    "cracking a chest \u2014 direct gold + loot (gold-rush v0.24.0)": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
     "cracking the adjacent chest before dodging the": {
@@ -31,7 +31,7 @@
     "drinking a red potion to recover HP": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "flavour text — saying": {
+    "flavour text \u2014 saying": {
       "through_bot_test": "test_a_say_reaches_the_world_THROUGH_THE_BOT"
     },
     "grabbing a coin in the safe direction while evading": {
@@ -49,22 +49,22 @@
     "holding formation on the party square (": {
       "through_bot_test": "test_a_guardian_closes_on_a_drifting_wizard"
     },
-    "hurt & boxed in — planned escape through the least-dangerous": {
+    "hurt & boxed in \u2014 planned escape through the least-dangerous": {
       "through_bot_test": "test_the_boxed_wizard_geometry_now_ESCAPES_instead_of_resting"
     },
-    "hurt & cornered — desperation step to a clear tile (beats resting to death)": {
+    "hurt & cornered \u2014 desperation step to a clear tile (beats resting to death)": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
     "learning": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "loot/gold underfoot — grab it": {
+    "loot/gold underfoot \u2014 grab it": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "no goal reachable — stepping to scout": {
+    "no goal reachable \u2014 stepping to scout": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "overburdened — dropping loot to regain mobility": {
+    "overburdened \u2014 dropping loot to regain mobility": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
     "pushing north into unexplored ground": {
@@ -76,11 +76,14 @@
     "snatching the coin underfoot, then fleeing": {
       "exempt_reason": "pre-dates the reachability gate (2026-08-22); covered by unit tests that drive the strategy directly, not the wiring. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "trekking to the nearest unexplored frontier — healed,": {
+    "trekking to the nearest unexplored frontier \u2014 healed,": {
       "through_bot_test": "test_a_HEALED_char_treks_to_a_frontier_FAR_beyond_the_errand_bound"
     },
-    "walking to a known vein — ore is the forge bottleneck": {
+    "walking to a known vein \u2014 ore is the forge bottleneck": {
       "through_bot_test": "test_ore_seek_is_reachable_THROUGH_THE_BOT_not_just_through_act"
+    },
+    "[probe] first-ever ride \u2014": {
+      "through_bot_test": "test_the_probe_fires_on_a_rail_and_follows_it"
     }
   },
   "exempt_budget": 21,
@@ -112,7 +115,7 @@
     "selling": {
       "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
     },
-    "smelting 2×": {
+    "smelting 2\u00d7": {
       "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
     },
     "spending XP on": {
@@ -129,5 +132,5 @@
     }
   },
   "village_exempt_budget": 9,
-  "_village_note": "Same ratchet, for the VILLAGE loop. The field detector only reads `offer(...)`, so village behaviours were invisible to it — including v0.68.0's, which this file's own docstring cites as a motivating failure. Seeded at the true current count on 2026-08-22 and DECREASE-ONLY thereafter, exactly like exempt_budget."
+  "_village_note": "Same ratchet, for the VILLAGE loop. The field detector only reads `offer(...)`, so village behaviours were invisible to it \u2014 including v0.68.0's, which this file's own docstring cites as a motivating failure. Seeded at the true current count on 2026-08-22 and DECREASE-ONLY thereafter, exactly like exempt_budget."
 }

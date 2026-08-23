@@ -629,6 +629,10 @@ FRONTIER_SCORE = 2.0       # heading to the nearest frontier
 #
 # The `rested` gate below is the other half: a character with full hp and stamina is one
 # that would have wandered, not one that would have recovered or run.
+RIDE_PROBE_SCORE = 4.5     # v0.93.0: above routine gathering (4.0+) so the once-per-run
+                           # probe actually fires on a healthy calm tick; never urgent
+RIDE_PROBE_HP_FRAC = 0.7
+RIDE_PROBE_MIN_STA = 15
 SAY_SCORE = 2.1
 SAY_READY_FRAC = 0.9       # ...and only from a character with nothing to gain by resting.
 # The first draft claimed "it can only displace an idle rest tick" and that was FALSE:
@@ -1107,7 +1111,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
 
 
 class Explorer:
-    version = "explorer/0.92.2"
+    version = "explorer/0.93.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1159,6 +1163,7 @@ class Explorer:
         # v0.82.0: one market probe per run; True also on rejection (fail closed).
         self._listed = False
         self._market_reclaimed = False   # stale-probe unlist, once per run
+        self._ride_probed = False        # v0.93.0: one ride experiment per run
         self._tome_bought = False        # v0.83.0: one tome purchase per run
         # v0.85.0: uid -> role, updated on every sighting (field or village). The village
         # frame does not carry FIELDED chars' gifts, so the embark gate reads this ledger
@@ -2036,6 +2041,33 @@ class Explorer:
             offer({"char_uid": uid, "action": "say", "text": chat}, SAY_SCORE,
                   f"flavour text — saying {chat!r}; unlike a rest this also resets "
                   f"the unattended-recall timer")
+
+        # --- v0.93.0 RIDE PROBE (wishlist top qualifier, operator-committed) --------
+        # `ride` has never been issued by ANYONE on this server (0 events all-time).
+        # Docs: from a `track` tile, ride {dir} slides to the rail's end at flat cost,
+        # ramming whatever blocks it; ride_max_tiles is NOT in the live config, so the
+        # cap is empirical. Slice 1 is ONE experiment per run, exploration-matrix
+        # guarded: a healthy ARMED char (bare hands never probe — the green doctrine),
+        # calm surroundings, standing ON a rail, riding toward an adjacent rail tile.
+        # The error taxonomy is the payload: a clean slide, `missing_item` (operator's
+        # minecart hypothesis), or anything else — every outcome teaches. Scored above
+        # routine gathering so the once-per-run probe actually fires.
+        if (not self._ride_probed and ctx.known.get(pos) == "track"
+                and (char.get("equipment") or {}).get("hand")
+                and max_hp and hp >= RIDE_PROBE_HP_FRAC * max_hp
+                and stamina >= RIDE_PROBE_MIN_STA
+                and not any(abs(q[0] - pos[0]) + abs(q[1] - pos[1]) <= FLEE_RADIUS
+                            for q in ctx.enemies)):
+            for d, nxt in (("N", (pos[0], pos[1] - 1)), ("S", (pos[0], pos[1] + 1)),
+                           ("E", (pos[0] + 1, pos[1])), ("W", (pos[0] - 1, pos[1]))):
+                if ctx.known.get(nxt) == "track":
+                    self._ride_probed = True     # spent on OFFER, not send: one per run
+                    print(f"[ride] probe: {uid} riding {d} from {pos}", flush=True)
+                    offer({"char_uid": uid, "action": "ride", "dir": d},
+                          RIDE_PROBE_SCORE,
+                          f"[probe] first-ever ride — {d} along the rail from {pos}; "
+                          f"outcome (slide/error/ram) is the experiment's payload")
+                    break
 
         # --- DRASTIC undead-flee (v0.25.0): mood-driven. If a THREAT mob (poison
         # undead) is within FLEE_RADIUS, do NOT loot or fight — run to the village.

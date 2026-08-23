@@ -4675,3 +4675,20 @@ constraint on fielding breadth is the ARM RATE — forge-to-arm (M3a) or income 
 armed share and un-gates the roster. Ride-the-rails (top qualifier 0.523) deferred a
 FOURTH pass on the same measurement-isolation grounds; if #183 is clean it ships next
 pass, no further deferrals.
+
+ITER 72 (2026-08-23, explorer/0.93.0): ZERO. Run #183 (bare-hands gate) matured at 23.7k
+frames with ZERO our-deaths — the first zero-death mature run in project history — and
+recruit churn fell 88 -> 13 while 497 embarks prove fielding never froze. The
+three-slice arc (0.91.0 portal SOLID -> 0.92.1 death latch -> 0.92.2 green = bare
+hands) closed a 60+ corpse bleed. As committed, RIDE PROBE shipped (wishlist top at
+0.524 for four passes): one exploration-matrix-guarded `ride` per run from a healthy
+armed char standing on a rail — the first ride ever issued on this server when it
+fires. Operator's minecart hypothesis rides along: a missing_item-style error confirms
+it, a clean slide refutes it, either way one tick buys the semantics (+ the docs' RAM
+mechanic — rail damage without a weapon — is the tactical sleeper). 7 tests, 6/6
+mutants killed after sharpening the off-rail fixture (floor underfoot, rail adjacent —
+the plain-floor case let the standing-check mutant live); reachability gate caught the
+unregistered behaviour and got its through-the-bot entry. Claims from #183 at close.
+NEXT: measure #184 (probe fired? what came back?); arm-rate remains the structural
+constraint (forge-to-arm M3a is the candidate big lever); ML Pass 4 wants the stint
+parity extension + zero-diff once >=3 stint-shadow runs close.

@@ -6,7 +6,16 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.92.2` on **run #183** (pushed; see git log).
+- **Live:** `explorer/0.93.0` on **run #184** (pushed; see git log).
+- **ZERO-DEATH RUN (#183, 0.92.2)**: 23.7k mature frames, 0 our-deaths (22 -> 0),
+  recruits 88 -> 13, embarks 497 (fielding never froze). The three-slice arc — portal
+  SOLID -> death latch -> green = bare hands — closed a 60+ corpse bleed. Claims at close.
+- **RIDE PROBE LIVE (0.93.0)**: once per run, a healthy ARMED char standing on a rail
+  issues the server's first-ever `ride` (guards: no predator in FLEE_RADIUS, hp>=70%,
+  adjacent rail tile for direction; score 4.5). WATCH steemer-live.log for `[ride]
+  probe:` + the resulting event/error — minecart hypothesis (operator) vs clean slide;
+  docs promise flat-cost slide to rail's end + RAM damage to blockers. Slice 2 designs
+  itself from the first result.
 - **GREEN = BARE HANDS (0.92.2)**: #182 proved the death latch WORKS (hot at 21/22
   victims' embarks) but the classifier leaked twice: cheap spend_xp promotes recruits
   past level<=1 in minutes, and role_of calls a bare-handed level-5 a "guardian" who

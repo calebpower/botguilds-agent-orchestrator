@@ -50,7 +50,7 @@ with `## Done` unmaintained since 2026-08-20):
   20 score tables — an omission is worse than a wrong number and far harder to notice.
 
 
-Recalculated fresh each pass. `tc` at deploy-minor **92.2** (`explorer/0.92.2`), counting
+Recalculated fresh each pass. `tc` at deploy-minor **93** (`explorer/0.93.0`), counting
 DEPLOYS since an item was added — a pass that ships no deploy does not advance it.
 
 | item | good | risk | tc | final | ceiling | status |
@@ -80,7 +80,7 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 | Model: test selection for the loop | 0.52 | 1.00 | 3 | **0.217** | 0.390 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
 | Magic — CASTING (chain sound; INT+tome slice unblocks) | 0.90 | 0.85 | 44 | **0.556** | 0.574 | **qualifies — BLOCKED: treasury (gold 113 vs ~220 for a tome)** |
 | Move-prediction (b) rivals | 0.72 | 0.98 | 80 | **0.520** | 0.529 | **qualifies — BLOCKED: no subject (rivals fielded 0 chars in 22h; sidecar healthy, feed empty by reality)** |
-| RIDE the rails (cap discoverable only empirically) | 0.82 | 0.90 | 25 | **0.524** | 0.553 | **qualifies** |
+| RIDE the rails (slices 2+: nav integration, ram tactics — awaits probe result) | 0.82 | 0.90 | 25 | **0.524** | 0.553 | **slice 1 SHIPPED 0.93.0** — re-scope after the first ride lands |
 | Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 31 | **0.488** | 0.510 | below 0.5 — ages toward ceiling 0.510 |
 | Portal-aware routing (portal tile = edge to its twin; graph from our own events) | 0.90 | 0.80 | 13 | **0.485** | 0.540 | below 0.5 — ages toward ceiling 0.540 |
 | Tick-participation bar (operator: block-explorer style, last 500 ticks green/red) | 0.72 | 1.00 | 13 | **0.485** | 0.540 | below 0.5 — ages toward ceiling 0.540 |
