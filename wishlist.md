@@ -55,6 +55,7 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
+| Deterministic party-card order | 0.62 | 1.00 | 0 | — | 0.465 | just added (tc=0) |
 | Scope-error quarantine | 0.82 | 0.96 | 3 | **0.328** | 0.590 | below 0.5 — ages toward ceiling 0.590 |
 | Model: XP-rate per placement | 0.85 | 0.95 | 3 | **0.336** | 0.606 | below 0.5 — ages toward ceiling 0.606 |
 | Model: death-cause classifier | 0.77 | 0.99 | 3 | **0.318** | 0.572 | below 0.5 — ages toward ceiling 0.572 |
@@ -153,6 +154,15 @@ technique when a metric is flat despite activity._
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
 
 ## Open
+
+- [ ] **Deterministic party-card order (operator, 2026-08-23)** — the Party tab maps cards
+  in raw `/api/roster` order and re-renders every 2s, so cards JUMP on each update when the
+  server's order shifts. Sort by a stable key before render — e.g. world, then role
+  (guardian/wizard/forager/fodder), then level desc, then a stat tiebreak, then char_uid as
+  the final stable tiebreak so equal cards never swap. Pure dashboard/JS (renderParty in
+  ui/server.py); no bot risk, no data change. Cheap and it's the operator watching the
+  screen, so `good_idea` credits the annoyance it removes.
+
 
 - [ ] **Scope-error quarantine** — stop issuing actions for a char uid after K consecutive
   scope errors (`unknown_character` / `not_in_village` / `no_such_character`) with no
