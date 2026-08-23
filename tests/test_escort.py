@@ -133,3 +133,27 @@ def test_escort_duty_BEATS_one_more_coin():
     mine = _act_for(acts, "guard")
     assert mine and mine[0]["action"] == "move" and mine[0]["dir"] == "E", \
         f"the guardian chose a coin over its wizard: {mine}"
+
+
+def test_a_guardian_does_NOT_cross_the_map_to_escort():
+    """First live trace of 0.85.0: 'escorting the wizard (130 away)'. An unbounded escort
+    is a cross-map errand — the exact stint-sizing trap of the cohesion and vein arcs —
+    and re-pairing at distance belongs to the village (fallback + embark gate), not to a
+    guardian's legs.
+
+    Asserted on the DECISION TRACE, not the action: the first draft checked the action
+    dict for the word 'escorting', which actions never carry, so it passed under the
+    unbounded mutant while the guardian marched east — an oracle that could not fail.
+    """
+    from steemer.reasoning import DecisionTrace
+    from steemer.strategy.base import FieldContext
+    bot = _bot()
+    guard = _char("guard", ["vit"], pos=(1, 3), level=5)
+    wiz = _char("wiz", ["int"], pos=(60, 3))
+    known = {(x, y): "floor" for x in range(64) for y in range(24)}
+    ctx = FieldContext(world="vale", known=known, bounds=(64, 200))
+    tr = DecisionTrace(tick=500, world="vale", char_uid="guard")
+    bot.strategy.act(bot, guard, {"world": "vale", "tick": 500,
+                                  "chars": [guard, wiz]}, ctx, tr)
+    escort = [c.why for c in tr.candidates if "escorting" in c.why]
+    assert not escort, f"guardian set off on a 59-tile escort: {escort}"

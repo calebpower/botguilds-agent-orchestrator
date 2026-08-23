@@ -672,6 +672,13 @@ ESCORT_SCORE = 4.2         # above gathering (4.0): escort duty wins over one mo
 ESCORT_PULL = 4            # guardian closes when the wizard is farther than this...
 ESCORT_HOLD = 2            # ...and holds inside this (hysteresis like cohesion's)
 ESCORT_NEAR = 10           # a wizard with no guardian inside this radius has no escort
+ESCORT_MAX_GAP = 20        # v0.85.1: a guardian escorts only inside this. The first live
+                           # trace read "escorting the wizard (130 away)" — an unbounded
+                           # escort is a cross-map errand (stints are 10-12 ticks; the
+                           # trap this session already paid for twice). Beyond this gap,
+                           # RE-PAIRING is the village's job: the wizard falls back
+                           # (ESCORT_NEAR) and the embark gate fields it back alongside
+                           # a guardian.
 WIZARD_FALLBACK_SCORE = 6.0  # above all income (<=5.0), below hurt-retreat (8.5)/dodge
 
 # v0.58.0 BOTTLES. The heal supply had a hole in it that nothing was watching.
@@ -1023,7 +1030,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.85.0"
+    version = "explorer/0.85.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2063,7 +2070,7 @@ class Explorer:
                 if wiz:
                     wgap = min(abs(q[0] - pos[0]) + abs(q[1] - pos[1]) for q in wiz)
                     threshold = ESCORT_HOLD if uid in self._escorting else ESCORT_PULL
-                    if wgap > threshold:
+                    if threshold < wgap <= ESCORT_MAX_GAP:
                         wstep = nav.weighted_step(
                             pos, lambda t: min(abs(t[0] - q[0]) + abs(t[1] - q[1])
                                                for q in wiz) <= ESCORT_HOLD,
