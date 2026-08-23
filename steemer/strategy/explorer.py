@@ -633,6 +633,9 @@ RIDE_PROBE_SCORE = 4.5     # v0.93.0: above routine gathering (4.0+) so the once
                            # probe actually fires on a healthy calm tick; never urgent
 RIDE_PROBE_HP_FRAC = 0.7
 RIDE_PROBE_MIN_STA = 15
+RIDE_SEEK_SCORE = 3.1      # v0.93.1: a qualified prober WALKS to a known rail — below
+                           # harvest(3.3)/gather so real income wins, above frontier(2.5)
+RIDE_SEEK_RANGE = 24       # bounded: a detour to a nearby rail, not an expedition
 SAY_SCORE = 2.1
 SAY_READY_FRAC = 0.9       # ...and only from a character with nothing to gain by resting.
 # The first draft claimed "it can only displace an idle rest tick" and that was FALSE:
@@ -1111,7 +1114,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
 
 
 class Explorer:
-    version = "explorer/0.93.0"
+    version = "explorer/0.93.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2052,12 +2055,15 @@ class Explorer:
         # The error taxonomy is the payload: a clean slide, `missing_item` (operator's
         # minecart hypothesis), or anything else — every outcome teaches. Scored above
         # routine gathering so the once-per-run probe actually fires.
-        if (not self._ride_probed and ctx.known.get(pos) == "track"
-                and (char.get("equipment") or {}).get("hand")
-                and max_hp and hp >= RIDE_PROBE_HP_FRAC * max_hp
-                and stamina >= RIDE_PROBE_MIN_STA
-                and not any(abs(q[0] - pos[0]) + abs(q[1] - pos[1]) <= FLEE_RADIUS
-                            for q in ctx.enemies)):
+        # v0.93.1: the probe was UNREACHABLE as shipped — it waited for a char to already
+        # be standing on a rail, which never happened (run #184: 0 sends; our armed chars
+        # never crossed a track tile, all at mines y-shallow while the rails sit y12-82).
+        # A passive experiment that no behaviour routes toward is the starvation trap.
+        # _ride_prober_ready factors the gate so seek and fire cannot drift; the seek
+        # (below, in the safe non-homing branch) walks a qualified prober to the nearest
+        # known rail, and this fires when it arrives.
+        if (self._ride_prober_ready(char, pos, hp, max_hp, stamina, ctx)
+                and ctx.known.get(pos) == "track"):
             for d, nxt in (("N", (pos[0], pos[1] - 1)), ("S", (pos[0], pos[1] + 1)),
                            ("E", (pos[0] + 1, pos[1])), ("W", (pos[0] - 1, pos[1]))):
                 if ctx.known.get(nxt) == "track":
@@ -2464,6 +2470,21 @@ class Explorer:
                       f"character may never walk home")
                 productive = True
 
+            # v0.93.1: route a qualified prober to the nearest known rail so the
+            # once-per-run ride experiment can actually run (slice 1 sat unreachable).
+            # Only when NOT already on a rail (the fire offer handles that) and a
+            # rideable rail is known within RIDE_SEEK_RANGE. Below harvest/gather, so a
+            # prober still takes free income first; it only walks to a rail on a tick it
+            # would otherwise spend wandering.
+            if (self._ride_prober_ready(char, pos, hp, max_hp, stamina, ctx)
+                    and not self._is_rideable_rail(ctx, pos)):
+                rstep = self._rail_step(pos, ctx, blocked)
+                if rstep is not None:
+                    offer({"char_uid": uid, "action": "move",
+                           "dir": nav.step_dir(pos, rstep)}, RIDE_SEEK_SCORE,
+                          "walking to a known rail to run the once-per-run ride probe")
+                    productive = True
+
             harvest = next((p for p in nav.neighbors(pos)
                             if ctx.known.get(p) in HARVEST_KINDS), None)
             if harvest is not None:
@@ -2859,6 +2880,37 @@ class Explorer:
         if close_enough(pos):
             return None
         return nav.bfs_step(pos, close_enough, ctx.known, blocked)
+
+    def _ride_prober_ready(self, char, pos, hp, max_hp, stamina,
+                           ctx: "FieldContext") -> bool:
+        """The shared ride-probe gate (v0.93.1): not yet probed this run, ARMED (bare
+        hands never probe — the green doctrine extends to experiments), healthy, calm.
+        The on-rail check is NOT here — seek needs 'ready but off the rail', fire needs
+        'ready and on it' — so factoring only the common part keeps them from drifting."""
+        return (not self._ride_probed
+                and bool((char.get("equipment") or {}).get("hand"))
+                and bool(max_hp) and hp >= RIDE_PROBE_HP_FRAC * max_hp
+                and stamina >= RIDE_PROBE_MIN_STA
+                and not any(abs(q[0] - pos[0]) + abs(q[1] - pos[1]) <= FLEE_RADIUS
+                            for q in ctx.enemies))
+
+    @staticmethod
+    def _is_rideable_rail(ctx: "FieldContext", t: tuple[int, int]) -> bool:
+        """A track tile the probe could ACTUALLY ride from: a track with a track
+        NEIGHBOUR to give the ride a direction. A lone track is a dead ride. Shared by
+        the seek goal AND the seek guard so 'where we head' and 'when we stop heading'
+        use one definition."""
+        return (ctx.known.get(t) == "track"
+                and any(ctx.known.get(n) == "track" for n in nav.neighbors(t)))
+
+    @classmethod
+    def _rail_step(cls, pos: tuple[int, int], ctx: "FieldContext", blocked,
+                   reach: int = RIDE_SEEK_RANGE) -> tuple[int, int] | None:
+        """One step toward the nearest known RIDE-ABLE rail tile within reach, or None.
+        A track tile is WALKABLE (you stand ON it, unlike a vein), so the goal is the
+        tile itself."""
+        return nav.bfs_step(pos, lambda t: cls._is_rideable_rail(ctx, t),
+                            ctx.known, blocked, max_depth=reach)
 
     @staticmethod
     def _ore_step(pos: tuple[int, int], ctx: "FieldContext", blocked,

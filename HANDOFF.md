@@ -6,7 +6,18 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.93.0` on **run #184** (pushed; see git log).
+- **Live:** `explorer/0.93.1` on **run #185** (pushed; see git log).
+- **RIDE PROBE MADE REACHABLE (0.93.1)**: #184 logged 0 ride sends — slice 1 waited for
+  a char to already stand on a rail (never happened; armed chars field shallow, rails at
+  mines y12-82). Slice 2 routes a qualified prober (armed/healthy/calm/not-probed, shared
+  _ride_prober_ready) to the nearest known RIDEABLE rail (_is_rideable_rail = track with a
+  track neighbour), seek score 3.1, range 24. WATCH #185 steemer-live.log for `[ride]
+  probe:` + the event/error — minecart hypothesis (operator) vs clean slide vs ram damage.
+- **PARTY-TAB GEAR FIXED (ab078bd)**: equipment slots are objects; reduced to .kind
+  server-side. Submodule is CURRENT (588702a == origin/HEAD) — was never an API change.
+- **ROSTER-CAP (corrected)**: server enforces roster_cap via a recruit error, but counts
+  VILLAGE-PRESENT chars, so village+fielded can exceed 30 (we sit at 31). Not exploited —
+  more chars worsens the arm-rate constraint. server_bugs.md logged.
 - **ZERO-DEATH RUN (#183, 0.92.2)**: 23.7k mature frames, 0 our-deaths (22 -> 0),
   recruits 88 -> 13, embarks 497 (fielding never froze). The three-slice arc — portal
   SOLID -> death latch -> green = bare hands — closed a 60+ corpse bleed. Claims at close.

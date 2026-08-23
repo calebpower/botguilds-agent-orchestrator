@@ -4692,3 +4692,25 @@ unregistered behaviour and got its through-the-bot entry. Claims from #183 at cl
 NEXT: measure #184 (probe fired? what came back?); arm-rate remains the structural
 constraint (forge-to-arm M3a is the candidate big lever); ML Pass 4 wants the stint
 parity extension + zero-diff once >=3 stint-shadow runs close.
+
+ITER 73 (2026-08-23, explorer/0.93.1): THE PROBE THAT COULDN'T BE REACHED. #184 logged
+ZERO ride sends — slice 1 (0.93.0) offered `ride` only from a char ALREADY on a track,
+a coincidence that never occurs: our armed chars field shallow while the mines rails sit
+y12-82 (47 known, nearest (2,12)); the probe sat unreachable, the starvation trap my own
+memory (starvation-by-low-scoring, verification-traps) warns about. LEVER (slice 2):
+route a qualified prober to the nearest known RIDEABLE rail. _ride_prober_ready factors
+the gate (armed/healthy/calm/not-probed) shared by seek+fire so they can't drift;
+_is_rideable_rail (track WITH a track neighbour — a lone track is a dead ride) shared by
+the seek goal and its guard; seek scored 3.1 (< harvest 3.3, > frontier 2.5),
+RIDE_SEEK_RANGE=24. Caught + fixed a stranding bug mid-build: the draft guard
+(pos != "track") froze a prober parked on a lone track; replaced with "not on a rideable
+rail". 4/4 mutants killed — the on-rail micro-guard was an EQUIVALENT mutant (fire 4.5
+always outranks seek 3.1) so it was retired for the observable lone-track case rather
+than tested vacuously (the ethic: don't keep a test that can't observe its target).
+Reachability gate caught the new behaviour; registered. NEXT: #185 should finally
+produce ride data — watch steemer-live.log for [ride] probe: and the resulting
+event/error (minecart hypothesis vs clean slide vs ram). Then arm-rate (forge-to-arm)
+and ML Pass 4. Also this session: fixed the Party-tab [object Object] gear bug
+(equipment slots are objects; reduced to .kind server-side; ab078bd) and corrected the
+roster-cap finding (server enforces via roster_cap error, but counts village-present
+chars — village+fielded can exceed 30; NOT exploited).

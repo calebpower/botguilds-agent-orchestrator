@@ -84,6 +84,9 @@
     },
     "[probe] first-ever ride \u2014": {
       "through_bot_test": "test_the_probe_fires_on_a_rail_and_follows_it"
+    },
+    "walking to a known rail to run the once-per-run ride probe": {
+      "through_bot_test": "test_a_qualified_prober_walks_toward_a_known_rail"
     }
   },
   "exempt_budget": 21,

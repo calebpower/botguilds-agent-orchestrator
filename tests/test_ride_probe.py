@@ -88,3 +88,71 @@ def test_no_probe_off_the_rail_or_on_a_dead_end():
 def test_a_hurt_char_never_probes():
     acts = _bot().on_frame(_frame({"hp": 20}, tiles_extra=RAIL))   # 20/30 < 0.7
     assert not _rides(acts), "a hurt char rode the rail"
+
+
+# ---- v0.93.1: the seek makes the probe REACHABLE ------------------------------------
+# Slice 1 sat unreachable (run #184: 0 sends — armed chars never crossed a rail). A
+# qualified prober now walks to the nearest known rideable rail.
+
+def _field_frame(char_over=None, tiles_extra=(), entities=()):
+    """A NON-village field frame so the safe non-homing gather branch (where the seek
+    lives) is reached — the probe/seek only run in the field."""
+    tiles = [[x, y, "floor", 0, 0] for x in range(12) for y in range(12)]
+    tiles += [list(t) for t in tiles_extra]
+    ch = {"char_uid": "c1", "eid": 7, "pos": [1, 1], "hp": 30, "max_hp": 30,
+          "stamina": 40, "max_stamina": 56, "level": 3, "stats": {"str": 2},
+          "gifts": [], "statuses": [], "spells": [], "carry": {"used": 0, "cap": 20},
+          "inventory": [], "equipment": {"hand": {"kind": "club"}}}
+    ch.update(char_over or {})
+    return {"type": "frame", "world": "mines", "tick": 600, "events": [],
+            "bounds": [12, 200], "chars": [ch],
+            "visible": {"tiles": tiles,
+                        "entities": [{"eid": e, "kind": k, "pos": list(p),
+                                      "faction": "monster"} for e, k, p in entities],
+                        "items": [], "gold": []}}
+
+
+# a rideable rail (two adjacent track tiles) four tiles east of the char at (1,1)
+FAR_RAIL = ((5, 1, "track", 0, 0), (6, 1, "track", 0, 0))
+
+
+def _moves_toward_rail(acts, uid="c1"):
+    m = [a for a in acts if a.get("char_uid") == uid and a.get("action") == "move"]
+    return m and m[0].get("dir") == "E"      # rail is due east
+
+
+def test_a_qualified_prober_walks_toward_a_known_rail():
+    acts = _bot().on_frame(_field_frame(tiles_extra=FAR_RAIL))
+    assert _moves_toward_rail(acts), f"prober did not head for the rail: {acts}"
+
+
+def test_a_bare_handed_char_does_not_seek_the_rail():
+    acts = _bot().on_frame(_field_frame({"equipment": {}}, tiles_extra=FAR_RAIL))
+    assert not _moves_toward_rail(acts), "a bare-handed char sought the rail"
+
+
+def test_a_lone_rail_tile_is_not_sought():
+    """A single track with no track neighbour is a dead ride — the probe needs a
+    direction, so the seek must ignore it (kills a 'seek any track' mutant)."""
+    lone = ((5, 1, "track", 0, 0),)
+    acts = _bot().on_frame(_field_frame(tiles_extra=lone))
+    assert not _moves_toward_rail(acts), "sought a lone (un-rideable) track tile"
+
+
+def test_the_seek_stops_once_ON_the_rail_and_the_probe_fires():
+    """Standing on a rideable rail: the fire offer takes over and a ride is issued."""
+    on_rail = ((1, 1, "track", 0, 0), (1, 2, "track", 0, 0))
+    acts = _bot().on_frame(_field_frame(tiles_extra=on_rail))
+    assert _rides(acts), f"on the rail but did not fire the probe: {acts}"
+
+
+def test_a_char_on_a_LONE_track_seeks_a_real_rail_instead_of_stranding():
+    """Regression for the first-draft guard (pos != 'track'), which stranded a prober
+    parked on a lone track: it must still walk to a rideable rail elsewhere. Char on a
+    lone track at (1,1); rideable pair four east — expect a move E, and NO ride (the
+    lone tile is not rideable)."""
+    lone_here_rail_east = ((1, 1, "track", 0, 0),
+                           (5, 1, "track", 0, 0), (6, 1, "track", 0, 0))
+    acts = _bot().on_frame(_field_frame(tiles_extra=lone_here_rail_east))
+    assert _moves_toward_rail(acts), f"stranded on the lone track: {acts}"
+    assert not _rides(acts), "fired a ride from a lone (un-rideable) track"
