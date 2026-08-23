@@ -32,6 +32,14 @@ frontend = [
     "playwright>=1.40",
     "pytest-playwright>=0.5",
 ]
+# ML training (the offline pipeline of docs/plan glistening-baking-lagoon). Linux-only,
+# NEVER default-synced: the FreeBSD workstation has no wheels for these and the live bot
+# must stay stdlib-only for scoring (steemer/models.py walks exported JSON trees). Only
+# the reaper training session (`--manifest .reaper-train.toml`) installs this group.
+train = [
+    "scikit-learn>=1.5",
+    "numpy>=2",
+]
 
 [build-system]
 requires = ["hatchling"]

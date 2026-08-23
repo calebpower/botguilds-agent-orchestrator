@@ -1,0 +1,33 @@
+# reaper manifest for the ML TRAINING workload (plan: glistening-baking-lagoon).
+#
+# Invoked explicitly: `reaper test --manifest .reaper-train.toml`. The default
+# .reaper.toml stays the pytest gate; this one extracts features from MariaDB
+# (reaper_db.toml — the SELECT-only LAN user; the file is git-ignored but syncs in)
+# and, in Pass 2+, trains the three models. Everything valuable comes back through
+# $REAPER_OUT -> out/ (streamed continuously); the per-run feature cache lives on the
+# pool ($REAPER_CACHE_FEAT) keyed by run id + FEATURE_SCHEMA_VERSION so a retrain does
+# not re-stream 3.28M frames over the LAN.
+
+schema = 1
+project = "steemer"
+guests = ["ubuntu-26.04"]
+exec = "container"
+
+[build]
+# Same digest-pinned uv image as the gate manifest; only the dependency group differs.
+image = "ghcr.io/astral-sh/uv@sha256:22334efe746f1b69217d455049b484d7b8cacfb2d5f42555580b62415a98e0a3"
+cmd = "UV_CACHE_DIR=$REAPER_CACHE_UV uv sync --frozen --group train"
+cache = ["uv", "feat"]
+
+[run]
+# Pass 1: profiles (if missing) + extraction + summary. No pipes — dash has no
+# pipefail; redirect so a red job cannot read green. Training is appended here in
+# Pass 2 (`tools/train_models.py`).
+cmd = "UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group train python tools/extract_features.py --db reaper_db.toml --out $REAPER_CACHE_FEAT/v1 --summary $REAPER_OUT/extract_summary.json --runs latest:40 > $REAPER_OUT/extract.log 2>&1"
+
+[sync]
+exclude = ["/.venv/", "/__pycache__/", "/*.db", "/reference_starter_kit/"]
+
+[resources]
+cores = 4
+ram_gb = 8

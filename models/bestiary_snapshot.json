@@ -1,0 +1,182 @@
+{
+ "schema_version": 1,
+ "profile_runs": "160-165",
+ "git_sha": "cba22c3",
+ "kinds": {
+  "vampire_bat": {
+   "move_rate": 0.606,
+   "chaser_score": 0.743,
+   "dph": 4.2,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "turtle": {
+   "move_rate": 0.184,
+   "chaser_score": 0.394,
+   "dph": 0.0,
+   "hit_rate": 0.002,
+   "behavior": "wanderer"
+  },
+  "mole": {
+   "move_rate": 0.246,
+   "chaser_score": 0.524,
+   "dph": 0.0,
+   "hit_rate": 0.019,
+   "behavior": "wanderer"
+  },
+  "chicken": {
+   "move_rate": 0.187,
+   "chaser_score": 0.411,
+   "dph": 0.0,
+   "hit_rate": 0.0,
+   "behavior": "wanderer"
+  },
+  "rat_brown": {
+   "move_rate": 0.197,
+   "chaser_score": 0.924,
+   "dph": 3.2,
+   "hit_rate": 0.001,
+   "behavior": "chaser"
+  },
+  "wolf": {
+   "move_rate": 0.228,
+   "chaser_score": 0.898,
+   "dph": 4.1,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "boar": {
+   "move_rate": 0.214,
+   "chaser_score": 0.903,
+   "dph": 5.4,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "sheep": {
+   "move_rate": 0.192,
+   "chaser_score": 0.392,
+   "dph": 0.0,
+   "hit_rate": 0.002,
+   "behavior": "wanderer"
+  },
+  "frog": {
+   "move_rate": 0.201,
+   "chaser_score": 0.388,
+   "dph": 0.0,
+   "hit_rate": 0.001,
+   "behavior": "wanderer"
+  },
+  "cow": {
+   "move_rate": 0.2,
+   "chaser_score": 0.374,
+   "dph": 0.0,
+   "hit_rate": 0.003,
+   "behavior": "wanderer"
+  },
+  "crab_green": {
+   "move_rate": 0.178,
+   "chaser_score": 0.612,
+   "dph": 4.1,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "hedge_witch": {
+   "move_rate": 0.203,
+   "chaser_score": 0.774,
+   "dph": 6.5,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "skunk": {
+   "move_rate": 0.206,
+   "chaser_score": 0.858,
+   "dph": 0.0,
+   "hit_rate": 0.009,
+   "behavior": "chaser"
+  },
+  "lake_drake": {
+   "move_rate": 0.146,
+   "chaser_score": 0.561,
+   "dph": 0.0,
+   "hit_rate": 0.0,
+   "behavior": "stationary"
+  },
+  "ghoul": {
+   "move_rate": 0.295,
+   "chaser_score": 0.977,
+   "dph": 5.3,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "rat_grey": {
+   "move_rate": 0.211,
+   "chaser_score": 0.571,
+   "dph": 0.0,
+   "hit_rate": 0.01,
+   "behavior": "wanderer"
+  },
+  "myconid": {
+   "move_rate": 0.228,
+   "chaser_score": 0.865,
+   "dph": 6.0,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "spider_brown": {
+   "move_rate": 0.231,
+   "chaser_score": 0.924,
+   "dph": 3.3,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "cultist": {
+   "move_rate": 0.276,
+   "chaser_score": 0.985,
+   "dph": 5.3,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "zombie": {
+   "move_rate": 0.156,
+   "chaser_score": 0.974,
+   "dph": 12.3,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "delver": {
+   "move_rate": 0.24,
+   "chaser_score": 0.926,
+   "dph": 5.0,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "lava_ant": {
+   "move_rate": 0.244,
+   "chaser_score": 0.926,
+   "dph": 3.4,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "treant": {
+   "move_rate": 0.172,
+   "chaser_score": 0.943,
+   "dph": 0.0,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "cinder_wisp": {
+   "move_rate": 0.594,
+   "chaser_score": 0.738,
+   "dph": 5.4,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  },
+  "rhino_beetle": {
+   "move_rate": 0.213,
+   "chaser_score": 0.883,
+   "dph": 9.8,
+   "hit_rate": 0.0,
+   "behavior": "chaser"
+  }
+ }
+}

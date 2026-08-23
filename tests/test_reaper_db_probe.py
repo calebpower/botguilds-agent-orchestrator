@@ -17,7 +17,7 @@ CREDS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def _creds():
     import tomllib
     with open(CREDS, "rb") as fh:
-        return tomllib.load(fh)
+        return tomllib.load(fh)["database"]
 
 
 @pytest.mark.skipif(not os.path.exists(CREDS), reason="no reaper_db.toml (secret not synced)")
@@ -25,7 +25,7 @@ def test_reaper_ro_can_reach_mariadb_over_the_lan():
     import mysql.connector
     c = _creds()
     conn = mysql.connector.connect(host=c["host"], port=c["port"], user=c["user"],
-                                   password=c["password"], database=c["database"],
+                                   password=c["password"], database=c["db_name"],
                                    connection_timeout=8)
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM runs")
