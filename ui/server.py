@@ -1922,6 +1922,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   padding:1px 7px;border-radius:999px;margin-right:auto}
 .pc-role.role-guardian{background:color-mix(in srgb,var(--s1) 22%,transparent);color:var(--s1)}
 .pc-role.role-forager{background:color-mix(in srgb,var(--good) 22%,transparent);color:var(--good)}
+.pc-role.role-wizard{background:color-mix(in srgb,#a371f7 22%,transparent);color:#a371f7}
 .pc-where{color:var(--muted);font-size:12px}
 .bar{height:9px;border-radius:5px;background:var(--border);overflow:hidden;margin:3px 0 8px}
 .bar>span{display:block;height:100%}
@@ -3155,7 +3156,7 @@ function pcCard(c){
   const carry=c.carry||{};
   return '<div class="pc">'
     +'<div class="pc-head"><span class="pc-name">'+esc(c.name)+'</span>'
-      +(c.role?('<span class="pc-role role-'+esc(c.role)+'" title="risk role (from level): guardians disengage early, foragers work the edges">'+esc(c.role)+'</span>'):"")
+      +(c.role?('<span class="pc-role role-'+esc(c.role)+'" title="risk role: guardians disengage early, foragers work the edges, wizards (int-gifted) are protected at any level">'+esc(c.role)+'</span>'):"")
       +'<span class="pc-where">'+esc(c.world)+(c.pos?(" ("+esc(c.pos[0])+","+esc(c.pos[1])+")"):"")+'</span></div>'
     + pcBar(hpCls, c.hp, c.max_hp, "HP")
     + (c.max_stamina!=null ? pcBar("sta", c.stamina, c.max_stamina, "Stamina") : "")
