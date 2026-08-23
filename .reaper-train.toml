@@ -23,7 +23,7 @@ cache = ["uv", "feat"]
 # Pass 1: profiles (if missing) + extraction + summary. No pipes — dash has no
 # pipefail; redirect so a red job cannot read green. Training is appended here in
 # Pass 2 (`tools/train_models.py`).
-cmd = "UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group train python tools/extract_features.py --db reaper_db.toml --out $REAPER_CACHE_FEAT/v1 --summary $REAPER_OUT/extract_summary.json --runs latest:40 > $REAPER_OUT/extract.log 2>&1"
+cmd = "UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group train python tools/extract_features.py --db reaper_db.toml --out $REAPER_CACHE_FEAT/v1 --summary $REAPER_OUT/extract_summary.json --runs latest:40 > $REAPER_OUT/extract.log 2>&1 && UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group train python tools/train_models.py --features $REAPER_CACHE_FEAT/v1 --out $REAPER_OUT/models > $REAPER_OUT/train.log 2>&1 && UV_CACHE_DIR=$REAPER_CACHE_UV uv run --group train python tools/gen_model_fixtures.py > $REAPER_OUT/fixtures.log 2>&1 && cp -r tests/fixtures/models $REAPER_OUT/parity_fixtures"
 
 [sync]
 exclude = ["/.venv/", "/__pycache__/", "/*.db", "/reference_starter_kit/"]
