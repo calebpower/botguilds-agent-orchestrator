@@ -4447,3 +4447,25 @@ gated on INT>=4, 3 wizards in training (c17368 INT 2 front-runner).
 FALSIFICATION: boxed-death mode ~zero next mature run; deaths/10k must not rise from bad
 crossings (if it does, AVOID_COST is miscalibrated, not the idea wrong).
 GATE 938 reaper / 929 local.
+
+================================================================================
+iter 100 (2026-08-23) — 0.85.0/0.85.1 — the escort pact
+================================================================================
+OPERATOR DIRECTIVE verbatim: guardians protect wizards; wizards without guardians fall
+back and only venture out escorted. Three gates: EMBARK (wizard only into a world with a
+sighted guardian; roles ledger built by sighting since village frames lack fielded gifts;
+held wizards never block the queue), FALLBACK (no guardian within 10 -> walk home at 6.0),
+ESCORT (guardian closes gap>4 hold 2 at 4.2 — above gathering, below survival). Accepted
+cost, stated to the operator: thin guardian bench pauses the INT grind.
+0.85.1 within minutes of deploy: first live trace read "escorting the wizard (130 AWAY)" —
+unbounded escort = cross-map errand (the stint trap, third instance). ESCORT_MAX_GAP=20;
+re-pairing at distance is the village's job.
+MUTATION CAUGHT TWO VACUOUS ORACLES in one pass: the stays-home test passed with the gate
+deleted (fixture padding put the field at world_cap — no embark could fire at all), and
+the escort-bound test checked the ACTION dict for a reason string actions never carry
+(passed while the guardian marched east under the mutant). Both rewritten with the reason
+in comments. ALSO the escort-score mutant survived until the fixture contained the loot
+the score exists to beat.
+FALSIFICATION (next mature run): wizard deaths 0 (3 died #168-170); escort traces present
+and WINNING when loot competes; wizard INT still climbing despite reduced field time.
+GATE 946->947-ish reaper across the two; 938 local at 0.85.1.

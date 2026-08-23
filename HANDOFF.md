@@ -6,7 +6,11 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.84.0` on **run #171**, repo HEAD `abdbf15`, branch `main` (pushed).
+- **Live:** `explorer/0.85.1` on **run #173**, repo HEAD (pushed; see git log).
+- **THE ESCORT PACT** (0.85.x, operator directive): wizards only field alongside guardians
+  (embark gate via sighting-built roles ledger), fall back home if unescorted (>10 gap),
+  guardians close formation inside ESCORT_MAX_GAP=20 at 4.2. Watch: wizard deaths -> 0,
+  INT climb continuing, escort winning vs loot.
 - **THE PLANNED ESCAPE** (0.84.0): danger priced (nav AVOID_COST=8), not walled, in the
   hurt+cornered branch only — built from two wizard corpses that rested/bounced to death
   in mob boxes on #170. Watch: boxed-death mode ~0, deaths/10k not rising from crossings.
