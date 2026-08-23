@@ -6,7 +6,12 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.81.0` on **run #166**, repo HEAD `1403e53`, branch `main` (pushed).
+- **Live:** `explorer/0.82.0` on **run #167**, repo HEAD `974187f`, branch `main` (pushed).
+- **WE ARE THE SERVER'S FIRST MERCHANT** (0.82.0): one lumber listed at 3g/run on a market
+  that had been empty all project. Listing shape now known (listing_id 'L393559', per-viewer
+  `mine` flag). Watch: does any rival ever `buy_listing`? Stale probes auto-unlist next run.
+- **ESSENCE MAP IS 9 KINDS** (taste engine): bitterroot=aether, frostmoss=ember,
+  glimmerweed=clarity, sungrass=frost this run alone — none vigor, heal supply unchanged.
 - **FRESHNESS BIAS CONFIRMED** (mature #165): move_failed 231→53.9/10k, treadmill held,
   looted-out 25.6%. Claim in ledger.
 - **TASTE FINALLY EXISTS** (0.81.0): undecoded stranded herbs are tasted (once/kind/run)

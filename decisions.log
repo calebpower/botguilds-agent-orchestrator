@@ -4362,3 +4362,24 @@ generation, zero banked XP). Danger-as-cost ceiling 0.495 INELIGIBLE under risk=
 re-examine the risk term honestly next pass: scoped to the desperation branch only (which
 currently has NO plan to break), 0.9 may be the true number. Do not game it; re-derive it.
 GATE: claims suite 11 green, 3/3 mutants killed; no bot change.
+
+================================================================================
+iter 96 (2026-08-22 late night) — explorer/0.82.0 — the first merchant
+================================================================================
+TASTE ENGINE CONVERGED on #166 (94k frames): FOUR decodes in one run — bitterroot=aether,
+frostmoss=ember, glimmerweed=clarity, sungrass=frost. Every run-#8 guess wrong or
+off-axis. None is vigor (heal supply unchanged); the essence map is 9 kinds.
+
+0.82.0 MARKET PROBE: guild.market_listings had been [] in EVERY frame ever recorded — an
+entire economic surface unused by every guild including the dev's, while our treasury sat
+one coin short of every unlock. One surplus lumber listed at 3g per run (shop pays ~1);
+never stacks; stale probes unlisted at next run's start; worst case ~1g/run deferred.
+LIVE ON #167 WITHIN MINUTES, no errors, and the never-before-observed listing shape is
+now fact: {'listing_id': 'L393559', 'guild_id': ..., 'kind': 'lumber', 'price': 3,
+'mine': True} — note the per-viewer `mine` flag. WATCH: does ANY rival ever buy_listing?
+A refused-list handler was written and DELETED as unobservable dead code (offer latches
+the flag; third use of the 0.74.1 rule).
+WISHLIST: magic 0.549 still treasury-blocked (gold 96); danger-as-cost risk term to be
+RE-DERIVED (scoped to the desperation branch, current risk=0.75 likely too harsh) — do
+next pass with fresh eyes, not gamed.
+GATE 923 reaper / 914 local.
