@@ -104,7 +104,12 @@ def test_a_wizard_WITH_its_guardian_stays_and_works():
 # ---- the escort ---------------------------------------------------------------
 
 def test_a_guardian_closes_on_a_drifting_wizard():
+    """Two frames: the PARTY forms on the wizard's turn (frame 1), the guardian holds
+    formation on the party square from frame 2 — pairing is state, not a per-tick
+    inference, which is the whole point of v0.86.0."""
     bot = _bot()
+    bot.on_frame(_field([_char("guard", ["vit"], pos=(3, 3), level=5),
+                         _char("wiz", ["int"], pos=(11, 3))]))
     acts = bot.on_frame(_field([_char("guard", ["vit"], pos=(3, 3), level=5),
                                 _char("wiz", ["int"], pos=(11, 3))]))
     mine = _act_for(acts, "guard")
@@ -129,6 +134,7 @@ def test_escort_duty_BEATS_one_more_coin():
     f = _field([_char("guard", ["vit"], pos=(3, 3), level=5),
                 _char("wiz", ["int"], pos=(11, 3))])
     f["visible"]["items"] = [{"pos": [2, 3], "kind": "meat"}]
+    bot.on_frame(f)                       # frame 1 pairs the party
     acts = bot.on_frame(f)
     mine = _act_for(acts, "guard")
     assert mine and mine[0]["action"] == "move" and mine[0]["dir"] == "E", \
@@ -157,3 +163,67 @@ def test_a_guardian_does_NOT_cross_the_map_to_escort():
                                   "chars": [guard, wiz]}, ctx, tr)
     escort = [c.why for c in tr.candidates if "escorting" in c.why]
     assert not escort, f"guardian set off on a 59-tile escort: {escort}"
+
+
+# ---- v0.86.0: the party is the unit -------------------------------------------
+
+def test_every_member_computes_the_SAME_rally_square():
+    """The jitter diagnosis (operator, verbatim: individualized targets 'evaluating the
+    position of the other members... causing a lot of jitter'). Cohesion's centroid
+    excluded self, so two members of the same group rallied to two DIFFERENT squares.
+    With self included, both compute the identical point."""
+    from steemer.strategy.explorer import Explorer
+    from steemer.strategy.base import FieldContext
+    exp = Explorer()
+    known = {(x, y): "floor" for x in range(8) for y in range(8)}
+    ctx = FieldContext(world="mines", known=known)
+    # A member standing AT the shared centroid must not move. With the two-ally geometry
+    # of the first draft the first STEP quantized identically under both centroids and
+    # the self-excluded mutant survived — the discriminating observable is the STOPPING
+    # rule. pts {(5,0),(0,0),(5,1),(5,2)} -> centroid (3,0), distance 2 = within HOLD;
+    # excluding self -> (3,1), distance 3 -> the mutant marches a settled member off.
+    step = exp._cohesion_step((5, 0), [(0, 0), (5, 1), (5, 2)], ctx, blocked=set())
+    assert step is None, \
+        f"a member at the shared rally square moved ({step}) — centroid must include self"
+
+
+def test_partied_characters_SKIP_cohesion():
+    """The party IS their formation: a partied guardian in a dangerous world must not
+    also rally to the group centroid — that second, different target is the jitter."""
+    bot = _bot()
+    from steemer.strategy.explorer import COHESION_PRED_DENSE
+    bot.strategy._world_danger["vale"] = (0.0, COHESION_PRED_DENSE, 500)
+    # geometry chosen so the group centroid is INSIDE cohesion's rally range (gap 4);
+    # with the centroid out of range the skip-mutant had nothing to offer and survived
+    frame = _field([_char("guard", ["vit"], pos=(3, 3), level=5),
+                    _char("wiz", ["int"], pos=(9, 3)),
+                    _char("forg", ["str"], pos=(6, 8), level=1)])
+    bot.on_frame(frame)                     # pair the party
+    from steemer.reasoning import DecisionTrace
+    from steemer.strategy.base import FieldContext
+    known = {(x, y): "floor" for x in range(24) for y in range(24)}
+    ctx = FieldContext(world="vale", known=known, bounds=(24, 200))
+    guard = _char("guard", ["vit"], pos=(3, 3), level=5)
+    tr = DecisionTrace(tick=501, world="vale", char_uid="guard")
+    bot.strategy.act(bot, guard, {"world": "vale", "tick": 501,
+                                  "chars": [guard, _char("wiz", ["int"], pos=(9, 3)),
+                                            _char("forg", ["str"], pos=(6, 8), level=1)]},
+                     ctx, tr)
+    whys = [c.why for c in tr.candidates]
+    assert any("party square" in w for w in whys), f"no formation move at gap 8: {whys}"
+    assert not any("rallying to the group centre" in w for w in whys), \
+        f"a partied guardian also rallied to the centroid — two targets, jitter: {whys}"
+
+
+def test_two_wizards_cannot_claim_ONE_guardian():
+    """The second wizard finds the only guardian taken and falls back home rather than
+    forming a three-body chase."""
+    bot = _bot()
+    frame = _field([_char("guard", ["vit"], pos=(3, 3), level=5),
+                    _char("w1", ["int"], pos=(4, 3)),
+                    _char("w2", ["int"], pos=(9, 9))])
+    bot.on_frame(frame)
+    acts = bot.on_frame(frame)
+    w2 = _act_for(acts, "w2")
+    assert w2 and w2[0]["action"] == "move" and w2[0]["dir"] == "S", \
+        f"the unclaimed wizard did not fall back: {w2}"

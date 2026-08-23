@@ -84,12 +84,17 @@ def test_no_step_when_already_close_enough():
     assert exp._cohesion_step((10, 10), [(10, 10 + COHESION_HOLD)], ctx, blocked=set()) is None
 
 
-def test_no_step_when_the_ally_is_unreachable():
-    """Walled off: cohesion must decline rather than thrash against the wall."""
+def test_no_step_when_the_RALLY_POINT_is_unreachable():
+    """v0.86.0 amended this contract with the shared centroid. The old claim ("decline
+    when the ALLY is unreachable") belonged to ally-targeting; under a shared rally
+    square, each member only knows whether IT can reach the common point — an islanded
+    ally declines on its own side. What must still hold: an unreachable rally point is
+    declined rather than thrashed against."""
     exp = Explorer()
-    known = {(x, y): "floor" for x in range(5) for y in range(5)}
-    known[(9, 9)] = "floor"                                   # island, no path
+    known = {(0, 0): "floor", (0, 1): "floor"}                # a two-tile world...
+    known[(9, 9)] = "floor"                                   # ...and a far island ally
     ctx = FieldContext(world="mines", known=known)
+    # centroid of {(0,0),(9,9)} = (4,4): unknown terrain, no path -> decline
     assert exp._cohesion_step((0, 0), [(9, 9)], ctx, blocked=set()) is None
 
 

@@ -672,6 +672,15 @@ ESCORT_SCORE = 4.2         # above gathering (4.0): escort duty wins over one mo
 ESCORT_PULL = 4            # guardian closes when the wizard is farther than this...
 ESCORT_HOLD = 2            # ...and holds inside this (hysteresis like cohesion's)
 ESCORT_NEAR = 10           # a wizard with no guardian inside this radius has no escort
+# v0.86.0 — THE PARTY IS THE UNIT (operator: "the _party_ needs to have a target square...
+# guardian should go 'do I have a wizard with me? go find a wizard, okay now I'm in a
+# party with the wizard'"). 0.85.0 was individualized: each character computed its own
+# target from the others' positions, and because every such computation EXCLUDES SELF,
+# each member had a DIFFERENT rally point — mutual pursuit, i.e. the jitter the operator
+# watched. Now: a wizard and a guardian PAIR into a persistent party (self._party); the
+# party's anchor square is the WIZARD'S TILE — one fixed point per tick, identical for
+# every member — the guardian holds formation on it, the wizard chases nobody, and
+# partied characters are excluded from cohesion (the party IS their formation).
 ESCORT_MAX_GAP = 20        # v0.85.1: a guardian escorts only inside this. The first live
                            # trace read "escorting the wizard (130 away)" — an unbounded
                            # escort is a cross-map errand (stints are 10-12 ticks; the
@@ -1030,7 +1039,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.85.1"
+    version = "explorer/0.86.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1088,6 +1097,7 @@ class Explorer:
         # to know which worlds hold a guardian.
         self._roles: dict = {}
         self._escorting: set = set()   # guardians mid-escort (hysteresis)
+        self._party: dict = {}         # v0.86.0: wizard_uid -> guardian_uid (the pairing IS the party)
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -2055,37 +2065,60 @@ class Explorer:
         # The guardian side: a wizard drifting past ESCORT_PULL is closed on at 4.2 —
         # escort duty beats one more coin, never beats staying alive.
         my_role = role_of(char)
+        in_party = False
         if not homing:
-            others = [(tuple(c["pos"]), role_of(c)) for c in frame.get("chars", []) or []
-                      if c.get("char_uid") != uid and c.get("pos")]
+            by_uid = {c.get("char_uid"): c for c in frame.get("chars", []) or []
+                      if c.get("char_uid") and c.get("pos")}
             if my_role == "wizard":
-                near_guard = [q for q, r in others if r == "guardian"
-                              and abs(q[0] - pos[0]) + abs(q[1] - pos[1]) <= ESCORT_NEAR]
-                if not near_guard:
+                # PAIR: keep my guardian if it is still here; else claim the nearest
+                # free one. The pairing is the party; it dissolves only when the
+                # partner leaves the world (or dies, which is the same absence).
+                partner = self._party.get(uid)
+                if partner not in by_uid or self._roles.get(partner) != "guardian":
+                    taken = set(self._party.values())
+                    frees = [(abs(tuple(c["pos"])[0] - pos[0])
+                              + abs(tuple(c["pos"])[1] - pos[1]), u)
+                             for u, c in by_uid.items()
+                             if u != uid and role_of(c) == "guardian" and u not in taken]
+                    partner = min(frees)[1] if frees else None
+                    if partner is None:
+                        self._party.pop(uid, None)
+                    else:
+                        self._party[uid] = partner
+                if partner is None:
                     self._retreat(uid, pos, ctx, blocked, offer, WIZARD_FALLBACK_SCORE,
-                                  "no guardian escort in range — falling back to the "
+                                  "no guardian to party with — falling back to the "
                                   "village until one ventures out with me")
+                else:
+                    in_party = True
             elif my_role == "guardian":
-                wiz = [q for q, r in others if r == "wizard"]
-                if wiz:
-                    wgap = min(abs(q[0] - pos[0]) + abs(q[1] - pos[1]) for q in wiz)
+                mine = next((w for w, g in self._party.items() if g == uid), None)
+                wchar = by_uid.get(mine) if mine else None
+                if wchar is not None:
+                    in_party = True
+                    # THE PARTY SQUARE: the wizard's tile. One fixed point, identical
+                    # for every member — the guardian holds formation ON it; nobody
+                    # computes a target from anyone else's target.
+                    anchor = tuple(wchar["pos"])
+                    agap = abs(anchor[0] - pos[0]) + abs(anchor[1] - pos[1])
                     threshold = ESCORT_HOLD if uid in self._escorting else ESCORT_PULL
-                    if threshold < wgap <= ESCORT_MAX_GAP:
+                    if threshold < agap <= ESCORT_MAX_GAP:
                         wstep = nav.weighted_step(
-                            pos, lambda t: min(abs(t[0] - q[0]) + abs(t[1] - q[1])
-                                               for q in wiz) <= ESCORT_HOLD,
+                            pos, lambda t: abs(t[0] - anchor[0])
+                            + abs(t[1] - anchor[1]) <= ESCORT_HOLD,
                             ctx.known, blocked, fresh=ctx.fresh)
                         if wstep is not None:
                             self._escorting.add(uid)
                             offer({"char_uid": uid, "action": "move",
                                    "dir": nav.step_dir(pos, wstep)}, ESCORT_SCORE,
-                                  f"escorting the wizard ({wgap} away) — guardians "
-                                  f"protect the INT investment")
+                                  f"holding formation on the party square ({agap} from "
+                                  f"my wizard) — the party is the unit")
                         else:
                             self._escorting.discard(uid)
                     else:
                         self._escorting.discard(uid)
-        form_up = bool(allies) and not homing and self._world_is_dangerous(ctx.world, bot.tick)
+        form_up = (bool(allies) and not homing and not in_party
+                   and self._world_is_dangerous(ctx.world, bot.tick))
         rally = False
         centre_gap = 0
         if form_up:
@@ -2534,8 +2567,13 @@ class Explorer:
         """
         if not allies:
             return None
-        cx = sum(a[0] for a in allies) // len(allies)
-        cy = sum(a[1] for a in allies) // len(allies)
+        # v0.86.0: the centroid INCLUDES SELF. Excluding it gave every member a slightly
+        # DIFFERENT rally square (the operator's jitter diagnosis, and cohesion's original
+        # sin): with self included, all members of a group compute the identical point,
+        # which is what makes a rally a rally.
+        pts = list(allies) + [pos]
+        cx = sum(a[0] for a in pts) // len(pts)
+        cy = sum(a[1] for a in pts) // len(pts)
 
         def close_enough(t: tuple[int, int]) -> bool:
             return abs(t[0] - cx) + abs(t[1] - cy) <= COHESION_HOLD
