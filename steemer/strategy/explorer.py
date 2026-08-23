@@ -661,6 +661,18 @@ MARKET_PROBE_PRICE = 3
 CASTER_INT_TARGET = 6      # pre-bank INT up to this on int-gifted characters
 TOME_BUY_KIND = "tome_veil"   # the cheap form (120g); bolt (150g) can wait
 TOME_BUY_MIN_INT = 4       # ...and only once the designate's INT grind is nearly done
+# v0.85.0 — THE ESCORT (operator: "can you make guardians protect wizards? And wizards
+# without guardians fall back to the village until they venture out with a guardian?").
+# Guardians shadow a co-fielded wizard; a wizard with no guardian within ESCORT_NEAR
+# walks home; the village embarks a wizard only INTO a world where a guardian is already
+# fielded. Known cost, accepted by the operator: no fielded guardian anywhere -> wizards
+# wait in the village and the INT grind pauses.
+ESCORT_SCORE = 4.2         # above gathering (4.0): escort duty wins over one more coin;
+                           # below every survival behaviour, so a hurt guardian still runs
+ESCORT_PULL = 4            # guardian closes when the wizard is farther than this...
+ESCORT_HOLD = 2            # ...and holds inside this (hysteresis like cohesion's)
+ESCORT_NEAR = 10           # a wizard with no guardian inside this radius has no escort
+WIZARD_FALLBACK_SCORE = 6.0  # above all income (<=5.0), below hurt-retreat (8.5)/dodge
 
 # v0.58.0 BOTTLES. The heal supply had a hole in it that nothing was watching.
 #
@@ -1011,7 +1023,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.84.0"
+    version = "explorer/0.85.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1064,6 +1076,11 @@ class Explorer:
         self._listed = False
         self._market_reclaimed = False   # stale-probe unlist, once per run
         self._tome_bought = False        # v0.83.0: one tome purchase per run
+        # v0.85.0: uid -> role, updated on every sighting (field or village). The village
+        # frame does not carry FIELDED chars' gifts, so the embark gate reads this ledger
+        # to know which worlds hold a guardian.
+        self._roles: dict = {}
+        self._escorting: set = set()   # guardians mid-escort (hysteresis)
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -1610,8 +1627,34 @@ class Explorer:
                 return t[0] if (t and tick - t[1] < THREAT_TTL) else 0.0
             open_maps = [m for m in maps if by_world.get(m, 0) < party_cap]
             if open_maps:
-                target = min(open_maps, key=lambda m: (threat(m), by_world.get(m, 0)))
-                uid = here_avail[0]
+                # v0.85.0 ESCORT GATE: a wizard embarks only into a world where one of
+                # our GUARDIANS is already fielded (per the sighting ledger), and if no
+                # such world is open it stays home — the operator's explicit wish, at the
+                # explicit cost that a thin guardian bench pauses the INT grind. Never
+                # blocks anyone else: the picker walks past held-back wizards.
+                by_world_uids = guild.get("chars_by_world", {}) or {}
+                guardian_worlds = {w for w, uids in by_world_uids.items()
+                                   for u in (uids or [])
+                                   if self._roles.get(u) == "guardian"}
+                here_chars = {c.get("char_uid"): c for c in chars}
+                uid = None
+                target = None
+                for cand in here_avail:
+                    cch = here_chars.get(cand)
+                    if cch is not None:
+                        self._roles[cand] = role_of(cch)
+                    if cch is not None and role_of(cch) == "wizard":
+                        w_opts = [m for m in open_maps if m in guardian_worlds]
+                        if not w_opts:
+                            continue          # no escort available — the wizard waits
+                        uid = cand
+                        target = min(w_opts, key=lambda m: (threat(m), by_world.get(m, 0)))
+                        break
+                    uid = cand
+                    target = min(open_maps, key=lambda m: (threat(m), by_world.get(m, 0)))
+                    break
+                if uid is None:
+                    return []
                 self._embark_at[uid] = tick
                 return [self._village_act(
                     bot, None, {"action": "embark", "map": target,
@@ -1636,6 +1679,7 @@ class Explorer:
         hp, max_hp = char.get("hp", 0), char.get("max_hp", 1)
         stamina = char.get("stamina", 0)
         self._stat_total[uid] = self._stat_sum(char)
+        self._roles[uid] = role_of(char)          # v0.85.0: the escort gate's ledger
         carry = char.get("carry", {"used": 0, "cap": 1})
         cfg = bot.config
         statuses = char.get("statuses", []) or []
@@ -1998,6 +2042,42 @@ class Explorer:
         # form on, and a gap wider than the hysteresis threshold.
         allies = [tuple(c["pos"]) for c in frame.get("chars", []) or []
                   if c.get("char_uid") != uid and c.get("pos")]
+        # v0.85.0 THE ESCORT. Field frames carry every co-fielded char's gifts, so both
+        # sides of the pact read the frame directly. The wizard side: no guardian within
+        # ESCORT_NEAR -> walk home (6.0 preempts all income; survival still outranks it).
+        # The guardian side: a wizard drifting past ESCORT_PULL is closed on at 4.2 —
+        # escort duty beats one more coin, never beats staying alive.
+        my_role = role_of(char)
+        if not homing:
+            others = [(tuple(c["pos"]), role_of(c)) for c in frame.get("chars", []) or []
+                      if c.get("char_uid") != uid and c.get("pos")]
+            if my_role == "wizard":
+                near_guard = [q for q, r in others if r == "guardian"
+                              and abs(q[0] - pos[0]) + abs(q[1] - pos[1]) <= ESCORT_NEAR]
+                if not near_guard:
+                    self._retreat(uid, pos, ctx, blocked, offer, WIZARD_FALLBACK_SCORE,
+                                  "no guardian escort in range — falling back to the "
+                                  "village until one ventures out with me")
+            elif my_role == "guardian":
+                wiz = [q for q, r in others if r == "wizard"]
+                if wiz:
+                    wgap = min(abs(q[0] - pos[0]) + abs(q[1] - pos[1]) for q in wiz)
+                    threshold = ESCORT_HOLD if uid in self._escorting else ESCORT_PULL
+                    if wgap > threshold:
+                        wstep = nav.weighted_step(
+                            pos, lambda t: min(abs(t[0] - q[0]) + abs(t[1] - q[1])
+                                               for q in wiz) <= ESCORT_HOLD,
+                            ctx.known, blocked, fresh=ctx.fresh)
+                        if wstep is not None:
+                            self._escorting.add(uid)
+                            offer({"char_uid": uid, "action": "move",
+                                   "dir": nav.step_dir(pos, wstep)}, ESCORT_SCORE,
+                                  f"escorting the wizard ({wgap} away) — guardians "
+                                  f"protect the INT investment")
+                        else:
+                            self._escorting.discard(uid)
+                    else:
+                        self._escorting.discard(uid)
         form_up = bool(allies) and not homing and self._world_is_dangerous(ctx.world, bot.tick)
         rally = False
         centre_gap = 0
