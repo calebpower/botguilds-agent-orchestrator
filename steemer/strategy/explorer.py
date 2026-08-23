@@ -1104,7 +1104,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
 
 
 class Explorer:
-    version = "explorer/0.88.0"
+    version = "explorer/0.89.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1754,7 +1754,17 @@ class Explorer:
                 uid = None
                 target = None
                 pair_with = None
-                for cand in here_avail:
+                # v0.89.0: the picker SCANS for a wizard first instead of taking
+                # here_avail[0] whatever it is. The 0.87.0 loop broke on the first
+                # candidate of ANY role, so the wizard branch only ran when a wizard
+                # happened to stand first in line — 3 pair-embarks in all of run #177
+                # against a six that fielded 0.0% of char-frames and banked zero XP.
+                # The operator's directive says wizards ship out with guardians; a
+                # picker that only pairs by coincidence is a defect, not a policy.
+                ordered = sorted(here_avail,
+                                 key=lambda u: 0 if role_of(here_chars.get(u) or {},
+                                                            seats) == "wizard" else 1)
+                for cand in ordered:
                     cch = here_chars.get(cand)
                     crole = role_of(cch, seats) if cch is not None else None
                     if crole == "wizard":

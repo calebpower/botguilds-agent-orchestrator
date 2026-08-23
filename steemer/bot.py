@@ -20,6 +20,8 @@ from .reasoning import DecisionTrace
 from .storage import Storage
 from .strategy import FieldContext, Strategy, get_strategy
 
+RETURN_GRACE = 4   # ticks a returned char ignores stale field frames (v0.89.0)
+
 CONTAINER_KINDS = frozenset({"chest", "safe"})
 
 # A tile a char bounced off (issued a move but didn't move — a move_failed) is
@@ -90,6 +92,14 @@ class GuildBot:
         # character in the field has none — and None must stay None rather than becoming a
         # zero we would then broadcast as fact (v0.75.1).
         self.guild_gold: int | None = None
+        # v0.89.0 COMMAND HYGIENE. Run #177 sent 17k commands to GHOSTS: 12,384 moves
+        # rejected not_in_village (the char had walked home but still appeared in a stale
+        # per-world frame) and 4,626 unknown_character (the char was DEAD). Frames arrive
+        # per-world each tick; a character in transition is listed in two of them, and the
+        # corpse of a dead one lingers in the world frame that has not refreshed. uids are
+        # never reused, so the dead set is forever; the returned set is a short grace.
+        self._dead: set = set()
+        self._returned_at: dict = {}
         # Tiles worth RE-CHECKING because a refresh has happened since we last looked at
         # them. Kept apart from `known` on purpose: `known` records what we have OBSERVED,
         # and this is a HYPOTHESIS about what a refresh did. Conflating the two would put
@@ -195,10 +205,13 @@ class GuildBot:
             # every other event can never resolve it. The seat ranking prunes instantly;
             # a rival's uid prunes nothing (not in our ledger) and is harmless.
             if ev.get("kind") == "death" and ev.get("char_uid"):
+                self._dead.add(ev["char_uid"])
                 hook = getattr(self.strategy, "on_char_death", None)
                 if callable(hook):
                     hook(ev["char_uid"])
                 continue
+            if ev.get("kind") == "returned" and ev.get("char_uid"):
+                self._returned_at[ev["char_uid"]] = self.tick
             uid = our_eids.get(ev.get("eid"))
             if uid is None:
                 continue
@@ -422,6 +435,13 @@ class GuildBot:
         actions: list[dict[str, Any]] = []
         for char in frame.get("chars", []):
             uid = char["char_uid"]
+            # v0.89.0: never command a ghost. A dead uid never acts again (uids are not
+            # reused); a just-returned one sits out RETURN_GRACE ticks of stale field
+            # frames — the village frame commands it the moment it truly arrives.
+            if uid in self._dead:
+                continue
+            if self.tick - self._returned_at.get(uid, -10 ** 9) < RETURN_GRACE:
+                continue
             cur = (char["pos"][0], char["pos"][1])
             trace = DecisionTrace(tick=self.tick, world=world, char_uid=uid)
             self.strategy.act(self, char, frame, ctx, trace)
