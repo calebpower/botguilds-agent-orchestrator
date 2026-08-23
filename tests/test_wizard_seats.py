@@ -31,19 +31,24 @@ def test_exactly_six_seats_no_matter_how_many_qualify():
     assert len(select_wizards(chars)) == WIZARD_SEATS == 6
 
 
-def test_the_operators_tie_order_int_then_level_then_gift_then_stats():
+def test_the_operators_tie_order_int_then_GIFT_then_level_then_stats():
+    """v0.94.0 (operator): the int GIFT now outranks LEVEL. Rationale in wizard_rank_key —
+    a protected wizard levels slower than bold foragers, so a level-first tiebreak evicted
+    exactly the int-gifted ceiling-breaker (the #184 arch-wizard). The gift halves every
+    future INT point, so it belongs above a level the cautious wizard can never win on.
+    Here `by_gift` (int 2, level 5, int-gift) must now out-rank `by_level` (int 2, level 7,
+    no gift) — the mutation that would restore the old order flips exactly this pair."""
     chars = [_mk("by_int", int_=3),
-             _mk("by_level", int_=2, level=7),
              _mk("by_gift", int_=2, level=5, gifts=("int",)),
+             _mk("by_level", int_=2, level=7),
              _mk("by_stats", int_=2, level=5, others=2),
              _mk("plain", int_=2, level=5)] + _pool(12)
-    ranked = sorted(select_wizards(chars) | set(), key=lambda u: u)  # membership only
     chosen = select_wizards(chars)
-    for u in ("by_int", "by_level", "by_gift", "by_stats", "plain"):
+    for u in ("by_int", "by_gift", "by_level", "by_stats", "plain"):
         assert u in chosen, f"{u} should out-rank the int-1 pool: {sorted(chosen)}"
     from steemer.strategy.explorer import wizard_rank_key
     order = [c["char_uid"] for c in sorted(chars, key=wizard_rank_key)][:5]
-    assert order == ["by_int", "by_level", "by_gift", "by_stats", "plain"], order
+    assert order == ["by_int", "by_gift", "by_level", "by_stats", "plain"], order
 
 
 def test_below_the_pool_floor_there_are_NO_seats():
@@ -159,3 +164,52 @@ def test_a_RETURNED_char_sits_out_stale_field_frames_briefly():
                           "chars": [ch],
                           "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}})
     assert later, "the grace never ended — a re-embarked char could never act again"
+
+
+# ---- v0.94.0: light hysteresis --------------------------------------------------------
+from steemer.strategy.explorer import HYSTERESIS_SLACK
+
+
+def test_hysteresis_RECLAIMS_a_seat_for_a_marginally_outranked_incumbent():
+    """The anti-thrash that stops a protected wizard flapping to bold-forager (the #184
+    arch-wizard): an incumbent that has dipped JUST outside the base (within SLACK)
+    reclaims its seat from the newcomer that edged it. cap=2 for a legible boundary.
+    inc_out is OUTSIDE the pure top-2 (a newcomer out-levels it) — hysteresis must pull
+    it back IN, which is why inverting the incumbency check changes the result."""
+    # ranked (gift>level>stats): inc_top int5 (rank0), newcomer int4 level5 (rank1),
+    # inc_out int4 level1 (rank2 — just outside). incumbents = {inc_top, inc_out}.
+    chars = [_mk("inc_top", int_=5),
+             _mk("newcomer", int_=4, level=5),
+             _mk("inc_out", int_=4, level=1)] + _pool(12)
+    incs = {"inc_top", "inc_out"}
+    seats = select_wizards(chars, cap=2, incumbents=incs)
+    assert seats == {"inc_top", "inc_out"}, \
+        f"incumbent did not reclaim its seat from the 1-rank newcomer: {seats}"
+    # WITHOUT incumbency (fresh restart), the pure top-2 wins: the newcomer keeps the seat
+    fresh = select_wizards(chars, cap=2)
+    assert fresh == {"inc_top", "newcomer"}, f"fresh selection should be pure top-2: {fresh}"
+
+
+def test_hysteresis_does_NOT_block_a_clearly_superior_newcomer():
+    """The bug this replaced: stale incumbents must never keep out a much-better new
+    char. A brand-new int-9 char (far above the slack margin) always takes a seat even
+    though every current seat is an incumbent."""
+    chars = [_mk("star", int_=9)] + [_mk(f"inc{i}", int_=2) for i in range(6)] + _pool(12, int_=1)
+    incs = {f"inc{i}" for i in range(6)}
+    seats = select_wizards(chars, cap=6, incumbents=incs)
+    assert "star" in seats, f"a clearly-superior newcomer was blocked by incumbents: {seats}"
+    assert len(seats) == 6
+
+
+def test_hysteresis_slack_is_bounded_a_far_fallen_incumbent_loses_the_seat():
+    """Sustained decline still evicts: an incumbent that falls MORE than SLACK places
+    past the cutoff does lose its seat — hysteresis is a margin, not tenure."""
+    assert HYSTERESIS_SLACK == 2      # pinned; the fixture below is sized to it
+    # cap=2, incumbent inc1 has fallen to rank 5 (0-indexed 4) — 3 past the cutoff of 2,
+    # beyond SLACK=2 — so it must NOT reclaim a seat.
+    chars = [_mk("a", int_=9), _mk("b", int_=8),
+             _mk("c", int_=7), _mk("d", int_=6),
+             _mk("inc1", int_=5)] + _pool(12, int_=1)
+    seats = select_wizards(chars, cap=2, incumbents={"inc1"})
+    assert "inc1" not in seats, f"a far-fallen incumbent kept its seat: {seats}"
+    assert seats == {"a", "b"}

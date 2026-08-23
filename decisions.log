@@ -4714,3 +4714,24 @@ and ML Pass 4. Also this session: fixed the Party-tab [object Object] gear bug
 (equipment slots are objects; reduced to .kind server-side; ab078bd) and corrected the
 roster-cap finding (server enforces via roster_cap error, but counts village-present
 chars — village+fielded can exceed 30; NOT exploited).
+
+ITER 74 (2026-08-23, explorer/0.94.0): ARCH-WIZARD LOOP BROKEN (operator go: "ship (1) +
+light hysteresis"). Diagnosis (operator: "awww my arch wizard died"): the int-gifted
+arch-wizard died deep at vale (4,47), stuck, hp4 — and its history showed 43 wizard + 49
+FORAGER decisions: its role OSCILLATED. Root cause: wizard_rank_key ranked LEVEL above
+the int-gift, so a protected (slow-leveling) int-gifted char kept losing its seat to
+bold higher-level non-gifted chars; demotion stripped its protection -> bold forager ->
+deep -> dead. A self-defeating loop: protection slows leveling, slow leveling costs the
+seat, losing the seat removes protection. FIX (1): reorder to (-int, GIFT, -level, ...)
+so the gift (which halves every INT point, the ceiling-breaker) outranks a level the
+cautious wizard can't win. FIX (2) light hysteresis: select_wizards takes incumbents;
+an incumbent within HYSTERESIS_SLACK=2 ranks of the cutoff reclaims its seat from the
+newcomer that edged it via a RANK-GAP rule (never blocks a clearly-superior newcomer);
+strategy holds last-tick seats, empty on restart -> pure top-cap. BUILD BUGS CAUGHT: my
+first hysteresis draft (incumbents-fill-first) let stale bench dummies block a superior
+newcomer (int-5 wiz) -> picker test failed -> rewrote to rank-gap; removed a
+provably-redundant window bound (gap check already enforces slack). 6/6 mutants killed
+(incl. reclaim + slack-bound). Dashboard shows pure top-6 (no cross-process incumbent
+memory) -> transient boundary divergence, self-heals, noted. Roster still INT 2 (ceiling
+unbroken) — this protects the climber. NEXT: watch #186 for wizard-role STABILITY (no
+more oscillation) + arch-wizard survival + INT climb toward the tome gate.

@@ -1032,6 +1032,8 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 
 
 WIZARD_SEATS = 6           # v0.88.0 (operator): a MAXIMUM of six wizards, two per map
+HYSTERESIS_SLACK = 2       # v0.94.0: an incumbent seat-holder must fall more than this
+                           # many places below the cutoff to be evicted (anti-thrash)
 WIZARD_SEATS_PER_WORLD = 2
 
 
@@ -1041,8 +1043,15 @@ def wizard_rank_key(char: dict[str, Any]):
     halves every future INT point, which is exactly what the seats exist to buy), and the
     uid tail makes ties deterministic so the seat set can never flap between frames."""
     stats = char.get("stats") or {}
-    return (-stats.get("int", 0), -(char.get("level") or 0),
+    # v0.94.0 (operator): the int GIFT now outranks LEVEL. The prior order (int, level,
+    # gift, ...) evicted exactly the char worth keeping: a protected wizard levels SLOWER
+    # than bold foragers, so higher-level non-gifted chars displaced the int-gifted one
+    # from its seat, and demotion removed its protection and got it killed deep (#184,
+    # the arch-wizard). The gift halves every future INT point — it IS the ceiling-breaker
+    # — so it belongs above a level the cautious wizard can never win on.
+    return (-stats.get("int", 0),
             0 if "int" in (char.get("gifts") or []) else 1,
+            -(char.get("level") or 0),
             -sum(v for v in stats.values() if isinstance(v, int)),
             str(char.get("char_uid") or ""))
 
@@ -1058,11 +1067,18 @@ WIZARD_MIN_POOL = 12       # seats exist only when the ranked pool is at least t
                            # frame or two of the first village sighting.
 
 
-def select_wizards(chars: list[dict[str, Any]], cap: int = WIZARD_SEATS) -> set:
-    """The chosen circle: a PURE function of a roster snapshot — no stored seat state to
-    corrupt, desync, or survive a restart wrongly. Self-stabilising by construction: the
-    moment a seat-holder spends one INT point it outranks every INT-1 challenger, so the
-    set entrenches exactly as fast as the investment it exists to protect."""
+def select_wizards(chars: list[dict[str, Any]], cap: int = WIZARD_SEATS,
+                   incumbents: "set | frozenset" = frozenset()) -> set:
+    """The chosen circle: a PURE function of (roster snapshot, current incumbents) — still
+    no seat state stored INSIDE here; the caller owns the tiny incumbent set and an empty
+    one (the default, and every restart's first frame) reduces this to plain top-cap.
+
+    Self-stabilising by construction: the moment a seat-holder spends one INT point it
+    outranks every lower challenger. v0.94.0 adds LIGHT HYSTERESIS: an incumbent keeps its
+    seat while it stays within cap+HYSTERESIS_SLACK by rank, so a one-tick dip (a new
+    higher-INT sighting, a pool wobble) no longer evicts a protected wizard into a bold
+    forager and gets it killed — the arch-wizard failure on #184. It takes a sustained
+    fall of more than SLACK places to actually lose a seat."""
     uids = {}
     for c in chars:
         u = c.get("char_uid")
@@ -1070,8 +1086,28 @@ def select_wizards(chars: list[dict[str, Any]], cap: int = WIZARD_SEATS) -> set:
             uids[u] = c
     if len(uids) < WIZARD_MIN_POOL:
         return set()
-    ranked = sorted(uids.values(), key=wizard_rank_key)
-    return {c["char_uid"] for c in ranked[:cap]}
+    ranked = [c["char_uid"] for c in sorted(uids.values(), key=wizard_rank_key)]
+    pos = {uid: i for i, uid in enumerate(ranked)}
+    seats = list(ranked[:cap])                     # the pure top-cap is the base...
+    # ...then LIGHT hysteresis: an incumbent that dipped JUST outside (within SLACK ranks)
+    # reclaims its seat from the newcomer that displaced it — but ONLY when that newcomer
+    # beat it by no more than SLACK ranks. A clearly-superior newcomer (a new high-INT
+    # char) is never blocked; only a near-tie at the boundary is held steady. That margin
+    # is the whole anti-thrash: it stops a protected wizard flapping to bold-forager and
+    # dying (the #184 arch-wizard) without letting a stale seat outstay a real challenger.
+    # only chars OUTSIDE the base can reclaim; the rank-gap check below is what bounds
+    # the slack (an incumbent more than SLACK past the cutoff can never find a displacer
+    # within SLACK, so no separate window limit is needed — one source of truth for it).
+    for inc in ranked[cap:]:
+        if inc not in incumbents:
+            continue
+        displacers = [u for u in seats
+                      if u not in incumbents and pos[inc] - pos[u] <= HYSTERESIS_SLACK]
+        if displacers:
+            worst = max(displacers, key=lambda u: pos[u])   # the weakest such newcomer
+            seats.remove(worst)
+            seats.append(inc)
+    return set(seats)
 
 
 def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
@@ -1114,7 +1150,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
 
 
 class Explorer:
-    version = "explorer/0.93.1"
+    version = "explorer/0.94.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1179,6 +1215,7 @@ class Explorer:
         # ranks over the union of last sightings. Pruned on death; a restart re-derives
         # the same seats because the seat-holders' invested INT outranks the pool.
         self._char_ledger: dict = {}
+        self._wizard_incumbents: set = set()   # v0.94.0: last tick's seats (hysteresis)
         self._make_room: dict = {}     # world -> tick: a seat needs a slot there
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
@@ -2819,7 +2856,13 @@ class Explorer:
         self._party.pop(uid, None)
 
     def wizard_seats(self) -> set:
-        return select_wizards(list(self._char_ledger.values()))
+        # v0.94.0: feed last tick's seats back as incumbents for light hysteresis, and
+        # remember the result. Empty on the first call after a restart -> pure top-cap,
+        # then it stabilises within a frame (the same graceful-degrade the pool floor has).
+        seats = select_wizards(list(self._char_ledger.values()),
+                               incumbents=self._wizard_incumbents)
+        self._wizard_incumbents = seats
+        return seats
 
     def _hold_formation(self, uid, pos, anchor, ctx, blocked, offer, why_tail):
         """One member holding the party square: step toward `anchor` (a tile every member

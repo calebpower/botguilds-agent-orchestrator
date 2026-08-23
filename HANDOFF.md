@@ -6,7 +6,16 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.93.1` on **run #185** (pushed; see git log).
+- **Live:** `explorer/0.94.0` on **run #186** (pushed; see git log).
+- **ARCH-WIZARD LOOP BROKEN (0.94.0, operator go)**: the #184 arch-wizard died because
+  its role OSCILLATED (43 wizard / 49 forager decisions) — wizard_rank_key ranked LEVEL
+  above the int-gift, so the protected (slow-leveling) int-gifted char kept losing its
+  seat to bold higher-level peers, and demotion stripped its protection -> deep -> dead.
+  FIX (1): int-GIFT now outranks level in the rank key. FIX (2): light hysteresis — an
+  incumbent within HYSTERESIS_SLACK=2 of the cutoff reclaims its seat (rank-gap rule,
+  never blocks a superior newcomer); strategy holds last-tick seats, empty on restart.
+  Dashboard shows pure top-6 (transient boundary divergence, self-heals). WATCH #186:
+  wizard-role STABILITY (oscillation gone), arch-wizard survives, INT climbs.
 - **RIDE PROBE MADE REACHABLE (0.93.1)**: #184 logged 0 ride sends — slice 1 waited for
   a char to already stand on a rail (never happened; armed chars field shallow, rails at
   mines y12-82). Slice 2 routes a qualified prober (armed/healthy/calm/not-probed, shared
