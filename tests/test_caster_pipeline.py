@@ -69,15 +69,18 @@ _TOME_STOCK = ({"kind": "tome_veil", "buy_price": 120},
 
 
 def test_the_designate_buys_the_tome_above_the_reserve():
-    """220 = 120 tome + 100 potion reserve: the magic unlock must never eat the heal."""
-    char = _char(inv=[{"kind": "potion_red", "item_id": "p", "uses": ["drink"]}])
+    """220 = 120 tome + 100 potion reserve: the magic unlock must never eat the heal.
+    INT 4 here because 0.83.1 added the wait-for-the-grind gate (operator's
+    stranded-capital worry) — the INT-sequencing claim itself lives in
+    test_the_tome_buy_WAITS_for_the_INT_grind."""
+    char = _char(int_=4, inv=[{"kind": "potion_red", "item_id": "p", "uses": ["drink"]}])
     acts = _bot().on_frame(_frame(char, gold=220, stock=_TOME_STOCK))
     buy = _first(acts, "buy")
     assert buy and buy["kind"] == "tome_veil", f"no tome at 220 gold: {acts}"
 
 
 def test_no_tome_below_the_line():
-    char = _char(inv=[{"kind": "potion_red", "item_id": "p", "uses": ["drink"]}])
+    char = _char(int_=4, inv=[{"kind": "potion_red", "item_id": "p", "uses": ["drink"]}])
     acts = _bot().on_frame(_frame(char, gold=219, stock=_TOME_STOCK))
     buy = _first(acts, "buy")
     assert not (buy and buy["kind"] == "tome_veil"), f"ate into the heal reserve: {buy}"
@@ -86,7 +89,7 @@ def test_no_tome_below_the_line():
 def test_an_UNGIFTED_char_never_buys_a_tome():
     """The tome is consumed on learning by its HOLDER; buying it onto a char whose INT
     will never rise strands 120g of unlock on the wrong shelf."""
-    char = _char(gifts=("str",), inv=[{"kind": "potion_red", "item_id": "p",
+    char = _char(gifts=("str",), int_=4, inv=[{"kind": "potion_red", "item_id": "p",
                                        "uses": ["drink"]}])
     acts = _bot().on_frame(_frame(char, gold=400, stock=_TOME_STOCK))
     buy = _first(acts, "buy")
@@ -99,9 +102,54 @@ def test_a_char_already_HOLDING_a_tome_does_not_buy_another():
     mutant. The reachable case is a refused tome waiting on INT — exactly when a naive
     buy would stack a second 120g unlock behind the first."""
     bot = _bot()
-    char = _char(inv=[{"kind": "potion_red", "item_id": "p", "uses": ["drink"]},
+    char = _char(int_=4, inv=[{"kind": "potion_red", "item_id": "p", "uses": ["drink"]},
                       {"kind": "tome_veil", "item_id": "t", "uses": ["use"]}])
     bot.strategy._tome_failed[("c1", "tome_veil")] = 10 ** 9   # refused, bar unreachably high
     acts = bot.on_frame(_frame(char, gold=400, stock=_TOME_STOCK))
     buy = _first(acts, "buy")
     assert not (buy and buy["kind"] == "tome_veil"), f"hoarded a second tome: {buy}"
+
+
+# ---- v0.83.1: the wizard is protected, and gold waits for INT ------------------
+
+def test_the_designate_is_a_GUARDIAN_at_level_one():
+    """Operator direction: a dead wizard loses the INT grind, the learned form, and the
+    consumed tome — the whole pipeline. The role system already knows how to be cautious;
+    the designate gets it at any level, and ungifted level-1s stay foragers."""
+    from steemer.strategy.explorer import role_of
+    assert role_of({"gifts": ["int"], "level": 1}) == "guardian"
+    assert role_of({"gifts": ["str"], "level": 1}) == "forager"
+    assert role_of({"gifts": ["str"], "level": 9}) == "guardian"
+
+
+def test_the_caster_never_trades_hits_with_a_predator():
+    """An armed, healthy designate with one adjacent wolf DODGES where a forager would
+    attack — benign-wildlife XP still flows; predator trades do not."""
+    bot = _bot()
+    char = _char(xp=0)
+    char.update({"pos": [5, 5], "stamina": 40, "max_stamina": 60, "level": 3,
+                 "statuses": [], "carry": {"used": 0, "cap": 20}})
+    tiles = [[x, y, "floor", 0, 0] for x in range(11) for y in range(11)]
+    frame = {"type": "frame", "world": "vale", "tick": 500, "events": [],
+             "bounds": [11, 11], "chars": [char],
+             "visible": {"tiles": tiles, "items": [], "gold": [],
+                         "entities": [{"eid": 50, "kind": "wolf", "pos": [5, 6],
+                                       "faction": "monster"}]}}
+    acts = bot.on_frame(frame)
+    assert acts and acts[0]["action"] != "attack", \
+        f"the wizard traded hits with a wolf: {acts}"
+
+
+def test_the_tome_buy_WAITS_for_the_INT_grind():
+    """Gold converts to tome only at INT >= 4 (duplicated; pinned below): the operator's
+    stranded-capital worry, answered with sequencing instead of abstinence."""
+    char = _char(int_=3, inv=[{"kind": "potion_red", "item_id": "p", "uses": ["drink"]}])
+    acts = _bot().on_frame(_frame(char, gold=400, stock=_TOME_STOCK))
+    buy = _first(acts, "buy")
+    assert not (buy and buy["kind"] == "tome_veil"), f"bought before the grind: {buy}"
+    char4 = _char(int_=4, inv=[{"kind": "potion_red", "item_id": "p", "uses": ["drink"]}])
+    acts4 = _bot().on_frame(_frame(char4, gold=400, stock=_TOME_STOCK))
+    buy4 = _first(acts4, "buy")
+    assert buy4 and buy4["kind"] == "tome_veil", f"no tome at INT 4 and 400g: {acts4}"
+    from steemer.strategy.explorer import TOME_BUY_MIN_INT
+    assert TOME_BUY_MIN_INT == 4, "the gate moved; re-read the numbers in this test"

@@ -660,6 +660,7 @@ MARKET_PROBE_PRICE = 3
 #   spell_cap breakpoints): first successful `use` reveals it — re-derive then.
 CASTER_INT_TARGET = 6      # pre-bank INT up to this on int-gifted characters
 TOME_BUY_KIND = "tome_veil"   # the cheap form (120g); bolt (150g) can wait
+TOME_BUY_MIN_INT = 4       # ...and only once the designate's INT grind is nearly done
 
 # v0.58.0 BOTTLES. The heal supply had a hole in it that nothing was watching.
 #
@@ -995,11 +996,19 @@ def role_of(char: dict[str, Any]) -> str:
     a fresh recruit is a FORAGER (cheap -> works the edges of danger for income). Shared by
     the strategy (biases the severity threshold) and the dashboard (shows the role), so the
     role has ONE source of truth."""
+    # v0.83.1 (operator: "I would like to have a wizard... I'd like them to be
+    # protected"): the caster-designate is a GUARDIAN at ANY level. Death is permanent,
+    # so a dead wizard loses the INT grind, the learned form, and the consumed tome —
+    # the entire pipeline — where a dead forager loses a club. Protection costs the
+    # designate some XP rate (cautious thresholds, no predator trades); the investment
+    # maths favours it long before level 4.
+    if "int" in (char.get("gifts") or []):
+        return "guardian"
     return "guardian" if (char.get("level") or 0) >= GUARDIAN_LEVEL else "forager"
 
 
 class Explorer:
-    version = "explorer/0.83.0"
+    version = "explorer/0.83.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1388,7 +1397,14 @@ class Explorer:
             #    reserve, so it can never eat the heal; once per run; skipped while ANY
             #    tome is already in this character's pack (one unlock at a time — the
             #    tome is consumed on learning, so a second is a hoard, not a spare).
+            # v0.83.1 (operator: "worried about the bought-tome path... don't want to
+            # burn gold"): the buy also waits for the designate's INT to be nearly there
+            # (>= TOME_BUY_MIN_INT), shrinking the stranded-capital window to almost
+            # nothing. NB a tome is only CONSUMED on successful learning — a refused
+            # `use` keeps the item — so the true worst case was always a shelf, not a
+            # burn; this makes the shelf-time short too.
             if ("int" in (char.get("gifts") or []) and not self._tome_bought
+                    and char.get("stats", {}).get("int", 0) >= TOME_BUY_MIN_INT
                     and not any(str(i.get("kind", "")).startswith(TOME_PREFIX)
                                 for i in inv)):
                 price = self._shop_price(frame, TOME_BUY_KIND)
@@ -1822,7 +1838,11 @@ class Explorer:
         # flee returned above); a swarm (>=2 melee predators within reach) skips this and falls
         # through to the dodge. This is what turns the 0.40 arm-up into actual leveling. ---
         armed = (char.get("equipment") or {}).get("hand") is not None
-        develop = (armed and not homing and hp >= max_hp * DEVELOP_HP
+        # v0.83.1: the caster-designate never trades hits with predators — benign
+        # wildlife XP still flows, but the dodge-override and the closing seek are for
+        # characters whose death costs a club, not a pipeline.
+        caster = "int" in (char.get("gifts") or [])
+        develop = (armed and not homing and not caster and hp >= max_hp * DEVELOP_HP
                    and stamina >= DEVELOP_STAMINA)
         near_preds = [p for p in preds
                       if abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= COMBAT_SEEK_RADIUS]
