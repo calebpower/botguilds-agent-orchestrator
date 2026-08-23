@@ -60,6 +60,7 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 | Danger as COST, not wall (desperation-branch only) | 0.88 | 0.90 | 7 | 0.479 | 0.594 | below 0.5 — qualifies at tc>=9 |
 | RIDE the rails (cap discoverable only empirically) | 0.82 | 0.90 | 13 | 0.497 | 0.553 | below 0.5 |
 | Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 19 | 0.474 | 0.510 | below 0.5 |
+| Tick-participation bar (operator: block-explorer style, last 500 ticks green/red) | 0.72 | 1.00 | 1 | -0.180 | 0.540 | just added — operator-requested |
 | Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 13 | 0.474 | 0.528 | below 0.5 |
 | Exploration matrix (B) experiment arm | 0.92 | 0.70 | 48 | 0.470 | 0.483 | INELIGIBLE — ceiling<0.5 |
 | Rival-awareness dashboard panel | 0.62 | 0.97 | 79 | 0.443 | 0.451 | INELIGIBLE — ceiling<0.5 |
@@ -100,6 +101,15 @@ multi-step reasoning. Item 1 (tree-as-dead-end) SHIPPED as 0.80.0 chop-through p
 Item 2 queued below.
 
 | Danger as COST, not wall (planned escapes from mob boxes) | 0.88 | 0.75 | 1 | -0.165 | 0.495 | just added — NB ceiling 0.495: re-examine the risk term after 0.80 data rather than letting the ceiling rule bury an operator-directed item |
+
+**Tick-participation bar (added 2026-08-23, operator):** a div of 500 blocks, one per
+tick, green if we received/handled that tick's frame, red if skipped — crypto-block-
+explorer style. Data source exists already: `frames.tick` per world plus the seq-gap
+machinery (0.44.0); a skipped tick is a tick with no frame landed. Real diagnostic value
+beyond the aesthetics: we have had silent drops (run #120 lost 3.7% of its stream) and a
+22h-dead track feed nobody noticed — this makes stream health visible at a glance.
+good=0.72 credits operator visibility per the scoring rules; risk 1.0 (pure read-only UI).
+Ceiling 0.540 — ELIGIBLE, qualifies on the tc term in ~2 deploys.
 
 **SHIPPED this cycle:** in-world trash talk (`say`) — 0.74.0–0.75.2, `steemer/chatter.py`.
 
