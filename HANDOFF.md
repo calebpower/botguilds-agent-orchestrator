@@ -6,7 +6,11 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.88.0` on **run #177** (pushed; see git log).
+- **Live:** `explorer/0.89.0` on **run #178** (pushed; see git log).
+- **GHOST COMMANDS KILLED** (0.89.0): #177 sent 17k commands to returned/dead chars
+  (move_failed 304/10k was never terrain); dead uids never act, returned get 4-tick grace.
+  PICKER FIXED: wizards found behind the queue (3 pair-embarks/54k -> ~20x rate).
+  #177 also proved the protection stack: wizard deaths ZERO (61 corpses all non-seats).
 - **THE CHOSEN SIX** (0.88.0): wizardhood = a SEAT — pure top-6 ranking (INT, level, gift,
   stats, uid) over a sightings ledger, NO stored state; WIZARD_MIN_POOL=12 guards restart
   paralysis; death = instant re-rank promotion; lowest-stat recall makes room; seats bank

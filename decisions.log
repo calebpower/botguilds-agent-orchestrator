@@ -4532,3 +4532,21 @@ LIVE #177: panel shows EXACTLY six (all INT 2, tie-broken deterministically), re
 demoted; wizards home under the band gate awaiting safe pair-embarks.
 GATE 965 reaper / 956 local. Seat mutants: corpse-keeps-seat, restart-paralysis,
 inverted-tie-order, cap-sneaks-back — ALL KILLED.
+
+================================================================================
+iter 105 (2026-08-23) — explorer/0.89.0 — ghosts and the blind picker
+================================================================================
+MATURE #177: WIZARD DEATHS ZERO (61 corpses, all non-seats — the protection stack fully
+proven). But the six fielded 0.0% of char-frames and banked ZERO XP, and move_failed's
+304/10k was never terrain: 12,384 not_in_village + 4,626 unknown_character = SEVENTEEN
+THOUSAND commands to ghosts (per-world frames double-list transitioning chars; corpses
+linger in unrefreshed frames). Plus the PICKER DEFECT: here_avail[0] whatever its role →
+3 pair-embarks in 54k frames.
+0.89.0: dead uids never act again (uids unreused); returned chars sit out RETURN_GRACE=4
+ticks of stale field frames; the picker scans for wizards first. Fixture lesson kept in
+the test: all-ones stats sum to 6 = EVERYONE fodder, which silently disabled the branch
+under test. EARLY #178: unknown_character -99.6%, pair-embarks ~20x, seat field-share
+2.4% (was 0.0). If seats still starve in calm bands at maturity, the band gate itself
+gets re-examined.
+GATE 968 reaper / 959 local. Mutants: corpse-commands, returned-ghosts, first-come
+picker — all killed.
