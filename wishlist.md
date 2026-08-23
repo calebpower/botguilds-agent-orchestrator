@@ -163,6 +163,16 @@ ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "a
   needs a proof for the permanent case" lesson generalised into a circuit breaker. The
   portal-block (0.91.0) removed the known cause; this contains the CLASS. (added 2026-08-23)
 
+- [ ] **RIDE the rails — probe notes (2026-08-23):** docs say `ride {dir}` works straight
+  from a `track` tile — flat cost, slides to the rail's end (`ride_max_tiles` cap absent
+  from live config = empirical), no stopping early, and whatever blocks the rail is
+  RAMMED for damage (a weapon-free damage source — interesting for our unarmed era).
+  **Operator hypothesis to test in slice 1: does riding need a minecart, found or
+  crafted?** Zero cart/wagon/trolley item kinds in 8.7M+ recorded events says no, but
+  docs have under-described mechanics before — the first probe's error taxonomy
+  (`missing_item`? clean slide?) settles it for one tick. If a cart IS required, a
+  find-or-craft-minecart item enters this list with evidence.
+
 ### Model backlog (operator-directed add, 2026-08-23)
 
 The 30-candidate model survey minus the three already tried (death-risk, band forecast,
