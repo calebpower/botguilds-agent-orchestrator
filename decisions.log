@@ -4550,3 +4550,40 @@ under test. EARLY #178: unknown_character -99.6%, pair-embarks ~20x, seat field-
 gets re-examined.
 GATE 968 reaper / 959 local. Mutants: corpse-commands, returned-ghosts, first-come
 picker — all killed.
+
+================================================================================
+iters 106-108 (2026-08-23) — THE ML PIPELINE, passes 1-3 (plan glistening-baking-lagoon)
+================================================================================
+OPERATOR-PLANNED (plan mode): three models, shadow-first, manual retraining. Executed as
+three loop passes in one stretch:
+
+PASS 1 (155ff4b, ddce723): steemer/mlfeat.py = single source of truth (pure stdlib,
+FEATURE_SCHEMA_VERSION, boundary-pinned death labels, rotation-invariant mob classes);
+tools/extract_features.py = one streaming pass/run, guild-filtered death index,
+deterministic 1-in-5 negative sampling, per-run cache; .reaper-train.toml = second reaper
+workload; train dep-group (Linux-only). GATE: extractor death counts == attribution on
+every closed run (19 runs, 930k frames, 12,928 positives, 1.16M mob pairs). LESSON: run
+#178 was LIVE during extraction and grew a death mid-pass -> closed-runs-only rule +
+frame-count cache validation (both mutation-killed).
+
+PASS 2 (f2e3302): the acceptance gates ruled on all three models -- BAND_FORECAST
+ACCEPTED (Brier 0.296 vs climatology 0.715, 335 held-out refreshes; DEPLOYED as JSON
+coefficients); DEATH_RISK REJECTED — the hand-tuned constants OUT-RANK the GBM (AUC 0.937
+vs 0.897): four iterations of measured tuning encode more signal than v1 extracted;
+MOB_MOVE REJECTED on the dual criterion + CORRECTION: the leak-free rule baseline is
+0.744/0.187, far below the published 0.81/0.892 (profile leak). steemer/models.py =
+stdlib fail-closed scorer; sklearn parity fixture ACTIVE (1e-9 on 50 recorded cases);
+registry canary makes schema drift break the BUILD. models/REGISTRY.md carries births
+AND rejections. (One malformed claims row of mine caught + superseded same pass.)
+
+PASS 3 (4f03316, explorer/0.90.0): shadow wiring — band_forecast scores at every refresh
+boundary into intel kind='model_score'; death-risk path armed at SHADOW_EVERY=5/char but
+dormant until a v2 artifact beats the constants; everything fail-closed (a corrupt tree
+costs one warning line, tested). LIVE ON #179 WITHIN MINUTES: three boundaries forecast
+{calm .94/melee .058/undead .002} off four-calm history. Inert proven by byte-identical
+action streams.
+
+PASS 4 QUEUED: tools/check_shadow_parity.py written; needs >=3 live runs of shadow rows,
+then zero-diff + parity + live-calibration acceptance. PASS 5 (retreat modulation) only
+after that, and only behind a default-off flag.
+GATE 1008 reaper / 999 local at 0.90.0.

@@ -6,7 +6,13 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.89.0` on **run #178** (pushed; see git log).
+- **Live:** `explorer/0.90.0` on **run #179** (pushed; see git log).
+- **THE ML PIPELINE IS LIVE (passes 1-3 of 5)**: band_forecast (Brier 0.296 vs climatology
+  0.715) shadow-forecasts every refresh into intel kind='model_score' — inert by test.
+  death_risk/mob_move were REJECTED by their own gates (constants out-rank the GBM at AUC
+  0.937 vs 0.897; the honest mob rule baseline is 0.744/0.187, not the leaked 0.81/0.892).
+  Pass 4 = shadow acceptance after >=3 runs (tools/check_shadow_parity.py). Retrain via
+  `reaper test --manifest .reaper-train.toml`; artifacts land in out/models/.
 - **GHOST COMMANDS KILLED** (0.89.0): #177 sent 17k commands to returned/dead chars
   (move_failed 304/10k was never terrain); dead uids never act, returned get 4-tick grace.
   PICKER FIXED: wizards found behind the queue (3 pair-embarks/54k -> ~20x rate).
