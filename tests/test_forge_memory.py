@@ -134,7 +134,11 @@ def test_a_proven_quantity_is_the_only_one_tried_for_that_product():
     all fail — that product is simply not on today's menu."""
     exp = Explorer()
     exp._forge_proven.add(("shield_iron", 3, 1))
-    got = exp._choose_forge(_ing(2) + _lum(2), dict(EMPTY), stamina=40)
+    # v0.95.0: armed hand so shield_iron leads and the affordability-skip under test is
+    # actually reached (a bare hand would forge a spear and never consider shield_iron —
+    # passing this assertion for an unrelated reason).
+    eqp = dict(EMPTY, hand={"kind": "club"})
+    got = exp._choose_forge(_ing(2) + _lum(2), eqp, stamina=40)
     assert got is None or got[0][0] != "shield_iron"
 
 
@@ -143,7 +147,10 @@ def test_the_proven_quantity_IS_sent_once_affordable():
     if the product had been dropped altogether."""
     exp = Explorer()
     exp._forge_proven.add(("shield_iron", 3, 1))
-    got = exp._choose_forge(_ing(3) + _lum(2), dict(EMPTY), stamina=40)
+    # v0.95.0: shield_iron leads only for an ARMED hand (a bare hand forges a weapon
+    # first) — give this char a club so the shield-recipe path under test is reached.
+    eqp = dict(EMPTY, hand={"kind": "club"})
+    got = exp._choose_forge(_ing(3) + _lum(2), eqp, stamina=40)
     assert got is not None and got[0] == ("shield_iron", 3, 1)
 
 

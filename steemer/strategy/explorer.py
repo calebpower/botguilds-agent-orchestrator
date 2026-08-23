@@ -567,6 +567,10 @@ FORGE_RESERVE_PER_CHAR = 4
 # any price, and 100% of our characters have an empty offhand. It is the one product where
 # forging is not a cheaper route but the ONLY route.
 FORGE_PRODUCTS = ("shield_iron", "spear", "shortsword", "dagger")
+# v0.95.0: the same products, weapon-first, for a character whose HAND is empty — arming
+# the hand outranks armouring the offhand when a char can't fight. Same tuple contents so
+# every recipe/proven/failed key still applies; only the try-order changes.
+FORGE_WEAPON_FIRST = ("spear", "shortsword", "dagger", "shield_iron")
 # Recipe quantities are NOT documented. Rather than guess once and give up, try a small
 # ordered ladder of (ingots, lumber) and let the server's rejection teach us — an
 # action_error here is INFORMATION, the same stance the exploration matrix takes. Cheapest
@@ -1150,7 +1154,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
 
 
 class Explorer:
-    version = "explorer/0.94.0"
+    version = "explorer/0.95.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -3180,7 +3184,16 @@ class Explorer:
         if not ingots or not lumber:
             return None
         worn = {v.get("kind") if isinstance(v, dict) else v for v in eqp.values()}
-        for product in FORGE_PRODUCTS:
+        # v0.95.0: forge to the char's NEED. The static shield-first order was written
+        # when 100% of offhands were empty and armour was the crisis; now the crisis is
+        # BARE HANDS (28/30 unarmed can neither fight nor flee cleanly — the idle-village
+        # and passive-char reports). A character with an EMPTY HAND forges a WEAPON first
+        # (spear's recipe is proven: 1 ingot + 1 lumber), so scarce materials arm the hand
+        # before they armour the offhand; an already-armed char still makes a shield.
+        hand = eqp.get("hand")
+        hand_empty = not (hand.get("kind") if isinstance(hand, dict) else hand)
+        order = FORGE_WEAPON_FIRST if hand_empty else FORGE_PRODUCTS
+        for product in order:
             if product in worn or self._wont_fit(product):
                 continue
             # v0.66.0: once a product has a PROVEN recipe, that is the only quantity worth

@@ -6,7 +6,18 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.94.0` on **run #186** (pushed; see git log).
+- **Live:** `explorer/0.95.0` on **run #187** (pushed; see git log).
+- **FORGE-TO-ARM UNBLOCKED + WEAPON-FIRST (0.95.0)**: the arm rate is the root cause of
+  BOTH the idle village (death-latch benches the 28/30 bare-handed) and the passive char
+  (bare hands can't fight, stamina-shuffle-dodge). Forge chain is further along than
+  thought: #186 forged a SPEAR — recipe PROVEN spear = 1 lumber + 1 ingot_copper (both
+  we make). Chain works end-to-end (chop/smelt -> forge -> equip). GAP was PRIORITY:
+  led with shield_iron (armour). 0.95.0: an EMPTY HAND forges a WEAPON first
+  (FORGE_WEAPON_FIRST), armed chars still forge the shield. WATCH #187: armed-share
+  climbs, fewer bare-handed benched, deaths stay low.
+- **QUEUED follow-ups**: band-local death-latch (latch only the death's y-strip, not the
+  whole world — un-benches shallow foragers); dodge-when-healthy (keep moving vs rest
+  adjacent to a weak threat). Both proposed to operator, not yet greenlit.
 - **ARCH-WIZARD LOOP BROKEN (0.94.0, operator go)**: the #184 arch-wizard died because
   its role OSCILLATED (43 wizard / 49 forager decisions) — wizard_rank_key ranked LEVEL
   above the int-gift, so the protected (slow-leveling) int-gifted char kept losing its

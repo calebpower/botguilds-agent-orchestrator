@@ -14,8 +14,8 @@ ordered ladder and let the server's error blacklist what does not work. These te
 that loop closing — an attempt that is never remembered would retry the same doomed recipe
 forever, which is the shape of every re-send bug this project has had.
 """
-from steemer.strategy.explorer import (Explorer, FORGE_PRODUCTS, FORGE_RECIPES,
-                                       FORGE_STAMINA, FORGE_FAIL_LIMIT)
+from steemer.strategy.explorer import (Explorer, FORGE_PRODUCTS, FORGE_WEAPON_FIRST,
+                                       FORGE_RECIPES, FORGE_STAMINA, FORGE_FAIL_LIMIT)
 
 
 def _ing(n=1, kind="ingot_copper"):
@@ -36,9 +36,26 @@ def test_it_forges_when_holding_both_an_ingot_and_lumber():
     got = exp._choose_forge(_ing(1) + _lum(1), dict(EMPTY), stamina=40)
     assert got is not None
     (product, n_ing, n_lum), ids, why = got
-    assert product == "shield_iron", "the unbuyable armour must lead the ladder"
+    # v0.95.0: an EMPTY HAND forges a WEAPON first (arming beats armouring the offhand)
+    assert product == "spear", "a bare hand must forge a weapon before a shield"
     assert (n_ing, n_lum) == FORGE_RECIPES[0]
     assert len(ids) == n_ing + n_lum
+
+
+def test_forge_priority_is_WEAPON_FIRST_only_when_the_hand_is_empty():
+    """v0.95.0, from the idle-village / passive-char reports (28/30 bare-handed). A char
+    that can't fight forges a weapon before armour; an already-armed char still forges the
+    unbuyable shield. The SAME materials, different order — the whole fix is the order."""
+    exp = Explorer()
+    # empty hand -> spear (weapon)
+    (bare_product, _, _), _, _ = exp._choose_forge(_ing(2) + _lum(2), dict(EMPTY), stamina=40)
+    assert bare_product == "spear", f"bare hand should forge a weapon, got {bare_product}"
+    # hand already holds a club -> shield_iron (armour) leads again
+    armed = dict(EMPTY, hand={"kind": "club"})
+    (armed_product, _, _), _, _ = exp._choose_forge(_ing(2) + _lum(2), armed, stamina=40)
+    assert armed_product == "shield_iron", \
+        f"an armed char should forge armour, got {armed_product}"
+    assert FORGE_WEAPON_FIRST[0] == "spear" and FORGE_PRODUCTS[0] == "shield_iron"
 
 
 def test_it_does_NOT_forge_without_metal():

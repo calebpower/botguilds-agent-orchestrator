@@ -4735,3 +4735,23 @@ provably-redundant window bound (gap check already enforces slack). 6/6 mutants 
 memory) -> transient boundary divergence, self-heals, noted. Roster still INT 2 (ceiling
 unbroken) — this protects the climber. NEXT: watch #186 for wizard-role STABILITY (no
 more oscillation) + arch-wizard survival + INT climb toward the tome gate.
+
+ITER 75 (2026-08-23, explorer/0.95.0): FORGE-TO-ARM, WEAPON-FIRST. The loop pointed at
+the arm rate — root cause of BOTH operator reports this pass (idle village: death-latch
+benches the 28/30 bare-handed; passive char: c19299 bare-handed move/rest-shuffled while
+a rat tracked it, can't fight unarmed). Chasing it to the forge chain found it's further
+along than HANDOFF claimed: on #186 c19282 FORGED A SPEAR (product='spear',
+ids=[lumber, ingot_copper]) — the 'undiscovered product name' that deferred M3a was moot
+(forge_started carries `product`). Recipe now KNOWN: spear = 1 lumber + 1 ingot_copper,
+both already produced (chop->lumber, smelt 2 ore->ingot). Chain verified end-to-end
+(chop/smelt -> forge proven-recipe -> equip fills empty slots). The GAP was PRIORITY:
+FORGE_PRODUCTS led with shield_iron (armour — right when offhands were the crisis), so
+materials became shields while hands stayed empty. LEVER: a char with an EMPTY HAND
+forges FORGE_WEAPON_FIRST (spear, shortsword, dagger, shield); armed chars still forge
+the unbuyable shield. Same tuple contents (all recipe/proven/failed keys still apply),
+only the order flips. 3/3 mutants killed; de-vacuum'd two sibling forge_memory tests
+that would have passed for an unrelated reason under the new order (armed-hand fixtures).
+This is the STRUCTURAL fix I flagged for 3 passes — arming un-benches the roster and
+lets chars fight instead of stamina-shuffling. NEXT: #187 armed-share climb; then the
+band-local death-latch (un-bench shallow foragers) and the dodge-when-healthy tweak as
+smaller follow-ups; ML Pass 4 still open.
