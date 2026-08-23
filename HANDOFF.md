@@ -6,7 +6,12 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.80.1` on **run #165**, repo HEAD `ec6c1b5`, branch `main` (pushed).
+- **Live:** `explorer/0.81.0` on **run #166**, repo HEAD `1403e53`, branch `main` (pushed).
+- **FRESHNESS BIAS CONFIRMED** (mature #165): move_failed 231→53.9/10k, treadmill held,
+  looted-out 25.6%. Claim in ledger.
+- **TASTE FINALLY EXISTS** (0.81.0): undecoded stranded herbs are tasted (once/kind/run)
+  instead of sold. The result event has NEVER been observed — watch steemer-live.log for
+  `[taste] raw event:` and wire the exact shape next. First-write-wins protects the poles.
 - **⚠ REMEMBERED TERRAIN IS ONLY MOSTLY DURABLE** (mature #164): deep trekkers' walks home
   bounced off regrown bush/rock/water 524 times (move_failed 31→231/10k). 0.80.1 charges
   nav.STALE_COST=3 on tiles not seen this run (ctx.fresh); retreat+trek biased, never

@@ -4315,3 +4315,31 @@ returned/10k holding <=~556 and depth intact; if not, the staleness attribution 
 EARLY #165 (3.5k frames): 83/10k and falling.
 NEXT after that measurement: brewing throughput (the 2-bottle trickle — herbs+bottle
 logistics), or danger-as-cost (operator item 2). GATE 907 reaper / 898 local.
+
+================================================================================
+iter 94 (2026-08-22 late) — mature #165 + explorer/0.81.0 — taste, at last
+================================================================================
+FRESHNESS BIAS CONFIRMED (mature #165, 44k frames): move_failed 231 -> 53.9/10k (target
+~31, most of the residual is floor/body bounces), returned/10k held at 543, depth intact,
+looted-out 25.6%. Claim in the ledger. The staleness attribution was right.
+
+HEAL SUPPLY still binds (3.2% healed). Brew diagnosis went three levels down: batching is
+fine (0.1% batchable is a symptom); ACQUISITION is fine (ground covered in brewables:
+glimmerweed 490 / embercap 416 / bitterroot 392 / frostmoss 272 sightings per 2k frames);
+the leak is DECODING — undecoded herbs strand and sell for ~2g. knowledge.py has said
+"resolve them with `taste` first" SINCE RUN #8, and taste had been sent ZERO times ever.
+Fourth "documented, waiting, never wired" find of the week (say scope column, bottle
+floor, ride verb, now taste).
+
+0.81.0: an undecoded stranded singleton is TASTED instead of sold, once per kind per run
+(destructive; costs exactly the ~2g sale it replaces). Parser for a NEVER-OBSERVED event:
+tolerant field names, loud raw-event print (the specimen for next pass), our-eids only
+(rival tastes teach nothing — tested), FIRST-WRITE-WINS (a misparse must not flip a pole;
+bone stays vigor — tested), persisted topic='essence', hydrated at startup (tested against
+a real restart; found the test needed an explicit commit — the live path commits on
+flush). v0.8.0's stranded-sell contract AMENDED in place: decoded kinds still sell.
+DEPLOY: #166 live, 0 tastes in first 3.7k frames — needs a villager holding an undecoded
+stranded herb; watch for the [taste] raw-event line, then wire the exact shape.
+NEXT: the taste result shape; then bitterroot/glimmerweed/frostmoss essences -> brew
+throughput; danger-as-cost still queued (operator item 2).
+GATE 914 reaper / 905 local.
