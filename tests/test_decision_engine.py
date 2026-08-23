@@ -999,19 +999,47 @@ def test_village_keeps_ingredients_sells_food_and_loot():
         [{"char_uid": "c1", "action": "sell", "item_id": "m1"}]
 
 
-def test_village_sells_stranded_singleton_brewable():
+def test_village_TASTES_an_undecoded_stranded_brewable_before_selling_it():
+    """v0.81.0 amended the v0.8.0 contract, deliberately. A stranded singleton is still
+    banked — but an UNDECODED one is worth more as an essence than as its ~2g sale, so the
+    first of each kind goes to `taste` (destructive, once per kind per run) and only then
+    do its kin sell as before. bitterroot has sat in knowledge.py's "resolve with taste
+    first" comment since run #8; this is that taste finally happening."""
     bot = _bot()
-    # v0.8.0: a lone brewable that can't form a no-curdle batch is stranded ->
-    # sold (not hoarded, which filled carry and stalled chars in 0.7.0). Two
-    # DIFFERENT undecoded kinds can't batch together, so both are stranded.
     char = _brew_char([{"kind": "bitterroot", "item_id": "b1", "uses": ["brew", "taste"]},
                        {"kind": "frostmoss", "item_id": "f1", "uses": ["brew", "taste"]}])
     frame = {"world": "village", "tick": 3,
              "guild": {"gold": 5, "chars_here": ["c1"], "chars_by_world": {}},
              "chars": [char]}
-    # first sellable in inventory order is the stranded bitterroot.
     assert bot.on_frame(frame) == \
-        [{"char_uid": "c1", "action": "sell", "item_id": "b1"}]
+        [{"char_uid": "c1", "action": "taste", "item_id": "b1"}]
+
+
+def test_village_still_SELLS_a_stranded_brewable_of_a_DECODED_kind():
+    """The v0.8.0 rule survives for anything already decoded: a lone moonbell (venom,
+    decoded run #8) has nothing left to teach, so it banks its gold as always."""
+    bot = _bot()
+    char = _brew_char([{"kind": "moonbell", "item_id": "m9", "uses": ["brew", "taste"]}])
+    frame = {"world": "village", "tick": 3,
+             "guild": {"gold": 5, "chars_here": ["c1"], "chars_by_world": {}},
+             "chars": [char]}
+    assert bot.on_frame(frame) == \
+        [{"char_uid": "c1", "action": "sell", "item_id": "m9"}]
+
+
+def test_a_kind_is_tasted_ONCE_then_its_kin_sell():
+    """Taste is destructive; the second bitterroot must not feed a parser that may have
+    missed the first result. Same character, two visits."""
+    bot = _bot()
+    def frame(tick, item_id):
+        char = _brew_char([{"kind": "bitterroot", "item_id": item_id,
+                            "uses": ["brew", "taste"]}])
+        return {"world": "village", "tick": tick,
+                "guild": {"gold": 5, "chars_here": ["c1"], "chars_by_world": {}},
+                "chars": [char]}
+    assert bot.on_frame(frame(3, "b1"))[0]["action"] == "taste"
+    acts = bot.on_frame(frame(30, "b2"))
+    assert acts and acts[0]["action"] == "sell", f"tasted the same kind twice: {acts}"
 
 
 def test_village_leaves_a_crafting_character_alone():

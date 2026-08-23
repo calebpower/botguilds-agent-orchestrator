@@ -112,6 +112,19 @@ class GuildBot:
         # green gate, and this is the general form of the two one-off fixes (v0.49's intent
         # latch, v0.50's server-driven learned-block) that each covered a single case.
         self.expect = ExpectationMonitor()
+        # v0.81.0: re-load taste-decoded essences. Without this every restart forgets
+        # what a destructive probe paid an herb to learn, and the once-per-kind guard
+        # would spend another herb re-learning it next run.
+        if self.storage is not None:
+            try:
+                for (fact,) in self.storage.conn.execute(
+                        "SELECT fact FROM learned WHERE topic='essence'").fetchall():
+                    kind, _, essence = str(fact).partition("=")
+                    if kind and essence:
+                        from steemer import knowledge
+                        knowledge.learn(kind, essence)
+            except Exception as e:
+                print(f"[taste] essence hydration failed ({e}) — continuing", flush=True)
 
     # -- client callbacks -----------------------------------------------------
 
@@ -189,6 +202,28 @@ class GuildBot:
             # already been resolved. Hooking it into `village()` instead would repeat
             # 0.64.0's mistake exactly — that parser sat in the field path, never saw the
             # `forged` events it was written for, and shipped inert for two versions.
+            elif "taste" in (kind or ""):
+                # v0.81.0: the FIRST taste in the project's history was sent this
+                # version, so this event's true shape has never been observed. The parser
+                # is tolerant about field names and LOUD about the raw payload either
+                # way: if it parses, we decode an ingredient forever; if it does not,
+                # the print is the specimen the next pass wires exactly. (The per-run
+                # once-per-kind guard in the strategy caps the cost of a missed parse at
+                # one herb per kind.)
+                print(f"[taste] raw event: {ev!r}", flush=True)
+                item_kind = ev.get("item") or ev.get("kind_name") or ev.get("ingredient")
+                essence = ev.get("essence") or ev.get("result") or ev.get("tell")
+                if (isinstance(item_kind, str) and isinstance(essence, str)
+                        and 0 < len(essence) <= 24):
+                    from steemer import knowledge
+                    if knowledge.learn(item_kind, essence):
+                        print(f"[taste] DECODED {item_kind} = {essence}", flush=True)
+                        if self.storage is not None:
+                            try:
+                                self.storage.record_learned(
+                                    "essence", f"{item_kind}={essence}")
+                            except Exception as e:
+                                print(f"[taste] record failed ({e})", flush=True)
             mine = dict(ev)
             mine["char_uid"] = uid
             mine.setdefault("world", frame.get("world"))

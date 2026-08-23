@@ -973,7 +973,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.80.1"
+    version = "explorer/0.81.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1018,6 +1018,10 @@ class Explorer:
         # is not a stale-frame repeat, it is dead forever, so it must be remembered, not
         # retried. Maps item_id -> True; guild-level because the vault is guild-level.
         self._vault_dead: set = set()
+        # v0.81.0: ingredient kinds we have SENT a taste for this run (or had refused).
+        # Once per kind per run — taste is destructive, and a parser that missed the
+        # result must not eat a second herb for nothing.
+        self._tasted: set = set()
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -1102,6 +1106,9 @@ class Explorer:
             dead = self._vault_pending.pop(uid, None)
             if dead is not None:
                 self._vault_dead.add(dead)
+        # v0.81.0: a refused `taste` — whatever the reason — burns no more herbs of that
+        # kind this run. The kind is already in _tasted (set when offered), so nothing to
+        # do beyond not clearing it; recorded here for the reader.
         if message.get("action") == "say":
             bot.chatter.note_rejected(bot.tick)
         if message.get("action") == "forge" and uid is not None:
@@ -1214,6 +1221,29 @@ class Explorer:
                     f"and never cast once")]
             # 2) sell what we can't use: loot, gear that won't fit, and brewables
             #    that can't form a batch (stranded singletons).
+            #
+            # 2-pre) v0.81.0 TASTE BEFORE SELLING. `taste` — never once sent in the
+            #    project's history — destructively consumes an ingredient and reports its
+            #    essence, and knowledge.py has carried "resolve them with `taste` first"
+            #    beside its undecoded guesses since run #8. The herbs it wants are
+            #    EXACTLY the stranded singletons this branch sells for 1-3g: an undecoded
+            #    lone brewable is worth more as knowledge than as coins, ONCE per kind.
+            #    Every future one of its kind then either batches (decoded vigor -> heal
+            #    supply) or sells as before. Ground survey on #165: glimmerweed 490,
+            #    bitterroot 392, frostmoss 272 sightings — if even one decodes to vigor,
+            #    the brew supply multiplies.
+            for item in inv:
+                if (knowledge.essence_of(item["kind"]) is None
+                        and "brew" in (item.get("uses") or [])
+                        and item["kind"] not in self._tasted
+                        and self._should_sell(item, eqp, brew_keep, smelt_keep,
+                                              feedstock_keep, scarce_keep, can_learn)):
+                    self._tasted.add(item["kind"])
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "taste",
+                                   "item_id": item["item_id"]},
+                        f"tasting a stranded {item['kind']} — undecoded, and worth more "
+                        f"as an essence than as the ~2g its sale would bank")]
             for item in inv:
                 if self._should_sell(item, eqp, brew_keep, smelt_keep, feedstock_keep,
                                      scarce_keep, can_learn):

@@ -40,3 +40,20 @@ ESSENCE: dict[str, str] = {
 def essence_of(kind: str) -> str | None:
     """This world's decoded essence for an ingredient kind, or None if unknown."""
     return ESSENCE.get(kind)
+
+
+def learn(kind: str, essence: str) -> bool:
+    """Decode one ingredient at runtime (a `taste` result). Returns True if new.
+
+    v0.81.0: until now this map only changed by editing the file — the docstring above
+    says "when a taste probe resolves a new herb, update this dict", and no taste was ever
+    sent in the project's history. The bot now tastes stranded singletons and calls this
+    with what the server answers. First-write-wins: a decoded essence is server truth and
+    re-decoding to a DIFFERENT value would mean the parser misread an event — refuse it
+    and let the caller shout, rather than silently flipping a pole and curdling every
+    future vigor batch.
+    """
+    if kind in ESSENCE:
+        return False
+    ESSENCE[kind] = essence
+    return True
