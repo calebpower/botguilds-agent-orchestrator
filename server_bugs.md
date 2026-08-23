@@ -173,3 +173,18 @@ now fails closed after 8 phantom ids (explorer/0.78.1) rather than storming.
 
 Repro: connect, read any village frame's `guild.inventory`, `drop` the first item_id from
 a village character → `no_such_item`.
+
+## Frame ghosts: dead-to-the-roster characters keep rendering in world frames (2026-08-23, run #179)
+
+A character the action handler no longer recognises (`unknown_character` on every
+command) continues to appear in that world's frame `chars` list, tick after tick, at a
+fixed position. Observed on `g_cd0e2a_c18748`: present in consecutive spire frames at
+ticks 2176242-2176246 while `move` commands sent for it in the same window were refused
+`unknown_character`. The divergence class began after involuntary portal transits
+(portal (63,0)->(57,44), vale): some transited characters die normally, others vanish
+from the roster with NO death event, leaving a renderable ghost. Cost to a client that
+trusts frames: it commands the ghost forever (1,481 unknown_character errors this run).
+
+Repro sketch: walk a character onto vale (63,0), let the portal fire, then keep
+commanding it; if it entered the vanish state, frames still render it while every
+command bounces.

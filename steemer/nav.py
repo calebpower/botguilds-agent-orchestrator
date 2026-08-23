@@ -20,6 +20,12 @@ DIRS: dict[str, tuple[int, int]] = {"N": (0, 1), "S": (0, -1), "E": (1, 0), "W":
 SOLID: frozenset[str] = frozenset({
     "wall", "chest", "chest_open", "safe", "trap", "water", "tree", "bush",
     "fence", "rock", "vein", "cauldron", "forge",
+    # v0.91.0 — "portal": stepping on one is an INVOLUNTARY teleport (run #179: a
+    # portal at vale (63,0) on the spawn strip flung commuting chars to (57,44) deep;
+    # 18 our-deaths + 119 recruits in a vanish/recruit spiral, and the server keeps
+    # rendering lost chars as frame ghosts we then command). SOLID means pathing never
+    # steps on one; DELIBERATE portal use stays available to a future explicit action.
+    "portal",
 })
 
 

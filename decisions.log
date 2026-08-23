@@ -4587,3 +4587,29 @@ PASS 4 QUEUED: tools/check_shadow_parity.py written; needs >=3 live runs of shad
 then zero-diff + parity + live-calibration acceptance. PASS 5 (retreat modulation) only
 after that, and only behind a default-off flag.
 GATE 1008 reaper / 999 local at 0.90.0.
+
+ITER 68 (2026-08-23, explorer/0.91.0): PORTAL VANISH SPIRAL — the loop's health check
+caught run #179 eating itself: scope errors exploding (not_in_village 4,548, 73% in the
+final 6%; unknown_character 1,481/33 chars; no_such_character embark 900) while embarks
+collapsed 1437->112 per 2k ticks. Chain (every link DB-verified): portal tiles are
+walkable to nav -> a portal sits at vale (63,0) ON the spawn strip -> commuting chars
+involuntarily transit to (57,44)/deep (Recruit-18716: portal t2171428, dead 99 ticks
+later) -> transited chars die deep or VANISH rosterless with no death event (c18762:
+recruit, 4 embarks, zero moves, unknown_character) -> the server still RENDERS lost
+chars in frames (c18748 in spire frames while its moves bounce unknown_character — new
+server_bugs.md entry: FRAME GHOSTS) -> bot commands ghosts forever + recruit gate
+replaces real losses (119 recruits) -> replacements walk into the same portal. LEVER:
+"portal" added to nav.SOLID — pathing, weighted_step, and the desperation predicate all
+inherit it; breakables are explicit (HARVEST_KINDS) so chop-through can never target a
+portal; DELIBERATE portal use stays open to a future explicit action. Tests: detour
+around a portal (bfs + weighted) and portal-is-not-a-desperation-exit; mutant "portal
+walkable again" KILLED. Wishlisted the containment guard this diagnosis shortcut:
+scope-error quarantine (stop commanding a uid after K consecutive scope errors — the
+0.62.0 "harmless to retry needs a proof for the permanent case" lesson, generalised).
+Measurement owed on #180: vanish-without-death ~0, recruit rate back to single digits,
+unknown_character/not_in_village ~0, and deaths/10k off the spiral. Claims from #179
+recorded AFTER it closes at deploy. ALSO THIS PASS (committed 9880083, pushed): ML batch
+2 substrate — five operator-picked models (stint_survival shadow-wired; move_fail;
+income_spot; dph_profile + terrain_regrowth aggregation tables), 22 remaining candidates
+wishlisted (9 ceiling-ineligible, named). Training session running in reaper (re-extract
++ six-model train); verdicts land next pass.

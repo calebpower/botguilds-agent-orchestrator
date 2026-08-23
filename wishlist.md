@@ -50,11 +50,12 @@ with `## Done` unmaintained since 2026-08-20):
   20 score tables — an omission is worse than a wrong number and far harder to notice.
 
 
-Recalculated fresh each pass. `tc` at deploy-minor **82** (`explorer/0.82.0`), counting
+Recalculated fresh each pass. `tc` at deploy-minor **91** (`explorer/0.91.0`), counting
 DEPLOYS since an item was added — a pass that ships no deploy does not advance it.
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
+| Scope-error quarantine | 0.82 | 0.96 | 0 | — | 0.590 | just added (tc=0) |
 | Model: XP-rate per placement | 0.85 | 0.95 | 0 | — | 0.606 | just added (tc=0) |
 | Model: death-cause classifier | 0.77 | 0.99 | 0 | — | 0.572 | just added (tc=0) |
 | Model: aggro/leash radius | 0.78 | 0.96 | 0 | — | 0.562 | just added (tc=0) |
@@ -77,21 +78,19 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 | Model: brew-output priors | 0.55 | 0.97 | 0 | — | 0.400 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
 | Model: market price | 0.55 | 0.97 | 0 | — | 0.400 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
 | Model: test selection for the loop | 0.52 | 1.00 | 0 | — | 0.390 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
-| Magic — CASTING (chain sound; INT+tome slice unblocks) | 0.90 | 0.85 | 32 | **0.550** | 0.574 | **qualifies — BLOCKED: treasury (gold 113 vs ~220 for a tome)** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 68 | **0.519** | 0.529 | **qualifies — BLOCKED: no subject (rivals fielded 0 chars in 22h; sidecar healthy, feed empty by reality)** |
-| Danger as COST, not wall (desperation-branch only) | 0.88 | 0.90 | 7 | 0.479 | 0.594 | below 0.5 — qualifies at tc>=9 |
-| RIDE the rails (cap discoverable only empirically) | 0.82 | 0.90 | 13 | 0.497 | 0.553 | below 0.5 |
-| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 19 | 0.474 | 0.510 | below 0.5 |
-| Portal-aware routing (portal tile = edge to its twin; graph from our own events) | 0.90 | 0.80 | 1 | -0.180 | 0.540 | just added |
-| Portal hazard-mask (bare chars treat portal tiles as blocked) | 0.78 | 0.95 | 1 | -0.185 | 0.556 | just added — cheap, defect-adjacent |
-| Tick-participation bar (operator: block-explorer style, last 500 ticks green/red) | 0.72 | 1.00 | 1 | -0.180 | 0.540 | just added — operator-requested |
-| Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 13 | 0.474 | 0.528 | below 0.5 |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 48 | 0.470 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 79 | 0.443 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 81 | 0.443 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 53 | 0.395 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 63 | 0.331 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 80 | 0.324 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Magic — CASTING (chain sound; INT+tome slice unblocks) | 0.90 | 0.85 | 41 | **0.555** | 0.574 | **qualifies — BLOCKED: treasury (gold 113 vs ~220 for a tome)** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 77 | **0.520** | 0.529 | **qualifies — BLOCKED: no subject (rivals fielded 0 chars in 22h; sidecar healthy, feed empty by reality)** |
+| RIDE the rails (cap discoverable only empirically) | 0.82 | 0.90 | 22 | **0.520** | 0.553 | **qualifies** |
+| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 28 | **0.486** | 0.510 | below 0.5 — ages toward ceiling 0.510 |
+| Portal-aware routing (portal tile = edge to its twin; graph from our own events) | 0.90 | 0.80 | 10 | **0.468** | 0.540 | below 0.5 — ages toward ceiling 0.540 |
+| Tick-participation bar (operator: block-explorer style, last 500 ticks green/red) | 0.72 | 1.00 | 10 | **0.468** | 0.540 | below 0.5 — ages toward ceiling 0.540 |
+| Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 22 | **0.496** | 0.528 | below 0.5 — ages toward ceiling 0.528 |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 57 | **0.472** | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 88 | **0.444** | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 90 | **0.443** | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 62 | **0.396** | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 72 | **0.331** | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 89 | **0.325** | 0.330 | INELIGIBLE — ceiling<0.5 |
 
 **Danger-as-cost RE-DERIVED (2026-08-23, promised iter 95):** risk raised 0.75 → 0.90 with
 the scope narrowed to make that honest: the change applies ONLY to the desperation branch
@@ -124,7 +123,7 @@ Also never issued: `throw`, `charge` (weapon run-up attack), `cast`, `list`/`unl
 multi-step reasoning. Item 1 (tree-as-dead-end) SHIPPED as 0.80.0 chop-through pathing.
 Item 2 queued below.
 
-| Danger as COST, not wall (planned escapes from mob boxes) | 0.88 | 0.75 | 1 | -0.165 | 0.495 | just added — NB ceiling 0.495: re-examine the risk term after 0.80 data rather than letting the ceiling rule bury an operator-directed item |
+*(Item 2 SHIPPED as 0.84.0 planned escape — nav.AVOID_COST=8 prices strike range in the hurt+cornered branch; see Done.)*
 
 **Tick-participation bar (added 2026-08-23, operator):** a div of 500 blocks, one per
 tick, green if we received/handled that tick's frame, red if skipped — crypto-block-
@@ -154,6 +153,15 @@ technique when a metric is flat despite activity._
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
 
 ## Open
+
+- [ ] **Scope-error quarantine** — stop issuing actions for a char uid after K consecutive
+  scope errors (`unknown_character` / `not_in_village` / `no_such_character`) with no
+  intervening successful event; release on any fresh authoritative signal (own event, xp,
+  successful action). Born from run #179's portal vanish spiral: the server renders
+  roster-lost chars as frame ghosts (server_bugs.md), so a bot that trusts frames commands
+  them forever — 1,481 unknown_character errors. This is the 0.62.0 "harmless to retry
+  needs a proof for the permanent case" lesson generalised into a circuit breaker. The
+  portal-block (0.91.0) removed the known cause; this contains the CLASS. (added 2026-08-23)
 
 ### Model backlog (operator-directed add, 2026-08-23)
 
@@ -345,6 +353,15 @@ item is only checkable when the two are separated. Entries below keep their full
 original text; the short `-> module (date, @ run)` lines are the older ledger format
 and are kept as-is rather than rewritten.
 
+- [x] **Danger as COST, not wall** — SHIPPED 2026-08-22 as **0.84.0 planned escape**:
+  strike-range tiles cost `nav.AVOID_COST=8` (one eaten hit) instead of being walls, in the
+  hurt+cornered branch only; built from the operator's mob-box screenshot (two wizard
+  corpses on #170). The desperation-branch scoping kept the risk term honest.
+- [x] **Portal hazard-mask** — SHIPPED 2026-08-23 as **0.91.0**, widened from "bare chars"
+  to the WHOLE roster: `portal` joined `nav.SOLID` after run #179's vanish spiral (a
+  spawn-strip portal at vale (63,0) fed an 18-death / 119-recruit loop, plus server-side
+  frame ghosts — server_bugs.md). Deliberate portal use stays open via the separate
+  "Portal-aware routing" item.
 - [x] **Rival-recon dashboard tab** — SHIPPED 2026-08-21 as the **Rivals** tab
   (`ui/server.py` `api_recon` + `/api/recon`, Playwright-tested). Reads the `spectate` and
   `track` intel feeds that had been written for months and never read back. Cross-guild, not

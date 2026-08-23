@@ -1104,7 +1104,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
 
 
 class Explorer:
-    version = "explorer/0.90.0"
+    version = "explorer/0.91.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been

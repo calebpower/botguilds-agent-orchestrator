@@ -6,7 +6,21 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.90.0` on **run #179** (pushed; see git log).
+- **Live:** `explorer/0.91.0` on **run #180** (pushed; see git log).
+- **PORTAL VANISH SPIRAL KILLED (0.91.0)**: run #179 ate itself from tick ~2170k — a
+  WALKABLE portal at vale (63,0) on the spawn strip teleported commuting chars deep
+  ((57,44)); they died or VANISHED rosterless with no death event while the server kept
+  RENDERING them in frames (frame ghosts — server_bugs.md), so the bot commanded ghosts
+  (1,481 unknown_character + 4,548 not_in_village) and the recruit gate replaced real
+  losses into the same portal (119 recruits, 18 our-deaths). Fix: `portal` in nav.SOLID
+  (deliberate use stays open to a future action). MEASURE on #180: vanish-without-death
+  ~0, recruits single-digit, scope errors ~0. Wishlisted: scope-error quarantine (the
+  containment for the class). Claims from CLOSED #179 still owed.
+- **ML BATCH 2 IN FLIGHT** (operator-picked, commit 9880083): five new models built +
+  tested — stint_survival (shadow-wired), move_fail, income_spot (GBMs w/ fighting
+  baselines) + dph_profile / terrain_regrowth (aggregation tables). Training session
+  in reaper (re-extracts all runs — cache marker now requires the .aggr file); verdicts
+  land in out/eval.json. 22 remaining model candidates wishlisted (9 ceiling-ineligible).
 - **THE ML PIPELINE IS LIVE (passes 1-3 of 5)**: band_forecast (Brier 0.296 vs climatology
   0.715) shadow-forecasts every refresh into intel kind='model_score' — inert by test.
   death_risk/mob_move were REJECTED by their own gates (constants out-rank the GBM at AUC

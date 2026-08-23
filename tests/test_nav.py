@@ -74,3 +74,28 @@ def test_frontier_is_a_seen_tile_bordering_the_unseen():
     surrounded = {(0, 0): "floor", (0, 1): "floor", (0, -1): "floor",
                   (1, 0): "floor", (-1, 0): "floor"}
     assert nav.frontier((0, 0), surrounded) is False  # all neighbours seen
+
+
+def test_pathing_detours_around_a_portal_tile():
+    """v0.91.0, from run #179's vanish spiral: a portal on the shortest path is an
+    involuntary teleport, not a shortcut. The router must pay the two-tile detour
+    rather than step on it — bfs_step AND weighted_step alike (weighted_step is the
+    trek/escape router, and breakables never include portals, so it must not cross
+    either). Straight-line world: (0,0) -> goal (0,4), portal at (0,2), detour via x=1."""
+    known = {(x, y): "floor" for x in range(2) for y in range(5)}
+    known[(0, 2)] = "portal"
+    goal = lambda p: p == (0, 4)
+    step = nav.bfs_step((0, 1), goal, known)
+    assert step == (1, 1), f"bfs stepped toward the portal: {step}"
+    wstep = nav.weighted_step((0, 1), goal, known, set())
+    assert wstep == (1, 1), f"weighted_step stepped toward the portal: {wstep}"
+
+
+def test_a_portal_is_not_a_desperation_exit():
+    """The last-resort escape filter (explorer) is `known.get(n) not in nav.SOLID`;
+    the portal must be excluded by that predicate exactly as walls are — asserted
+    through the predicate the escape actually uses, with the real SOLID set."""
+    known = {(5, 5): "portal", (5, 3): "wall", (4, 4): "floor"}
+    clear = [n for n in nav.neighbors((5, 4)) if known.get(n) not in nav.SOLID]
+    assert (5, 5) not in clear and (5, 3) not in clear
+    assert (4, 4) in clear and (6, 4) in clear      # floor and UNSEEN both stay legal
