@@ -50,23 +50,32 @@ with `## Done` unmaintained since 2026-08-20):
   20 score tables — an omission is worse than a wrong number and far harder to notice.
 
 
-Recalculated fresh each pass. `tc` at deploy-minor **79.1** (`explorer/0.79.1`), counting
+Recalculated fresh each pass. `tc` at deploy-minor **82** (`explorer/0.82.0`), counting
 DEPLOYS since an item was added — a pass that ships no deploy does not advance it.
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| Magic — CASTING (chain sound; INT+tome slice unblocks) | 0.90 | 0.85 | 26 | **0.544** | 0.574 | **qualifies — treasury-blocked (tome 120g)** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 62 | **0.518** | 0.529 | **qualifies** |
-| Player market (`list`/`buy_listing`) | 0.78 | 0.90 | 75 | **0.517** | 0.527 | **qualifies** |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 42 | 0.468 | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 13 | 0.458 | 0.510 | below 0.5 this pass |
-| RIDE the rails (`ride`; config now captured) | 0.82 | 0.90 | 7 | 0.448 | 0.553 | below 0.5 this pass |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 73 | 0.443 | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 75 | 0.442 | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 7 | 0.427 | 0.528 | below 0.5 this pass |
-| Short-TTL predator memory | 0.60 | 0.90 | 47 | 0.394 | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 57 | 0.330 | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 74 | 0.324 | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Magic — CASTING (chain sound; INT+tome slice unblocks) | 0.90 | 0.85 | 32 | **0.550** | 0.574 | **qualifies — BLOCKED: treasury (gold 113 vs ~220 for a tome)** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 68 | **0.519** | 0.529 | **qualifies — BLOCKED: no subject (rivals fielded 0 chars in 22h; sidecar healthy, feed empty by reality)** |
+| Danger as COST, not wall (desperation-branch only) | 0.88 | 0.90 | 7 | 0.479 | 0.594 | below 0.5 — qualifies at tc>=9 |
+| RIDE the rails (cap discoverable only empirically) | 0.82 | 0.90 | 13 | 0.497 | 0.553 | below 0.5 |
+| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 19 | 0.474 | 0.510 | below 0.5 |
+| Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 13 | 0.474 | 0.528 | below 0.5 |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 48 | 0.470 | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 79 | 0.443 | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 81 | 0.443 | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 53 | 0.395 | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 63 | 0.331 | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 80 | 0.324 | 0.330 | INELIGIBLE — ceiling<0.5 |
+
+**Danger-as-cost RE-DERIVED (2026-08-23, promised iter 95):** risk raised 0.75 → 0.90 with
+the scope narrowed to make that honest: the change applies ONLY to the desperation branch
+(hurt + cornered + no known-walkable escape), which today has NO plan to break — a single
+clear-tile step re-decided every tick. A planned route through the least-dangerous corridor
+(predator-adjacency as high COST in `weighted_step`, not a wall) can only replace no-plan
+with plan in a branch whose current common outcome is the stuck-death. Ceiling 0.594 is
+ELIGIBLE; the tc term gates it until ~2 more deploys. Not gamed: the old 0.75 priced a
+global blocked-set change, which this is no longer.
 
 **`ride` IS AN ACTION WE HAVE NEVER ISSUED** (found 2026-08-22 while answering "is there a
 `read` action?" — there isn't; a tome is read with `use`). From a `track` tile, `ride {dir}`

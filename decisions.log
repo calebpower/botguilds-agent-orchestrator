@@ -4383,3 +4383,22 @@ WISHLIST: magic 0.549 still treasury-blocked (gold 96); danger-as-cost risk term
 RE-DERIVED (scoped to the desperation branch, current risk=0.75 likely too harsh) — do
 next pass with fresh eyes, not gamed.
 GATE 923 reaper / 914 local.
+
+================================================================================
+iter 97 (2026-08-23) — no deploy — best run yet; both top items blocked
+================================================================================
+MATURE #167 (46k frames, band 0.85): move_failed 38.7/10k (baseline restored: the
+freshness arc closes 231 -> 50 -> 39), deaths 1.3/10k (best ever measured), xp 12.6/10k
+(band-assisted), terrain_destroyed steady. The listing shape is confirmed via our own
+`listed` event; NO buyer yet.
+RIVALS HAVE LEFT THE FIELD: newest track row 22h old — NOT a sidecar fault (it logs
+"no fielded rivals — idling"; spectate is 18s fresh): WillMorr's 30 and Fable's 9 are
+parked in their villages. We are currently the only guild playing. Move-prediction (b)
+is therefore BLOCKED on subject matter — recorded on the wishlist, not built against a
+feed reality has emptied.
+DANGER-AS-COST RE-DERIVED as promised: risk 0.75 -> 0.90 WITH the scope narrowed to the
+desperation branch only (no plan to break there; planned corridor can only improve a
+stuck-death case). Ceiling 0.594 eligible; tc gates ~2 more deploys. Not gamed — the old
+term priced a global change this no longer is.
+NO DEPLOY: nothing >0.5 is unblocked, and #167 is the best run in memory — left running.
+GATE: no code change (last: 923 reaper / 914 local at 0.82.0).
