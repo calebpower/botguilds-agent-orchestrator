@@ -55,6 +55,28 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
+| Model: XP-rate per placement | 0.85 | 0.95 | 0 | — | 0.606 | just added (tc=0) |
+| Model: death-cause classifier | 0.77 | 0.99 | 0 | — | 0.572 | just added (tc=0) |
+| Model: aggro/leash radius | 0.78 | 0.96 | 0 | — | 0.562 | just added (tc=0) |
+| Model: time-to-kill | 0.76 | 0.95 | 0 | — | 0.541 | just added (tc=0) |
+| Model: refresh-clock inference | 0.74 | 0.99 | 0 | — | 0.549 | just added (tc=0) |
+| Model: combat outcome | 0.75 | 0.95 | 0 | — | 0.534 | just added (tc=0) |
+| Model: server-patch change detection | 0.72 | 0.99 | 0 | — | 0.535 | just added (tc=0) |
+| Model: swarm formation | 0.74 | 0.96 | 0 | — | 0.533 | just added (tc=0) |
+| Model: forge success hidden-variable | 0.72 | 0.98 | 0 | — | 0.529 | just added (tc=0) |
+| Model: frame staleness | 0.73 | 0.96 | 0 | — | 0.526 | just added (tc=0) |
+| Model: anomaly detection (own KPIs) | 0.70 | 0.99 | 0 | — | 0.520 | just added (tc=0) |
+| Model: recruit quality projection | 0.70 | 0.97 | 0 | — | 0.509 | just added (tc=0) |
+| Model: wizard-pipeline ETA | 0.68 | 0.99 | 0 | — | 0.505 | just added (tc=0) |
+| Model: spawn composition | 0.68 | 0.97 | 0 | — | 0.495 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: chest-refill clock | 0.66 | 0.98 | 0 | — | 0.485 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: loot-value maps | 0.65 | 0.97 | 0 | — | 0.473 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: seat-selection value | 0.62 | 0.96 | 0 | — | 0.446 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: rival behaviour | 0.60 | 0.98 | 0 | — | 0.441 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: portal-destination safety | 0.55 | 0.96 | 0 | — | 0.396 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: brew-output priors | 0.55 | 0.97 | 0 | — | 0.400 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: market price | 0.55 | 0.97 | 0 | — | 0.400 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: test selection for the loop | 0.52 | 1.00 | 0 | — | 0.390 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
 | Magic — CASTING (chain sound; INT+tome slice unblocks) | 0.90 | 0.85 | 32 | **0.550** | 0.574 | **qualifies — BLOCKED: treasury (gold 113 vs ~220 for a tome)** |
 | Move-prediction (b) rivals | 0.72 | 0.98 | 68 | **0.519** | 0.529 | **qualifies — BLOCKED: no subject (rivals fielded 0 chars in 22h; sidecar healthy, feed empty by reality)** |
 | Danger as COST, not wall (desperation-branch only) | 0.88 | 0.90 | 7 | 0.479 | 0.594 | below 0.5 — qualifies at tc>=9 |
@@ -132,6 +154,38 @@ technique when a metric is flat despite activity._
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
 
 ## Open
+
+### Model backlog (operator-directed add, 2026-08-23)
+
+The 30-candidate model survey minus the three already tried (death-risk, band forecast,
+mob next-move) and the five picked for immediate build (stint survival, move-fail,
+income spot, dph distributions, terrain-regrowth clock). Each is one line: what it
+predicts, and the decision it informs. All inherit the ML pipeline's rules — a baseline
+that fights back, refuse-to-rule floors, shadow-first. Initial good/risk in the table;
+ceiling-ineligible items are named as such per the ceiling rule.
+
+- [ ] **Model: spawn composition** — P(kind mix of next band | world, history); informs pre-positioning. Largely redundant with band_forecast.
+- [ ] **Model: combat outcome** — P(win | our stats/weapon vs kind/hp); informs engage/decline in combat-seek.
+- [ ] **Model: market price** — expected sale price per item tier; informs listing strategy. Market is dead on this server (one listing ever: ours).
+- [ ] **Model: rival behaviour** — next-move/strategy model of rival guilds from the track feed; no subjects (rivals fielding 0 chars).
+- [ ] **Model: anomaly detection (own KPIs)** — flags metric drift the watchdogs don't name; informs loop attention.
+- [ ] **Model: server-patch change detection** — distribution-shift alarm on mechanics constants; informs re-measurement after upstream changes.
+- [ ] **Model: portal-destination safety** — P(survive far side | pair, band, state); 11 own transits = data-starved until we ride portals deliberately.
+- [ ] **Model: chest-refill clock** — refill timing per band cycle; informs routing the chest run.
+- [ ] **Model: aggro/leash radius** — per-kind acquire/abandon distance distributions; informs spacing + escort geometry.
+- [ ] **Model: swarm formation** — P(lone mob becomes N within k ticks | band, region); informs early disengage.
+- [ ] **Model: time-to-kill** — ticks to finish a target given weapon/stats vs kind/hp; composes with stint survival for "is this fight affordable".
+- [ ] **Model: loot-value maps** — expected value of unidentified drops; informs what fodder sheds when overburdened.
+- [ ] **Model: brew-output priors** — essence effects from name morphology before a taste; "just taste it" probably wins (bitterroot broke the name heuristic).
+- [ ] **Model: forge success hidden-variable** — why identical recipes pass and fail (run #140); a model finding the variable OR proving randomness both pay.
+- [ ] **Model: recruit quality projection** — rolled stats/gifts -> expected level-10 value per role; sharper than the stat-sum<=7 fodder rule.
+- [ ] **Model: XP-rate per placement** — where a char grinds a stat fastest at acceptable risk; serves the INT glass-ceiling directive directly.
+- [ ] **Model: wizard-pipeline ETA** — predicted date INT>=4 + 220g converge; visibility item, operator plays too.
+- [ ] **Model: seat-selection value** — survival-weighted chosen-six scoring vs the lexicographic rule; the simple rule probably wins.
+- [ ] **Model: frame staleness** — P(action bounces from lag | seq gaps, jitter); would generalise RETURN_GRACE and the stamina margin into one uncertainty estimate.
+- [ ] **Model: refresh-clock inference** — the exact generator behind next_refresh; if it's regular, we get the calendar and every forecast upgrades.
+- [ ] **Model: test selection for the loop** — which suites catch which diffs; gate is ~50s today, so this is meta-tooling with weak payoff.
+- [ ] **Model: death-cause classifier** — learned postmortem over traces to name the residual `unknown` death modes; each named mode has historically become a lever.
 
 
 - [ ] **Exploration matrix (B) — the experiment arm** *(OVERRIDE-ONLY; touches live play)* —

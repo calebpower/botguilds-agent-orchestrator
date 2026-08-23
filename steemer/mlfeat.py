@@ -62,6 +62,27 @@ MOB_FEATURES = (
 
 MOB_MOVE_CLASSES = ("stay", "toward", "away", "perp_left", "perp_right")
 
+# Batch 2 (operator-picked, 2026-08-23). ADDITIVE: the existing tuples above are
+# unchanged, so deployed artifacts keyed to schema v1 stay valid — the version pins the
+# shapes models were trained against, not the module's line count.
+
+STINT_HORIZON = 15          # "survives at least this many MORE ticks in the field"
+
+STINT_FEATURES = DEATH_FEATURES + ("stint_age",)
+
+MOVEFAIL_FEATURES = (
+    "stamina_frac", "tile_fresh", "n_bodies_w1", "n_bodies_w3", "n_mobs_w2",
+    "depth_y", "world_vale", "world_mines", "world_spire", "congestion_w3",
+)
+
+INCOME_HORIZON = 30         # "a pickup lands within this many ticks"
+
+INCOME_FEATURES = (
+    "world_vale", "world_mines", "world_spire", "depth_y",
+    "n_items_w6", "n_items_w12", "n_gold_w6", "n_chests_w6",
+    "band_items_rate", "ticks_since_refresh_capped", "n_allies_w6",
+)
+
 
 # ---------------------------------------------------------------------------
 # frame normalisation
@@ -268,3 +289,68 @@ def vector(features: dict[str, float], names: tuple[str, ...]) -> list[float]:
     schema violation, not a default — raise, because silence here is exactly the
     training/serving skew this module exists to prevent."""
     return [float(features[n]) for n in names]
+
+
+# ---------------------------------------------------------------------------
+# batch 2: stint survival / move failure / income
+# ---------------------------------------------------------------------------
+
+def stint_features(char, nframe, profiles, band, stint_age: int) -> dict[str, float]:
+    """Death-risk features plus the one thing they cannot see: how long this character
+    has ALREADY been out. Stints end for many reasons death-risk ignores (looted-out,
+    recall, pack-full), and stint_age is the strongest single predictor the static
+    median-10 rule uses — the model must beat that rule WITH its own best feature
+    included, or it has learned nothing."""
+    f = dict(death_risk_features(char, nframe, profiles, band))
+    f["stint_age"] = float(stint_age)
+    assert set(f) == set(STINT_FEATURES)
+    return f
+
+
+def movefail_features(char, nframe, fresh_here: bool, band=None) -> dict[str, float]:
+    """Why moves bounce, in the features we hold at decision time: stamina staleness,
+    bodies contesting tiles, congestion, and whether the ground under the plan was seen
+    this run (the regrowth surface)."""
+    pos = char["pos"]
+    others = [c for c in nframe.get("chars") or [] if c["uid"] != char["uid"]]
+    mobs = nframe.get("mobs") or []
+    world = nframe.get("world")
+    f = {
+        "stamina_frac": _frac(char.get("stamina"), char.get("max_stamina")),
+        "tile_fresh": 1.0 if fresh_here else 0.0,
+        "n_bodies_w1": float(sum(1 for c in others if _manhattan(pos, c["pos"]) <= 1)),
+        "n_bodies_w3": float(sum(1 for c in others if _manhattan(pos, c["pos"]) <= 3)),
+        "n_mobs_w2": float(sum(1 for m in mobs if _manhattan(pos, m["pos"]) <= 2)),
+        "depth_y": float(pos[1]),
+        "world_vale": 1.0 if world == "vale" else 0.0,
+        "world_mines": 1.0 if world == "mines" else 0.0,
+        "world_spire": 1.0 if world == "spire" else 0.0,
+        "congestion_w3": float(sum(1 for c in others if _manhattan(pos, c["pos"]) <= 3)
+                               + sum(1 for m in mobs if _manhattan(pos, m["pos"]) <= 3)),
+    }
+    assert set(f) == set(MOVEFAIL_FEATURES)
+    return f
+
+
+def income_features(char, nframe, items, gold, chests, band_items_rate: float,
+                    ticks_since_refresh: int) -> dict[str, float]:
+    """Does standing HERE pay? `items`/`gold`/`chests` are position sets from the frame's
+    visible layer; the baseline this must beat is the greedy line-of-sight count
+    (n_items_w6 alone)."""
+    pos = char["pos"]
+    world = nframe.get("world")
+    near = lambda S, r: float(sum(1 for q in S if _manhattan(pos, q) <= r))
+    allies = [c for c in nframe.get("chars") or [] if c["uid"] != char["uid"]]
+    f = {
+        "world_vale": 1.0 if world == "vale" else 0.0,
+        "world_mines": 1.0 if world == "mines" else 0.0,
+        "world_spire": 1.0 if world == "spire" else 0.0,
+        "depth_y": float(pos[1]),
+        "n_items_w6": near(items, 6), "n_items_w12": near(items, 12),
+        "n_gold_w6": near(gold, 6), "n_chests_w6": near(chests, 6),
+        "band_items_rate": float(band_items_rate),
+        "ticks_since_refresh_capped": float(min(ticks_since_refresh, REFRESH_CAP)),
+        "n_allies_w6": float(sum(1 for a in allies if _manhattan(pos, a["pos"]) <= 6)),
+    }
+    assert set(f) == set(INCOME_FEATURES)
+    return f

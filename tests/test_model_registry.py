@@ -19,6 +19,9 @@ _EXPECTED_NAMES = {
     "death_risk": set(mlfeat.DEATH_FEATURES),
     "band_forecast": set(mlfeat.BAND_FEATURES),
     "mob_move": set(mlfeat.MOB_FEATURES),
+    "stint_survival": set(mlfeat.STINT_FEATURES),
+    "move_fail": set(mlfeat.MOVEFAIL_FEATURES),
+    "income_spot": set(mlfeat.INCOME_FEATURES),
 }
 
 

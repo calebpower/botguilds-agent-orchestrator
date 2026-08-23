@@ -108,7 +108,8 @@ class GuildBot:
         # model; per-char death-risk waits on a v2 artifact that beats the constants.
         self._band_obs: dict = {}      # world -> [undead_sum, melee_sum, n] this window
         self._band_hist: dict = {}     # world -> up to 4 past danger classes, newest first
-        self._ml_last_scored: dict = {}   # uid -> tick of last death-risk score
+        self._ml_last_scored: dict = {}   # uid -> tick of last shadow score
+        self._ml_stint: dict = {}         # uid -> [start_tick, last_seen_tick]
         # Tiles worth RE-CHECKING because a refresh has happened since we last looked at
         # them. Kept apart from `known` on purpose: `known` records what we have OBSERVED,
         # and this is a HYPOTHESIS about what a refresh did. Conflating the two would put
@@ -215,9 +216,19 @@ class GuildBot:
             acc[0] += (undead / len(mobs)) if mobs else 0.0
             acc[1] += float(melee)
             acc[2] += 1
-            if not models.available("death_risk"):
+            want_death = models.available("death_risk")
+            want_stint = models.available("stint_survival")
+            if not (want_death or want_stint):
                 return
-            scores = {}
+            if want_stint:
+                # stint bookkeeping mirrors the extractor exactly: village frames never
+                # reach here, so a village trip shows as a tick gap and starts a new stint
+                for ch in nf["chars"]:
+                    st = self._ml_stint.get(ch["uid"])
+                    if st is None or self.tick - st[1] > 1:
+                        st = self._ml_stint[ch["uid"]] = [self.tick, self.tick]
+                    st[1] = self.tick
+            death_scores, stint_scores = {}, {}
             band = {"next_refresh_in": (frame.get("next_refresh") or {}).get("in_ticks"),
                     "undead_frac": acc[0] / acc[2] if acc[2] else 0.0,
                     "melee_preds": acc[1] / acc[2] if acc[2] else 0.0}
@@ -225,16 +236,32 @@ class GuildBot:
             for ch in nf["chars"]:
                 if self.tick - self._ml_last_scored.get(ch["uid"], -10 ** 9) < SHADOW_EVERY:
                     continue
-                p = models.score_death_risk(
-                    mlfeat.death_risk_features(ch, nf, profiles, band))
-                if p is not None:
-                    scores[ch["uid"]] = round(p, 4)
+                drf = mlfeat.death_risk_features(ch, nf, profiles, band)
+                scored = False
+                if want_death:
+                    p = models.score_death_risk(drf)
+                    if p is not None:
+                        death_scores[ch["uid"]] = round(p, 4)
+                        scored = True
+                if want_stint:
+                    st = self._ml_stint[ch["uid"]]
+                    q = models.score_stint(
+                        mlfeat.stint_features(ch, nf, profiles, band,
+                                              self.tick - st[0]))
+                    if q is not None:
+                        stint_scores[ch["uid"]] = round(q, 4)
+                        scored = True
+                if scored:
                     self._ml_last_scored[ch["uid"]] = self.tick
-            if scores and self.storage is not None:
+            if (death_scores or stint_scores) and self.storage is not None:
                 import time as _time
                 from steemer import intel
-                intel.record(self.storage.conn, "model_score", self.tick, _time.time(),
-                             {"model": "death_risk", "world": world, "scores": scores})
+                for model_name, sc in (("death_risk", death_scores),
+                                       ("stint_survival", stint_scores)):
+                    if sc:
+                        intel.record(self.storage.conn, "model_score", self.tick,
+                                     _time.time(),
+                                     {"model": model_name, "world": world, "scores": sc})
         except Exception as e:                        # noqa: BLE001 — shadow, fail closed
             print(f"[models] shadow observe failed ({e.__class__.__name__}) — continuing",
                   flush=True)

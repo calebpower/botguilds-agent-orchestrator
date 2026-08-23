@@ -39,6 +39,8 @@ from steemer import db, mlfeat, protocol  # noqa: E402
 from steemer.strategy.explorer import THREAT_KINDS, WILDLIFE_SAFE  # noqa: E402
 
 K_HORIZONS = (10, 15, 30)          # death-label windows; 15 is the primary (postmortem window)
+STINT_END_WINDOW = 15              # ticks-before-stint-end kept unsampled (the minority class)
+INCOME_H = 30                      # pickup-within horizon
 NEG_KEEP_1_IN = 5                  # negatives kept 1-in-5, weight 5.0 (positives all kept)
 MOB_PAIR_MAX_GAP = 3               # matches mob_predict.evaluate's pairing rule
 
@@ -79,6 +81,16 @@ def death_index(conn, run_id: int, guild: str) -> dict[str, list[int]]:
     return idx
 
 
+GAP_BUCKETS = ((50, "0-50"), (200, "51-200"), (1000, "201-1000"))
+
+
+def _gap_bucket(gap: int) -> str:
+    for edge, name in GAP_BUCKETS:
+        if gap <= edge:
+            return name
+    return "1000+"
+
+
 def band_inputs(nframe, next_refresh_in) -> dict:
     mobs = nframe["mobs"]
     undead = sum(1 for m in mobs if m["kind"] in THREAT_KINDS)
@@ -95,19 +107,54 @@ class RunExtractor:
     unit-testable — and cross-checkable against postmortem.reconstruct_trace, the
     independent implementation of "what did this character's last ticks look like"."""
 
-    def __init__(self, run_id: int, deaths: dict[str, list[int]], profiles: dict):
+    def __init__(self, run_id: int, deaths: dict[str, list[int]], profiles: dict,
+                 movefails: set | None = None, pickups: dict | None = None):
         self.run_id = run_id
         self.deaths = deaths
         self.profiles = profiles
-        self.rows = {"death": [], "mob": [], "band_raw": []}
+        self.movefails = movefails or set()      # {(eid, tick)} — server-confirmed bounces
+        self.pickups = pickups or {}             # eid -> sorted [ticks] of pickup/gold events
+        self.rows = {"death": [], "mob": [], "band_raw": [],
+                     "movefail": [], "stint_buf": [], "income_buf": []}
         self._last_mob: dict[int, tuple[int, tuple, tuple | None]] = {}
-        self.counts = {"death_pos": 0, "death_neg": 0, "mob": 0}
+        self._prev: dict[str, tuple] = {}        # uid -> (tick, pos, eid, feats)
+        self._stint: dict[str, list] = {}        # uid -> [start_tick, last_tick]
+        self._stint_ends: dict[str, list[int]] = {}
+        self._seen_tiles: set = set()
+        self._dmg: dict[str, list] = {}          # kind -> [(drop, elite)]
+        self._chp: dict[str, tuple] = {}         # uid -> (hp, adjacent-hostiles snapshot)
+        self._tile_kind: dict[tuple, tuple] = {} # (w,x,y) -> (kind, tick) last sighting
+        # regrowth hazard needs BOTH numerator and denominator: flips walkable->solid,
+        # over all revisits of a remembered-walkable tile, bucketed by sighting gap
+        self.regrowth: dict[str, dict] = {"revisit": {}, "flip": {}}
+        self.regrowth_flips: list[dict] = []
+        self.counts = {"death_pos": 0, "death_neg": 0, "mob": 0, "movefail": 0,
+                       "stint": 0, "income": 0, "dmg_samples": 0, "flips": 0}
 
     def feed(self, decoded: dict) -> None:
         if decoded.get("world") == "village":
             return
         nframe = mlfeat.normalize_frame(decoded)
         tick = nframe["tick"]
+        world = nframe["world"]
+        # --- tile bookkeeping: freshness for movefail, kind flips for regrowth ---
+        for t in (decoded.get("visible") or {}).get("tiles") or []:
+            key = (world, t[0], t[1])
+            prev = self._tile_kind.get(key)
+            if prev is not None:
+                gap = tick - prev[1]
+                was_walkable = prev[0] not in ("wall", "water", "tree", "bush", "rock",
+                                               "vein", "fence", "chest", "chest_open")
+                if was_walkable and gap > 0:
+                    b = _gap_bucket(gap)
+                    self.regrowth["revisit"][b] = self.regrowth["revisit"].get(b, 0) + 1
+                    now_solid = t[2] in ("tree", "bush", "rock", "vein", "wall", "water")
+                    if prev[0] != t[2] and now_solid:
+                        self.regrowth["flip"][b] = self.regrowth["flip"].get(b, 0) + 1
+                        self.regrowth_flips.append({"kind": t[2], "gap": gap})
+                        self.counts["flips"] += 1
+            self._tile_kind[key] = (t[2], tick)
+            self._seen_tiles.add(key)
         nr = (decoded.get("next_refresh") or {}).get("in_ticks")
         band = band_inputs(nframe, nr)
         self.rows["band_raw"].append(
@@ -124,6 +171,73 @@ class RunExtractor:
                 "uid": ch["uid"], "tick": tick, "f": feats, **labels,
                 "w": 1.0 if positive else float(NEG_KEEP_1_IN)})
             self.counts["death_pos" if positive else "death_neg"] += 1
+        # --- batch 2: stints, move-fail, income, damage samples ---
+        items = {tuple(i["pos"]) for i in (decoded.get("visible") or {}).get("items") or []
+                 if i.get("pos")}
+        gold = {tuple(g["pos"]) for g in (decoded.get("visible") or {}).get("gold") or []
+                if g.get("pos")}
+        chests = {k[1:] for k, v in self._tile_kind.items()
+                  if k[0] == world and v[0] == "chest"}
+        eid_by_uid = {c.get("char_uid"): c.get("eid")
+                      for c in decoded.get("chars") or [] if c.get("char_uid")}
+        nr = (decoded.get("next_refresh") or {}).get("in_ticks")
+        band2 = band_inputs(nframe, nr)
+        for ch in nframe["chars"]:
+            uid = ch["uid"]
+            st = self._stint.get(uid)
+            if st is None or tick - st[1] > 1:
+                if st is not None:
+                    self._stint_ends.setdefault(uid, []).append(st[1])
+                st = self._stint[uid] = [tick, tick]
+            st[1] = tick
+            stint_age = tick - st[0]
+            # stint rows: UNIFORM 1-in-5 sample (both classes alike, weight 1.0 —
+            # with median stints of 10-12 ticks neither label is safely "the minority",
+            # so no class-asymmetric downsampling; labelled at finalize)
+            if _keep_negative(uid, tick):
+                self.rows["stint_buf"].append(
+                    {"uid": uid, "tick": tick,
+                     "f": mlfeat.stint_features(ch, nframe, self.profiles, band2,
+                                                stint_age)})
+            # income rows: buffered, labelled at finalize from the pickup index
+            if _keep_negative(uid, tick):
+                self.rows["income_buf"].append(
+                    {"uid": uid, "eid": eid_by_uid.get(uid), "tick": tick,
+                     "f": mlfeat.income_features(
+                         ch, nframe, items, gold, chests,
+                         len(items) / 500.0,       # frame-wide item density, normalised
+                         nr if isinstance(nr, int) else 0)})
+            # move-fail rows: label from the PREVIOUS tick's attempt outcome
+            prev = self._prev.get(uid)
+            if prev is not None and tick - prev[0] == 1:
+                ptick, ppos, peid, pfeats = prev
+                # a bounce may be stamped on the attempt tick or the processing tick;
+                # accept either, but CONSUME the event so one bounce can never label
+                # two consecutive attempts (the first draft double-counted here)
+                key = (peid, tick) if (peid, tick) in self.movefails else                     ((peid, ptick) if (peid, ptick) in self.movefails else None)
+                bounced = key is not None
+                if key is not None:
+                    self.movefails.discard(key)
+                moved = tuple(ch["pos"]) != ppos
+                if bounced or moved:
+                    self.rows["movefail"].append(
+                        {"uid": uid, "tick": ptick, "f": pfeats,
+                         "y": 1 if bounced else 0})
+                    self.counts["movefail"] += 1
+            fresh = (world, ch["pos"][0], ch["pos"][1]) in self._seen_tiles
+            self._prev[uid] = (tick, tuple(ch["pos"]), eid_by_uid.get(uid),
+                               mlfeat.movefail_features(ch, nframe, fresh))
+            # damage attribution (bestiary's clean-single-adjacent rule, distributions)
+            prev_hp = self._chp.get(uid)
+            adj = [m for m in nframe["mobs"]
+                   if abs(m["pos"][0] - ch["pos"][0]) + abs(m["pos"][1] - ch["pos"][1]) <= 1]
+            if prev_hp is not None and ch.get("hp") is not None                     and prev_hp[0] is not None and ch["hp"] < prev_hp[0]                     and len(prev_hp[1]) == 1:
+                kind, elite = prev_hp[1][0]
+                self._dmg.setdefault(kind, []).append(
+                    (prev_hp[0] - ch["hp"], elite))
+                self.counts["dmg_samples"] += 1
+            self._chp[uid] = (ch.get("hp"), [(m["kind"], bool(m.get("elite")))
+                                             for m in adj])
         # --- mob-move rows (consecutive-observation pairing, gap <= 3) ---
         for m in nframe["mobs"]:
             prev = self._last_mob.get(m["eid"])
@@ -143,6 +257,35 @@ class RunExtractor:
                 ctx = (mlfeat.mob_features(m, nframe, self.profiles.get(m["kind"]) or {}),
                        nearest["pos"])
             self._last_mob[m["eid"]] = (tick, m["pos"], ctx)
+
+    def finalize_batch2(self) -> dict:
+        """Label the buffered rows now the run's full timeline is known, and build the
+        two aggregation tables."""
+        # close open stints at their last-seen tick
+        for uid, st in self._stint.items():
+            self._stint_ends.setdefault(uid, []).append(st[1])
+        stint_rows = []
+        for r in self.rows["stint_buf"]:
+            ends = self._stint_ends.get(r["uid"], [])
+            end = min((e for e in ends if e >= r["tick"]), default=None)
+            if end is None:
+                continue
+            y = 1 if (end - r["tick"]) >= mlfeat.STINT_HORIZON else 0
+            stint_rows.append({"uid": r["uid"], "tick": r["tick"], "f": r["f"], "y": y})
+        self.counts["stint"] = len(stint_rows)
+        income_rows = []
+        for r in self.rows["income_buf"]:
+            ticks = self.pickups.get(r["eid"], [])
+            y = 1 if any(r["tick"] < t <= r["tick"] + INCOME_H for t in ticks) else 0
+            income_rows.append({"uid": r["uid"], "tick": r["tick"], "f": r["f"], "y": y})
+        self.counts["income"] = len(income_rows)
+        # RAW damage samples per kind — quantiles are computed by the TRAINER after
+        # merging runs (per-run quantiles cannot be merged; that was the first draft's
+        # mistake). Same for regrowth: raw bucket counts, hazard computed downstream.
+        dmg = [{"kind": k, "drop": d, "elite": e}
+               for k, samples in self._dmg.items() for d, e in samples]
+        return {"stint": stint_rows, "income": income_rows, "dmg": dmg,
+                "regrowth": self.regrowth}
 
     def band_rows(self) -> list[dict]:
         """Post-pass: segment the run's per-frame band inputs at refresh boundaries
@@ -270,12 +413,33 @@ def main(argv=None) -> int:
     summary = {"schema_version": mlfeat.FEATURE_SCHEMA_VERSION, "git_sha": git_sha(),
                "guild": guild, "runs": {}}
     for rid in pick_runs(conn, a.runs):
+        # the aggr file is written LAST, so it doubles as the completion marker: a
+        # batch-1 cache (death/band/mob only) fails this check and re-extracts to gain
+        # the batch-2 row files rather than silently starving those trainers
         marker = os.path.join(a.out, f"run_{rid:04d}.death.jsonl.gz")
-        if os.path.exists(marker) and _cache_valid(marker, conn, rid):
+        aggr_marker = os.path.join(a.out, f"run_{rid:04d}.aggr.jsonl.gz")
+        if all(os.path.exists(m) and _cache_valid(m, conn, rid)
+               for m in (marker, aggr_marker)):
             summary["runs"][rid] = {"cached": True}
             continue
         deaths = death_index(conn, rid, guild)          # BEFORE the stream: one conn rule
-        ex = RunExtractor(rid, deaths, profiles)
+        movefails = set()
+        for row in conn.execute(
+                "SELECT tick, payload_json FROM events WHERE run_id=? AND kind='move_failed'",
+                (rid,)).fetchall():
+            d = json.loads(row["payload_json"]) if isinstance(row["payload_json"], str)                 else row["payload_json"]
+            if d.get("eid") is not None:
+                movefails.add((d["eid"], row["tick"]))
+        pickups: dict[int, list[int]] = {}
+        for row in conn.execute(
+                "SELECT tick, payload_json FROM events WHERE run_id=? "
+                "AND kind IN ('pickup','gold')", (rid,)).fetchall():
+            d = json.loads(row["payload_json"]) if isinstance(row["payload_json"], str)                 else row["payload_json"]
+            if d.get("eid") is not None:
+                pickups.setdefault(d["eid"], []).append(row["tick"])
+        for v in pickups.values():
+            v.sort()
+        ex = RunExtractor(rid, deaths, profiles, movefails=movefails, pickups=pickups)
         n_frames = 0
         for row in conn.execute_stream(
                 "SELECT tick, json FROM frames WHERE run_id=? ORDER BY seq ASC", (rid,)):
@@ -291,12 +455,24 @@ def main(argv=None) -> int:
                    header, ex.rows["mob"])
         write_rows(os.path.join(a.out, f"run_{rid:04d}.band.jsonl.gz"),
                    header, ex.band_rows())
+        b2 = ex.finalize_batch2()
+        write_rows(os.path.join(a.out, f"run_{rid:04d}.stint.jsonl.gz"),
+                   header, b2["stint"])
+        write_rows(os.path.join(a.out, f"run_{rid:04d}.movefail.jsonl.gz"),
+                   header, ex.rows["movefail"])
+        write_rows(os.path.join(a.out, f"run_{rid:04d}.income.jsonl.gz"),
+                   header, b2["income"])
+        write_rows(os.path.join(a.out, f"run_{rid:04d}.aggr.jsonl.gz"),
+                   header, [{"dmg": b2["dmg"], "regrowth": b2["regrowth"]}])
         summary["runs"][rid] = {
             "frames": n_frames,
             "death_events_ours": sum(len(v) for v in deaths.values()),
             "death_rows_pos": ex.counts["death_pos"],
             "death_rows_neg": ex.counts["death_neg"],
             "mob_pairs": ex.counts["mob"],
+            "stint_rows": ex.counts["stint"], "movefail_rows": ex.counts["movefail"],
+            "income_rows": ex.counts["income"], "dmg_samples": ex.counts["dmg_samples"],
+            "regrowth_flips": ex.counts["flips"],
         }
         print(f"[extract] run {rid}: {summary['runs'][rid]}")
     if a.summary:

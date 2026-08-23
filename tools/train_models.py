@@ -299,6 +299,173 @@ def train_mob(rows_by_run, out_dir):
     return result
 
 
+# ---------------------------------------------------------------------------
+# batch 2 (operator-picked 2026-08-23): three binary GBMs + two aggregation tables
+# ---------------------------------------------------------------------------
+
+MIN_STINT_POSITIVES = 300      # here "positive" is the RARER class, whichever it is
+MIN_MOVEFAIL_BOUNCES = 300
+MIN_INCOME_POSITIVES = 300
+MIN_DPH_SAMPLES = 30           # per kind; below this the tail is unobserved
+MIN_REGROWTH_REVISITS = 200    # per bucket; hazard over fewer is noise
+
+
+def _train_binary(rows_by_run, out_dir, *, name, features, label_key,
+                  baseline_fn, baseline_name, min_minority):
+    """The shared shape of stint/movefail/income: temporal split, small GBM, isotonic
+    calibration, and a baseline that fights back. The floor applies to the MINORITY
+    class of the held-out runs — an AUC over 12 positives is a coin decorated with
+    decimals, whichever way the labels lean."""
+    from sklearn.ensemble import GradientBoostingClassifier
+    from sklearn.isotonic import IsotonicRegression
+    runs = sorted(rows_by_run)
+    tr, ca, te = _split(runs)
+    def xy(ids):
+        X, y = [], []
+        for rid in ids:
+            for r in rows_by_run[rid]:
+                X.append(mlfeat.vector(r["f"], features))
+                y.append(r[label_key])
+        return X, y
+    Xtr, ytr = xy(tr)
+    Xca, yca = xy(ca)
+    Xte, yte = xy(te)
+    minority = min(sum(yte), len(yte) - sum(yte))
+    if minority < min_minority:
+        return {"refused": f"held-out minority class {minority} < {min_minority}"}
+    if len(set(ytr)) < 2:
+        return {"refused": "single-class training set"}
+    gbm = GradientBoostingClassifier(n_estimators=100, max_depth=3, random_state=7)
+    gbm.fit(Xtr, ytr)
+    lr = gbm.learning_rate
+    base = float(gbm._raw_predict_init([[0.0] * len(features)])[0][0])         if hasattr(gbm, "_raw_predict_init") else 0.0
+    trees = [_tree_to_dict(est[0], scale=lr) for est in gbm.estimators_]
+    raw = lambda X: [_sigmoid_raw(base + sum(_walk_py(t, x) for t in trees)) for x in X]
+    cal = None
+    pca = raw(Xca)
+    if min(sum(yca), len(yca) - sum(yca)) >= MIN_CAL_POSITIVES:
+        iso = IsotonicRegression(out_of_bounds="clip")
+        iso.fit(pca, yca)
+        xs = sorted(set(float(v) for v in iso.X_thresholds_))
+        cal = {"x": xs, "y": [float(iso.predict([v])[0]) for v in xs]}
+    pte = raw(Xte)
+    if cal:
+        pte = [_apply_cal(p, cal) for p in pte]
+    bte = [baseline_fn(dict(zip(features, x))) for x in Xte]
+    metrics = {"auc": _auc(pte, yte), "ece": _ece(pte, yte),
+               "test_rows": len(yte), "test_positives": int(sum(yte)),
+               "recall_at_fpr10": _recall_at_fpr(pte, yte, 0.10)}
+    baselines = {baseline_name: _auc(bte, yte)}
+    ok = (not math.isnan(metrics["auc"])
+          and metrics["auc"] > baselines[baseline_name] + 0.03
+          and metrics["ece"] <= 0.05)
+    model = {"schema_version": mlfeat.FEATURE_SCHEMA_VERSION, "model": "gbm_binary",
+             "feature_names": list(features), "base_score": base,
+             "trees": trees, "calibration": cal}
+    result = {"metrics": metrics, "baselines": baselines, "accepted": ok}
+    if ok:
+        _export(out_dir, name, model, _meta((tr, ca, te), metrics, baselines))
+    return result
+
+
+def train_stint(rows_by_run, out_dir):
+    # baseline: stint_age alone — the static "median stint is 10-12" rule's whole
+    # information content. Sign: older stints end sooner -> survival DECREASES with
+    # age, so the baseline score for y=1 (survives) is -stint_age.
+    return _train_binary(
+        rows_by_run, out_dir, name="stint_survival",
+        features=mlfeat.STINT_FEATURES, label_key="y",
+        baseline_fn=lambda f: -f["stint_age"], baseline_name="age_only_auc",
+        min_minority=MIN_STINT_POSITIVES)
+
+
+def train_movefail(rows_by_run, out_dir):
+    # baseline: stamina alone (the live heuristic's variable) — lower stamina, more
+    # bounces, so the score for y=1 (bounced) is -stamina_frac.
+    return _train_binary(
+        rows_by_run, out_dir, name="move_fail",
+        features=mlfeat.MOVEFAIL_FEATURES, label_key="y",
+        baseline_fn=lambda f: -f["stamina_frac"], baseline_name="stamina_only_auc",
+        min_minority=MIN_MOVEFAIL_BOUNCES)
+
+
+def train_income(rows_by_run, out_dir):
+    # baseline: greedy line-of-sight — items visible within 6 IS the current policy.
+    return _train_binary(
+        rows_by_run, out_dir, name="income_spot",
+        features=mlfeat.INCOME_FEATURES, label_key="y",
+        baseline_fn=lambda f: f["n_items_w6"], baseline_name="items_w6_auc",
+        min_minority=MIN_INCOME_POSITIVES)
+
+
+def build_tables(feat_dir, out_dir):
+    """The two aggregation artifacts: dph distributions and the regrowth hazard.
+    Merged from RAW per-run samples (quantiles are computed only here); no split —
+    these are descriptive tables with sample floors, not predictive models."""
+    dmg_by_kind: dict[str, list] = {}
+    revisit: dict[str, int] = {}
+    flips: dict[str, int] = {}
+    n_runs = 0
+    for path in sorted(glob.glob(os.path.join(feat_dir, "run_*.aggr.jsonl.gz"))):
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            header = json.loads(fh.readline())
+            if header.get("schema_version") != mlfeat.FEATURE_SCHEMA_VERSION:
+                continue
+            n_runs += 1
+            for line in fh:
+                d = json.loads(line)
+                for smp in d.get("dmg") or []:
+                    dmg_by_kind.setdefault(smp["kind"], []).append(
+                        (smp["drop"], smp["elite"]))
+                rg = d.get("regrowth") or {}
+                for b, n in (rg.get("revisit") or {}).items():
+                    revisit[b] = revisit.get(b, 0) + n
+                for b, n in (rg.get("flip") or {}).items():
+                    flips[b] = flips.get(b, 0) + n
+    q = lambda v, p: v[min(len(v) - 1, int(len(v) * p))] if v else None
+    dph = {}
+    for kind, samples in sorted(dmg_by_kind.items()):
+        if len(samples) < MIN_DPH_SAMPLES:
+            continue
+        drops = sorted(d for d, _ in samples)
+        base = sorted(d for d, e in samples if not e)
+        elite = sorted(d for d, e in samples if e)
+        dph[kind] = {
+            "n": len(samples), "p50": q(drops, 0.5), "p90": q(drops, 0.9),
+            "max_seen": drops[-1],
+            "elite_p50": q(elite, 0.5) if len(elite) >= MIN_DPH_SAMPLES else None,
+            "base_p50": q(base, 0.5) if base else None,
+        }
+    hazard = {}
+    for b in sorted(revisit):
+        if revisit[b] >= MIN_REGROWTH_REVISITS:
+            hazard[b] = {"revisits": revisit[b], "flips": flips.get(b, 0),
+                         "p_flip": flips.get(b, 0) / revisit[b]}
+    results = {}
+    if dph:
+        _export(out_dir, "dph_profile",
+                {"schema_version": mlfeat.FEATURE_SCHEMA_VERSION, "model": "table",
+                 "kinds": dph},
+                _meta(([], [], []), {"kinds": len(dph)}, {},
+                      extra={"runs_merged": n_runs}))
+        results["dph_profile"] = {"accepted": True, "metrics": {
+            "kinds": len(dph),
+            "total_samples": sum(v["n"] for v in dph.values())}}
+    else:
+        results["dph_profile"] = {"refused": "no kind reached the sample floor"}
+    if hazard:
+        _export(out_dir, "terrain_regrowth",
+                {"schema_version": mlfeat.FEATURE_SCHEMA_VERSION, "model": "table",
+                 "buckets": hazard},
+                _meta(([], [], []), {"buckets": len(hazard)}, {},
+                      extra={"runs_merged": n_runs}))
+        results["terrain_regrowth"] = {"accepted": True, "metrics": {
+            b: v["p_flip"] for b, v in hazard.items()}}
+    else:
+        results["terrain_regrowth"] = {"refused": "no bucket reached the revisit floor"}
+    return results
+
+
 def _export(out_dir, name, model, meta):
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, f"{name}.json"), "w") as fh:
@@ -314,9 +481,12 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     results = {}
     for name, fn in (("death_risk", train_death), ("band_forecast", train_band),
-                     ("mob_move", train_mob)):
+                     ("mob_move", train_mob), ("stint_survival", train_stint),
+                     ("move_fail", train_movefail), ("income_spot", train_income)):
         rows = _load_rows(a.features, {"death_risk": "death", "band_forecast": "band",
-                                       "mob_move": "mob"}[name])
+                                       "mob_move": "mob", "stint_survival": "stint",
+                                       "move_fail": "movefail",
+                                       "income_spot": "income"}[name])
         if not rows:
             results[name] = {"refused": "no feature files"}
             continue
@@ -324,6 +494,7 @@ def main(argv=None) -> int:
         print(f"[train] {name}: {json.dumps(results[name].get('metrics'))} "
               f"vs {json.dumps(results[name].get('baselines'))} "
               f"accepted={results[name].get('accepted')}")
+    results.update(build_tables(a.features, a.out))
     with open(os.path.join(a.out, "eval.json"), "w") as fh:
         json.dump(results, fh, indent=1)
     return 0

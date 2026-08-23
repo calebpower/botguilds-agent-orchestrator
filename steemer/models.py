@@ -106,10 +106,10 @@ def _calibrate(p: float, cal: dict | None) -> float:
     return float(ys[max(0, min(i, len(ys) - 1))])
 
 
-def score_death_risk(features: dict[str, float]) -> float | None:
-    """Calibrated P(death within the primary window) for one character, or None."""
+def _score_gbm_binary(name: str, features: dict[str, float]) -> float | None:
+    """Calibrated P(label) through any deployed gbm_binary artifact, or None."""
     try:
-        m = _load("death_risk")
+        m = _load(name)
         if m is None:
             return None
         x = mlfeat.vector(features, tuple(m["feature_names"]))
@@ -119,7 +119,40 @@ def score_death_risk(features: dict[str, float]) -> float | None:
             raise ValueError("out of range")
         return p
     except Exception as e:                            # noqa: BLE001 — fail closed, always
-        _warn_once("death_risk", f"scoring failed ({e.__class__.__name__})")
+        _warn_once(name, f"scoring failed ({e.__class__.__name__})")
+        return None
+
+
+def score_death_risk(features: dict[str, float]) -> float | None:
+    """Calibrated P(death within the primary window) for one character, or None."""
+    return _score_gbm_binary("death_risk", features)
+
+
+def score_stint(features: dict[str, float]) -> float | None:
+    """Calibrated P(this stint survives >= STINT_HORIZON more ticks), or None."""
+    return _score_gbm_binary("stint_survival", features)
+
+
+def score_move_fail(features: dict[str, float]) -> float | None:
+    """Calibrated P(a move issued from this state bounces), or None."""
+    return _score_gbm_binary("move_fail", features)
+
+
+def score_income(features: dict[str, float]) -> float | None:
+    """Calibrated P(a pickup lands within INCOME_HORIZON ticks from here), or None."""
+    return _score_gbm_binary("income_spot", features)
+
+
+def load_table(name: str) -> dict | None:
+    """A deployed aggregation table (model == "table"), or None. Same fail-closed
+    loader as the scorers — schema, staleness, and shape are all checked."""
+    try:
+        m = _load(name)
+        if m is None or m.get("model") != "table":
+            return None
+        return m
+    except Exception as e:                            # noqa: BLE001
+        _warn_once(name, f"table load failed ({e.__class__.__name__})")
         return None
 
 
