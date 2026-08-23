@@ -515,7 +515,9 @@ def _codex_mechanics() -> dict:
                 learnings.append({"title": f.get("title"), "tags": f.get("tags") or []})
     except OSError:
         pass
-    return {"docs": docs, "learnings": learnings[:40]}
+    # newest first: the cap used to serve the OLDEST 40, so every fresh discovery fell
+    # off the end — the codex looked maintained and showed nothing new (2026-08-23).
+    return {"docs": docs, "learnings": list(reversed(learnings))[:40]}
 
 
 def _codex_build(db_path: str, sample: int = 1200) -> dict:
