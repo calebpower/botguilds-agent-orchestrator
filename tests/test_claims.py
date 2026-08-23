@@ -129,3 +129,36 @@ def test_the_summary_names_every_contradiction(conn, ledger):
 def test_an_empty_ledger_is_quiet(conn, ledger):
     assert claims.recheck(conn, ledger) == []
     assert "claims: 0" in claims.summarise([])
+
+
+# ---- v0.81.1: supersede — corrections are new rows, not edits ------------------
+#
+# First use: a move_failed rate recorded while run #165 was still writing frames; the
+# denominator grew afterwards and the recheck flagged 4% drift against a conclusion that
+# had only strengthened. The ledger is append-only, so the correction is a NEW row naming
+# the old one, and the old one reports `superseded` instead of being re-judged forever.
+
+def test_a_superseded_row_is_skipped_not_judged(conn, ledger):
+    old = claims.record(claim="mid-run rate", check="frame_count",
+                        kwargs={"run_id": 1}, value=999.0, path=ledger)
+    claims.supersede(old["at"], claim="final rate", check="frame_count",
+                     kwargs={"run_id": 1}, value=30_000.0, path=ledger,
+                     reason="recorded while the run was still writing frames")
+    by = {r["claim"]: r["status"] for r in claims.recheck(conn, path=ledger)}
+    assert by == {"mid-run rate": "superseded", "final rate": "confirmed"}, by
+
+
+def test_a_supersede_without_a_reason_raises(ledger):
+    old = claims.record(claim="c", check="frame_count", kwargs={"run_id": 1},
+                        value=1.0, path=ledger)
+    with pytest.raises(ValueError):
+        claims.supersede(old["at"], claim="c2", check="frame_count",
+                         kwargs={"run_id": 1}, value=1.0, path=ledger, reason="  ")
+
+
+def test_a_supersede_of_a_MISSING_row_raises(ledger):
+    """Naming a row that does not exist is a typo, not a correction — accepting it would
+    leave a dangling supersede that silences nothing while looking like bookkeeping."""
+    with pytest.raises(ValueError):
+        claims.supersede(12345.0, claim="c", check="frame_count",
+                         kwargs={"run_id": 1}, value=1.0, path=ledger, reason="r")

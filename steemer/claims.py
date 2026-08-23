@@ -60,6 +60,36 @@ def record(claim: str, check: str, kwargs: dict[str, Any], value: float,
     return row
 
 
+def supersede(old_at: float, claim: str, check: str, kwargs: dict[str, Any],
+              value: float, reason: str, iteration: str | None = None,
+              path: str = LEDGER) -> dict[str, Any]:
+    """Replace a claim with a corrected one, append-only.
+
+    The first use (2026-08-22): a move_failed rate recorded while run #165 was still
+    WRITING FRAMES — the denominator grew after recording and the recheck flagged 4%
+    drift against a conclusion that had only strengthened. The ledger is append-only on
+    purpose (an edited history can launder anything), so a correction is a NEW row that
+    names the old one by its `at` timestamp plus a reason; `recheck` then reports the old
+    row as `superseded` instead of re-judging it. A supersede without a reason raises —
+    the reason is the difference between a correction and a deletion.
+
+    THE LESSON, not just the mechanism: record claims from runs that have ENDED. A rate
+    whose denominator is still growing is not yet a fact.
+    """
+    if not reason or not reason.strip():
+        raise ValueError("a supersede must state its reason")
+    if not any(abs(r["at"] - old_at) < 1e-6 for r in load(path)):
+        raise ValueError(f"no ledger row has at={old_at}")
+    row = {"at": time.time(), "iteration": iteration, "claim": claim,
+           "check": check, "kwargs": kwargs, "value": value,
+           "supersedes": old_at, "supersede_reason": reason.strip()}
+    if check not in CHECKS:
+        raise ValueError(f"unknown check {check!r}; allowed: {sorted(CHECKS)}")
+    with open(path, "a") as fh:
+        fh.write(json.dumps(row) + "\n")
+    return row
+
+
 def load(path: str = LEDGER) -> list[dict[str, Any]]:
     if not os.path.exists(path):
         return []
@@ -79,9 +109,15 @@ def recheck(conn, path: str = LEDGER, tolerance: float = TOLERANCE) -> list[dict
     the two together would turn housekeeping into false alarms.
     """
     results = []
-    for row in load(path):
+    rows = load(path)
+    superseded = {r["supersedes"] for r in rows if r.get("supersedes") is not None}
+    for row in rows:
         verdict = {"claim": row["claim"], "iteration": row.get("iteration"),
                    "recorded": row["value"]}
+        if row["at"] in superseded:
+            verdict.update(status="superseded")
+            results.append(verdict)
+            continue
         fn = CHECKS.get(row["check"])
         if fn is None:
             verdict.update(status="unavailable", detail=f"unknown check {row['check']!r}")
