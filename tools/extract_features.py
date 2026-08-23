@@ -169,6 +169,19 @@ class RunExtractor:
         return out
 
 
+def _cache_valid(marker: str, conn, rid: int) -> bool:
+    """A cached extraction is trusted only if its header's frame count still matches the
+    DB — a file cached while the run was live (before the closed-runs-only rule) is a
+    partial that must self-heal, not a fact."""
+    try:
+        with gzip.open(marker, "rt", encoding="utf-8") as fh:
+            header = json.loads(fh.readline())
+        n = conn.execute("SELECT COUNT(*) FROM frames WHERE run_id=?", (rid,)).fetchone()[0]
+        return header.get("frames") == n and             header.get("schema_version") == mlfeat.FEATURE_SCHEMA_VERSION
+    except Exception:
+        return False
+
+
 def write_rows(path: str, header: dict, rows: list[dict]) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with gzip.open(path, "wt", encoding="utf-8") as fh:
@@ -186,8 +199,13 @@ def git_sha() -> str:
 
 
 def pick_runs(conn, spec: str) -> list[int]:
+    """CLOSED runs only. Run #178 was live during the first full extraction and grew a
+    death between the index read and the gate check — a moving denominator, the same
+    mid-run-measurement lesson the claims ledger already taught (iter 95). A live run is
+    not yet a fact."""
     all_runs = [r["run_id"] for r in conn.execute(
-        "SELECT DISTINCT run_id FROM frames ORDER BY run_id").fetchall()]
+        "SELECT DISTINCT f.run_id FROM frames f JOIN runs r ON r.run_id = f.run_id "
+        "WHERE r.stopped_at IS NOT NULL ORDER BY f.run_id").fetchall()]
     if spec == "all":
         return all_runs
     if spec.startswith("latest:"):
@@ -253,7 +271,7 @@ def main(argv=None) -> int:
                "guild": guild, "runs": {}}
     for rid in pick_runs(conn, a.runs):
         marker = os.path.join(a.out, f"run_{rid:04d}.death.jsonl.gz")
-        if os.path.exists(marker):
+        if os.path.exists(marker) and _cache_valid(marker, conn, rid):
             summary["runs"][rid] = {"cached": True}
             continue
         deaths = death_index(conn, rid, guild)          # BEFORE the stream: one conn rule

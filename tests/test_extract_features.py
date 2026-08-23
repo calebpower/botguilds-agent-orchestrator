@@ -134,3 +134,43 @@ def test_labels_agree_with_reconstruct_trace_on_real_deaths():
                         f"{uid}@{t['tick']} (death {dt}) labelled negative"
                     checked += 1
     assert checked > 0, "cross-check matched no ticks — the oracle never fired"
+
+
+@pytest.mark.skipif(not os.path.exists(CREDS), reason="no DB credentials synced")
+def test_pick_runs_refuses_the_LIVE_run():
+    """Run #178 grew a death between the extractor's index read and the gate check — a
+    moving denominator. Only closed runs are facts; the newest (live) run must be absent
+    from every extraction plan."""
+    from steemer import db
+    from tools.extract_features import pick_runs
+    conn = db.connect(db.load_db_config(CREDS), readonly=True)
+    live = conn.execute(
+        "SELECT run_id FROM runs WHERE stopped_at IS NULL ORDER BY run_id DESC LIMIT 1"
+    ).fetchone()
+    if live is None:
+        pytest.skip("no live run right now")
+    assert live[0] not in pick_runs(conn, "all"), \
+        f"the live run {live[0]} was offered for extraction"
+
+
+def test_a_stale_partial_cache_is_not_trusted(tmp_path):
+    """Run #178 was cached mid-flight (before the closed-runs rule existed): its header
+    says N frames while the closed run holds more. _cache_valid must reject it so the
+    partial self-heals on the next extraction — and accept the file once counts match."""
+    import gzip
+    from tools.extract_features import _cache_valid
+    from steemer import mlfeat as mf
+    marker = tmp_path / "run_0178.death.jsonl.gz"
+    with gzip.open(marker, "wt", encoding="utf-8") as fh:
+        fh.write(json.dumps({"schema_version": mf.FEATURE_SCHEMA_VERSION,
+                             "run_id": 178, "frames": 100}) + "\n")
+
+    class _C:
+        def __init__(self, n): self.n = n
+        def execute(self, sql, params=()): return self
+        def fetchone(self): return (self.n,)
+
+    assert _cache_valid(str(marker), _C(100), 178) is True
+    assert _cache_valid(str(marker), _C(150), 178) is False, \
+        "a partial cache from a then-live run was trusted"
+    assert _cache_valid(str(tmp_path / "absent.gz"), _C(100), 178) is False
