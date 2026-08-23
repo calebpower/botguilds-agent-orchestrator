@@ -4469,3 +4469,26 @@ the score exists to beat.
 FALSIFICATION (next mature run): wizard deaths 0 (3 died #168-170); escort traces present
 and WINNING when loot competes; wizard INT still climbing despite reduced field time.
 GATE 946->947-ish reaper across the two; 938 local at 0.85.1.
+
+================================================================================
+iter 101 (2026-08-23) — explorer/0.86.0 — the party is the unit (operator architecture)
+================================================================================
+OPERATOR DIAGNOSED 0.85.0's jitter precisely: individualized targets — each char computing
+its own square FROM the other members (and self-excluded, so every member had a DIFFERENT
+rally point; the cohesion disease in new clothes). Their prescription, verbatim: "the
+_party_ needs to have a target square... 'do I have a wizard with me? go find a wizard,
+okay now I'm in a party with the wizard'".
+0.86.0: self._party (wizard_uid -> guardian_uid) is persistent state; the party square is
+the WIZARD'S TILE (one fixed point, identical for all); guardian holds formation on it;
+wizard chases nobody; second wizard cannot claim a taken guardian (falls back instead of a
+three-body chase); PARTIED CHARS SKIP COHESION; and cohesion's centroid now INCLUDES SELF
+for everyone else (all members compute the same point).
+MUTATION forced two geometry rewrites: (1) with two members the first STEP quantizes
+identically under both centroid definitions — the discriminating observable is the
+STOPPING rule (a member ON the shared square must not move); (2) the partied-skip fixture
+needed the centroid inside rally range or the mutant had nothing to offer. Cohesion's
+"ally unreachable" contract amended to "rally POINT unreachable" (each member only knows
+its own reachability of the common square).
+LIVE #174 (4k frames): formation gap hovers 4-7, spikes close monotonically, ZERO traces
+with both party-square and cohesion targets. No jitter signature.
+GATE 950 reaper / 941 local.

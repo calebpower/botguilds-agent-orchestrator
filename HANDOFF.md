@@ -6,7 +6,11 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.85.1` on **run #173**, repo HEAD (pushed; see git log).
+- **Live:** `explorer/0.86.0` on **run #174**, repo HEAD (pushed; see git log).
+- **THE PARTY IS THE UNIT** (0.86.0, operator architecture): self._party pairs wizard->
+  guardian persistently; the party square = the wizard's tile (one fixed point for all);
+  partied chars SKIP cohesion; cohesion's centroid now INCLUDES SELF for everyone else.
+  Never compute a formation target per-character from other members — that is the jitter.
 - **THE ESCORT PACT** (0.85.x, operator directive): wizards only field alongside guardians
   (embark gate via sighting-built roles ledger), fall back home if unescorted (>10 gap),
   guardians close formation inside ESCORT_MAX_GAP=20 at 4.2. Watch: wizard deaths -> 0,
