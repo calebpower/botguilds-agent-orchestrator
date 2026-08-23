@@ -21,6 +21,7 @@ from .storage import Storage
 from .strategy import FieldContext, Strategy, get_strategy
 
 RETURN_GRACE = 4   # ticks a returned char ignores stale field frames (v0.89.0)
+SHADOW_EVERY = 5   # v0.90.0: per-char death-risk shadow cadence (ticks)
 
 CONTAINER_KINDS = frozenset({"chest", "safe"})
 
@@ -100,6 +101,14 @@ class GuildBot:
         # never reused, so the dead set is forever; the returned set is a short grace.
         self._dead: set = set()
         self._returned_at: dict = {}
+        # v0.90.0 ML SHADOW (plan glistening-baking-lagoon, Pass 3). Scores are computed
+        # and LOGGED; nothing reads them — zero behaviour change until the Pass-4 shadow
+        # acceptance rules. All fail-closed: with no artifact deployed, models.available()
+        # short-circuits the whole path. Band history feeds the deployed band_forecast
+        # model; per-char death-risk waits on a v2 artifact that beats the constants.
+        self._band_obs: dict = {}      # world -> [undead_sum, melee_sum, n] this window
+        self._band_hist: dict = {}     # world -> up to 4 past danger classes, newest first
+        self._ml_last_scored: dict = {}   # uid -> tick of last death-risk score
         # Tiles worth RE-CHECKING because a refresh has happened since we last looked at
         # them. Kept apart from `known` on purpose: `known` records what we have OBSERVED,
         # and this is a HYPOTHESIS about what a refresh did. Conflating the two would put
@@ -189,6 +198,72 @@ class GuildBot:
         if frame.get("world") == "village":
             return self.strategy.village(self, frame) or []
         return self._field(frame)
+
+    def _shadow_observe(self, world: str, frame: dict[str, Any]) -> None:
+        """Accumulate this window's band inputs and, when a death-risk artifact exists,
+        shadow-score our characters every SHADOW_EVERY ticks. Wrapped whole in the
+        fail-closed try: a scoring defect must never reach the frame loop."""
+        try:
+            from steemer import mlfeat, models
+            nf = mlfeat.normalize_frame(frame)
+            from steemer.strategy.explorer import THREAT_KINDS, WILDLIFE_SAFE
+            mobs = nf["mobs"]
+            undead = sum(1 for m in mobs if m["kind"] in THREAT_KINDS)
+            melee = sum(1 for m in mobs
+                        if m["kind"] not in THREAT_KINDS and m["kind"] not in WILDLIFE_SAFE)
+            acc = self._band_obs.setdefault(world, [0.0, 0.0, 0])
+            acc[0] += (undead / len(mobs)) if mobs else 0.0
+            acc[1] += float(melee)
+            acc[2] += 1
+            if not models.available("death_risk"):
+                return
+            scores = {}
+            band = {"next_refresh_in": (frame.get("next_refresh") or {}).get("in_ticks"),
+                    "undead_frac": acc[0] / acc[2] if acc[2] else 0.0,
+                    "melee_preds": acc[1] / acc[2] if acc[2] else 0.0}
+            profiles = models.load_profiles()
+            for ch in nf["chars"]:
+                if self.tick - self._ml_last_scored.get(ch["uid"], -10 ** 9) < SHADOW_EVERY:
+                    continue
+                p = models.score_death_risk(
+                    mlfeat.death_risk_features(ch, nf, profiles, band))
+                if p is not None:
+                    scores[ch["uid"]] = round(p, 4)
+                    self._ml_last_scored[ch["uid"]] = self.tick
+            if scores and self.storage is not None:
+                import time as _time
+                from steemer import intel
+                intel.record(self.storage.conn, "model_score", self.tick, _time.time(),
+                             {"model": "death_risk", "world": world, "scores": scores})
+        except Exception as e:                        # noqa: BLE001 — shadow, fail closed
+            print(f"[models] shadow observe failed ({e.__class__.__name__}) — continuing",
+                  flush=True)
+
+    def _shadow_band(self, world: str) -> None:
+        """A refresh boundary: classify the window that just ENDED, roll the history,
+        and shadow-score the forecast for the window that begins now."""
+        try:
+            from steemer import mlfeat, models
+            acc = self._band_obs.pop(world, None)
+            if acc and acc[2]:
+                cls = mlfeat.band_danger_class(acc[0] / acc[2], acc[1] / acc[2])
+                hist = self._band_hist.setdefault(world, [])
+                hist.insert(0, cls)
+                del hist[4:]
+            if not models.available("band_forecast"):
+                return
+            fc = models.score_band(
+                mlfeat.band_features(world, self._band_hist.get(world, []), 0))
+            if fc is not None and self.storage is not None:
+                import time as _time
+                from steemer import intel
+                intel.record(self.storage.conn, "model_score", self.tick, _time.time(),
+                             {"model": "band_forecast", "world": world,
+                              "history": list(self._band_hist.get(world, [])),
+                              "forecast": {k: round(v, 4) for k, v in fc.items()}})
+        except Exception as e:                        # noqa: BLE001
+            print(f"[models] shadow band failed ({e.__class__.__name__}) — continuing",
+                  flush=True)
 
     def _learn_from_events(self, frame: dict[str, Any]) -> None:
         """Positive and negative evidence the SERVER volunteers, for any frame.
@@ -349,8 +424,10 @@ class GuildBot:
         # for every one we emptied, and an opened chest is not a container -- so we would
         # never go back and would only notice one by walking past it. On a refresh, every
         # chest we have emptied in this world becomes worth a second look.
-        if self._band_refreshed(world, frame):
+        refreshed = self._band_refreshed(world, frame)
+        if refreshed:
             recheck |= {p for p in seen_now if known.get(p) == "chest_open"}
+            self._shadow_band(world)
 
         enemies = {tuple(e["pos"]): e for e in visible.get("entities", [])
                    if e.get("faction") == "monster"}
@@ -432,6 +509,7 @@ class GuildBot:
         if alarm is not None:
             self._report_anomaly(alarm)
 
+        self._shadow_observe(world, frame)
         actions: list[dict[str, Any]] = []
         for char in frame.get("chars", []):
             uid = char["char_uid"]

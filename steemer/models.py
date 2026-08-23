@@ -161,6 +161,29 @@ def score_mob(features: dict[str, float]) -> dict[str, float] | None:
         return None
 
 
+def load_profiles() -> dict:
+    """The frozen bestiary snapshot for runtime feature parity. Fail-closed to {} —
+    an unprofiled world scores with zero mob priors rather than not at all."""
+    if "_profiles" in _cache:
+        return _cache["_profiles"]
+    try:
+        with open(os.path.join(MODELS_DIR, "bestiary_snapshot.json"), encoding="utf-8") as fh:
+            snap = json.load(fh)
+        if snap.get("schema_version") != mlfeat.FEATURE_SCHEMA_VERSION:
+            raise ValueError("snapshot schema mismatch")
+        _cache["_profiles"] = snap.get("kinds") or {}
+    except Exception as e:                            # noqa: BLE001
+        _warn_once("bestiary_snapshot", f"unavailable ({e.__class__.__name__})")
+        _cache["_profiles"] = {}
+    return _cache["_profiles"]
+
+
+def available(name: str) -> bool:
+    """Is a scoreable artifact deployed? Lets the bot skip feature computation entirely
+    when nothing would consume it."""
+    return _load(name) is not None
+
+
 def reset_cache() -> None:
     """Test hook: models are otherwise cached for the process lifetime."""
     _cache.clear()
