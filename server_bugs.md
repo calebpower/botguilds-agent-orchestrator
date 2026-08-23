@@ -188,3 +188,17 @@ trusts frames: it commands the ghost forever (1,481 unknown_character errors thi
 Repro sketch: walk a character onto vale (63,0), let the portal fire, then keep
 commanding it; if it entered the vanish state, frames still render it while every
 command bounces.
+
+## roster_cap counts village-present chars, not total roster (2026-08-23, run #184)
+
+The server enforces `roster_cap` (default 30) at the `recruit` action — confirmed by
+1,597 `roster_cap` action-error refusals across runs. But the count it checks is
+characters PHYSICALLY IN THE VILLAGE, not the total roster: on run #184, recruits
+succeeded while the true roster (village + fielded) was already 31, with zero roster_cap
+refusals in that run. Reproduced pattern: recruit @tick 2221263 succeeded with 30 in the
+village frame and 1+ fielded elsewhere.
+
+Consequence: with k characters fielded/adventuring, the total roster can be grown to
+roughly 30 + k by recruiting to refill the emptied village barracks. Whether this is
+intended (a barracks-occupancy cap) or a bug (the cap was meant to bound total roster)
+is undetermined. Observed, not exploited.
