@@ -4343,3 +4343,22 @@ stranded herb; watch for the [taste] raw-event line, then wire the exact shape.
 NEXT: the taste result shape; then bitterroot/glimmerweed/frostmoss essences -> brew
 throughput; danger-as-cost still queued (operator item 2).
 GATE 914 reaper / 905 local.
+
+================================================================================
+iter 95 (2026-08-22 night) — no deploy — supersede mechanism + the first decode
+================================================================================
+FIRST TASTE EVER RESOLVED on #166: {'kind':'tasted','item':'bitterroot','essence':'aether'}
+— the guessed parser shape was EXACTLY right, and run #8's "bitterroot(~vigor)" guess was
+WRONG (aether). Decoded, persisted, hydrated; one 2g herb spent. The once-per-kind guard
+means the essence map now converges one kind per strand event.
+
+LEDGER CAUGHT ITS AUTHOR, round two: iter-94's claim was recorded while #165 still wrote
+frames; 4% denominator drift -> CONTRADICTED on a conclusion that had strengthened.
+claims.supersede(): append-only correction naming the old row + mandatory reason; recheck
+reports `superseded`. LESSON IN THE DOCSTRING: record claims from ENDED runs only.
+Ledger: 6 confirmed, 1 superseded. NO DEPLOY this pass (#166 untouched, mature).
+WISHLIST: magic 0.549 tops, still treasury-blocked (gold 111 vs ~220; fresh recruit
+generation, zero banked XP). Danger-as-cost ceiling 0.495 INELIGIBLE under risk=0.75 —
+re-examine the risk term honestly next pass: scoped to the desperation branch only (which
+currently has NO plan to break), 0.9 may be the true number. Do not game it; re-derive it.
+GATE: claims suite 11 green, 3/3 mutants killed; no bot change.
