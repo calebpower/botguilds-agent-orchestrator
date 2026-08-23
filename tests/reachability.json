@@ -87,6 +87,21 @@
     },
     "walking to a known rail to run the once-per-run ride probe": {
       "through_bot_test": "test_a_qualified_prober_walks_toward_a_known_rail"
+    },
+    "nuisance:": {
+      "through_bot_test": "test_it_says_frown_when_a_will_char_attacks_it"
+    },
+    "nuisance: shadowing": {
+      "through_bot_test": "test_the_nuisance_moves_toward_wills_centroid"
+    },
+    "nuisance: looting": {
+      "through_bot_test": "test_standing_on_the_drop_picks_it_up_and_flips_to_DELIVER"
+    },
+    "nuisance: beelining to": {
+      "through_bot_test": "test_a_will_death_drop_sends_the_nuisance_to_LOOT_it"
+    },
+    "nuisance: carrying the spoils home to the guild": {
+      "through_bot_test": "test_deliver_phase_cackles_and_beelines_home"
     }
   },
   "exempt_budget": 21,

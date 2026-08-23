@@ -6,7 +6,17 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.95.0` on **run #187** (pushed; see git log).
+- **Live:** `explorer/0.96.0` on **run #188** (pushed; see git log).
+- **THE NUISANCE (0.96.0, operator FUN)**: a YELLOW role that shadows rival WillMorr
+  (guild g_63837f) in the vale when >=3 of his chars are there — hangs in his party's
+  centre, helps kill, says ':(' when he hits it, loots his fallen, and cackles
+  'mwahahahaha' as it runs the spoils home (banked by the village economy). Dynamic
+  designation: reclassifies when Will leaves/dies, re-designates on return. Will is NOT
+  currently fielded (stale track feed) so it's a 'when Will shows up' feature — verified
+  by 15 unit tests, 8/8 mutants killed; inert until he appears. A one-off, not a scored
+  lever. Survival outranks all nuisance offers (try-not-to-die holds).
+- **FORGE-TO-ARM WEAPON-FIRST (0.95.0)**: still measuring on #187/#188 — armed share
+  should climb (spear recipe proven: 1 lumber + 1 ingot_copper).
 - **FORGE-TO-ARM UNBLOCKED + WEAPON-FIRST (0.95.0)**: the arm rate is the root cause of
   BOTH the idle village (death-latch benches the 28/30 bare-handed) and the passive char
   (bare hands can't fight, stamina-shuffle-dodge). Forge chain is further along than

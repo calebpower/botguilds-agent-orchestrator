@@ -500,6 +500,28 @@ SPACE_SCORE_CALM = 1.5      # beats rest(0.5)/scout(1.0), LOSES to frontier(2.0+
 #              cheap to replace, and a forager that banks coins before dying beats a timid one.
 GUARDIAN_LEVEL = 4             # level >= this -> Guardian; else Forager
 FODDER_STAT_SUM = 7            # v0.87.0: stats sum <= this (and no int gift) = fodder
+
+# v0.96.0 THE NUISANCE (operator, for fun): one of our characters shadows rival guild
+# WillMorr's party in the vale — hangs in the centre of their group, helps kill what
+# they fight, loots their fallen, and cackles home with the spoils. A whole questline
+# for one volunteer, alive only while Will's party is actually in the vale.
+NUISANCE_GUILD = "g_63837f"        # WillMorr (his chars are named Barbarian/Ranger/…)
+NUISANCE_GUILD_NAME = "WillMorr"
+NUISANCE_WORLD = "vale"            # the operator's chosen stage
+NUISANCE_TRIGGER = 3              # designate once this many of Will's chars share the vale
+NUISANCE_GONE_TTL = 40           # ticks unseen before Will counts as gone and we stand down
+NUISANCE_FOLLOW_SCORE = 3.6       # hang near Will's centroid — above frontier, below gather
+NUISANCE_HANG_RADIUS = 2         # "in the centre" = within this of the party centroid
+                                # (the centroid tile itself is usually one of Will's chars)
+NUISANCE_LOOT_SCORE = 6.0        # beeline to a fallen Will member's drop (above gather)
+NUISANCE_DELIVER_SCORE = 6.0     # beeline home with the spoils
+NUISANCE_LAUGH_SCORE = 6.1       # the cackle wins the FIRST deliver tick (above the
+                                # beeline 6.0), then laughed=True and it runs home
+NUISANCE_POUT_SCORE = 3.8        # ":(" when Will hits us — just above the follow (3.6) so
+                                # a hit shows, below loot/deliver (6.0) and survival (8.0+)
+NUISANCE_POUT_COOLDOWN = 25
+NUISANCE_POUT = ":("
+NUISANCE_LAUGH = "mwahahahaha"    # said once, running away with the loot
 UNDEAD_SEVERE_GUARDIAN = 0.08  # veteran trips "severe" at half the undead fraction...
 MELEE_DENSE_GUARDIAN = 2       # ...and at 2 melee predators (disengage early)
 UNDEAD_SEVERE_FORAGER = 0.20   # recruit tolerates a denser band before disengaging...
@@ -1114,7 +1136,8 @@ def select_wizards(chars: list[dict[str, Any]], cap: int = WIZARD_SEATS,
     return set(seats)
 
 
-def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
+def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
+            nuisance_uid: "str | None" = None) -> str:
     """v0.39.0 per-character role, derived from level (not stored, so it self-adjusts as a
     char levels up). A leveled veteran is a GUARDIAN (worth protecting -> disengages early);
     a fresh recruit is a FORAGER (cheap -> works the edges of danger for income). Shared by
@@ -1131,6 +1154,11 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
     # the gift-based fallback survives ONLY for callers that cannot see the roster, and
     # over-approximates deliberately (an int-gifted char is a likely seat) rather than
     # under-protecting.
+    # v0.96.0: the nuisance overlay is display-only — passed by the dashboard, never by
+    # the strategy's own my_role (whose survival thresholds use the base role), so a
+    # nuisance still flees/heals as the forager or guardian it actually is.
+    if nuisance_uid is not None and char.get("char_uid") == nuisance_uid:
+        return "nuisance"
     if wizard_uids is not None:
         if char.get("char_uid") in wizard_uids:
             return "wizard"
@@ -1154,7 +1182,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
 
 
 class Explorer:
-    version = "explorer/0.95.0"
+    version = "explorer/0.96.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1220,6 +1248,11 @@ class Explorer:
         # the same seats because the seat-holders' invested INT outranks the pool.
         self._char_ledger: dict = {}
         self._wizard_incumbents: set = set()   # v0.94.0: last tick's seats (hysteresis)
+        # v0.96.0 the nuisance: one volunteer's tour of duty against WillMorr's party.
+        self._nuisance: dict = {"uid": None, "phase": "shadow", "loot_pos": None,
+                                "seen_tick": -10 ** 9, "pout_tick": -10 ** 9,
+                                "laughed": False}
+        self._will_eids: dict = {}     # Will's char eid -> tick last seen (attack blame)
         self._make_room: dict = {}     # world -> tick: a seat needs a slot there
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
@@ -1359,6 +1392,15 @@ class Explorer:
         guild = frame.get("guild", {})
         cfg = bot.config
         chars = frame.get("chars", [])
+        # v0.96.0: a nuisance that reached home carrying WillMorr's spoils has finished
+        # its tour. The loot is now in the village — the sell/equip economy banks it
+        # (and selling it even funds the arm rate). Stand the tour down so a relief is
+        # designated the next time Will's party is in the vale.
+        here_now = {c.get("char_uid") for c in chars}
+        if (self._nuisance["uid"] in here_now
+                and self._nuisance["phase"] == "deliver"):
+            self._nuisance_standdown(bot.tick, "spoils delivered home — tour complete")
+            self._record_nuisance(bot)
         gold = guild.get("gold", 0)
         self._learn_prices(frame)
         self._hydrate_forge(bot)
@@ -1962,6 +2004,9 @@ class Explorer:
         homing = uid in self._homing
         # Don't walk onto other characters OR monsters.
         blocked = ctx.bodies | set(ctx.enemies)
+        # v0.96.0: nuisance upkeep — learn Will's positions, (re)designate a volunteer,
+        # stand down when he leaves the vale. Cheap; runs for every vale char.
+        self._nuisance_track(bot, char, uid, frame, bot.tick)
         # v0.30.0: melee predators (golem_stone/delver/boar/…) only hit when we're
         # ADJACENT, so also block the tiles next to them — pathing then routes around
         # their strike range instead of stepping into it (run #85: a full-HP char that
@@ -2014,6 +2059,11 @@ class Explorer:
                 trace.consider(action, score, why)
             else:
                 trace.observe(f"wanted {name} ({why}) but stamina {stamina} < ~{need}: resting")
+
+        # v0.96.0: the nuisance's tour, as OFFERS — survival (added below at 8.0+) still
+        # wins, so 'try not to die' holds by construction. Loot/deliver (6.0) outrank
+        # ordinary gather (4.0); follow (3.6) fills an idle tick.
+        self._nuisance_act(bot, char, uid, pos, frame, ctx, hp, max_hp, hurt, offer, trace)
 
         # --- Hurt: disengage. Offer ONLY heal + flee, then stop. A hurt char
         # that keeps attacking/looting spends the stamina it needs to escape and
@@ -2857,6 +2907,10 @@ class Explorer:
         was_ours = self._char_ledger.pop(uid, None) is not None
         if was_ours and world and world != "village" and tick is not None:
             self._death_gate[world] = tick
+        # v0.96.0: if the nuisance itself fell, stand the tour down (a relief volunteers
+        # when Will is still in the vale). It tried not to die; sometimes Will wins.
+        if uid == self._nuisance.get("uid"):
+            self._nuisance_standdown(tick if tick is not None else 0, "the nuisance fell")
         self._party.pop(uid, None)
 
     def wizard_seats(self) -> set:
@@ -2927,6 +2981,158 @@ class Explorer:
         if close_enough(pos):
             return None
         return nav.bfs_step(pos, close_enough, ctx.known, blocked)
+
+    @staticmethod
+    def _will_party(frame: dict) -> list[dict]:
+        """WillMorr's characters visible in this frame — faction 'guild', his guild_id,
+        with a position. The live signal (the track feed is unreliable/stale)."""
+        return [e for e in (frame.get("visible") or {}).get("entities") or []
+                if e.get("faction") == "guild"
+                and e.get("guild_id") == NUISANCE_GUILD and e.get("pos")]
+
+    @staticmethod
+    def _greedy_toward(pos, target, known, blocked) -> tuple[int, int] | None:
+        """The walkable neighbour that most reduces Manhattan distance to target, or None.
+        Simpler and more predictable than a region-goal BFS for 'drift toward a point' —
+        the nuisance only needs to close on Will's centroid, not path optimally to it."""
+        best, bestd = None, abs(pos[0] - target[0]) + abs(pos[1] - target[1])
+        for n in nav.neighbors(pos):
+            if n in blocked or known.get(n) in nav.SOLID:
+                continue
+            d = abs(n[0] - target[0]) + abs(n[1] - target[1])
+            if d < bestd:
+                best, bestd = n, d
+        return best
+
+    @staticmethod
+    def _centroid(points: list) -> tuple[int, int] | None:
+        if not points:
+            return None
+        return (round(sum(p[0] for p in points) / len(points)),
+                round(sum(p[1] for p in points) / len(points)))
+
+    def _record_nuisance(self, bot) -> None:
+        """Expose the current nuisance uid to the dashboard (runtime state it cannot
+        otherwise see). Fail-closed: a recording hiccup never touches play."""
+        try:
+            storage = getattr(bot, "storage", None)
+            if storage is None:
+                return
+            import time as _time
+            from steemer import intel
+            intel.record(storage.conn, "nuisance", bot.tick, _time.time(),
+                         {"uid": self._nuisance.get("uid")})
+        except Exception as e:                        # noqa: BLE001
+            print(f"[nuisance] record failed ({e.__class__.__name__})", flush=True)
+
+    def _nuisance_standdown(self, tick: int, reason: str) -> None:
+        """Reclassify the nuisance: it reverts to its stat/seat role automatically once
+        the designation clears. Called when Will leaves, the nuisance dies, or a tour
+        completes (loot delivered)."""
+        self._nuisance.update(uid=None, phase="shadow", loot_pos=None, laughed=False)
+        self._nuisance["_standdown_reason"] = reason
+
+    def _nuisance_track(self, bot, char, uid, frame, tick) -> None:
+        """Per-acting-char upkeep (cheap, runs for every vale char): learn Will's eids,
+        refresh 'last seen', DESIGNATE a volunteer when >=3 of his chars share the vale,
+        and STAND DOWN when he's been gone longer than the TTL. Designation is dynamic —
+        it exists only while Will's party is actually here."""
+        if frame.get("world") != NUISANCE_WORLD:
+            return
+        party = self._will_party(frame)
+        for e in party:
+            self._will_eids[e["eid"]] = tick
+        if len(party) >= NUISANCE_TRIGGER:
+            self._nuisance["seen_tick"] = tick
+            if self._nuisance["uid"] is None:
+                # this char sees Will and is here — it volunteers (armed volunteers are
+                # better nuisances, but any healthy body will do; the tour self-selects)
+                self._nuisance["uid"] = uid
+                self._nuisance["phase"] = "shadow"
+                self._nuisance["laughed"] = False
+                self._record_nuisance(bot)
+        # stand down if Will has not been seen in TTL ticks (he left the vale)
+        if (self._nuisance["uid"] is not None
+                and tick - self._nuisance["seen_tick"] > NUISANCE_GONE_TTL):
+            self._nuisance_standdown(tick, "will's party left the vale")
+            self._record_nuisance(bot)
+
+    def _nuisance_act(self, bot, char, uid, pos, frame, ctx, hp, max_hp, hurt,
+                      offer, trace) -> None:
+        """The nuisance's tour, as scored OFFERS (survival still outranks all of them, so
+        'try not to die' is honoured by construction). Phases: SHADOW (follow Will's
+        centroid, pout when hit), LOOT (a fallen Will member dropped spoils — go grab
+        them), DELIVER (cackle and run the loot home)."""
+        if self._nuisance["uid"] != uid:
+            return
+        tick = bot.tick
+        events = frame.get("events") or []
+        # ":(" — a Will character just hit us
+        if tick - self._nuisance["pout_tick"] >= NUISANCE_POUT_COOLDOWN:
+            my_eid = char.get("eid")
+            if any(ev.get("kind") == "attack" and ev.get("target") == my_eid
+                   and ev.get("attacker") in self._will_eids for ev in events):
+                self._nuisance["pout_tick"] = tick
+                offer({"char_uid": uid, "action": "say", "text": NUISANCE_POUT},
+                      NUISANCE_POUT_SCORE, f"nuisance: {NUISANCE_GUILD_NAME} hit me — {NUISANCE_POUT}")
+        # a Will member died and dropped spoils -> switch to LOOT (nearest such drop)
+        if self._nuisance["phase"] == "shadow":
+            drops = [tuple(ev["pos"]) for ev in events
+                     if ev.get("kind") == "death" and ev.get("guild_id") == NUISANCE_GUILD
+                     and ev.get("dropped") and ev.get("pos")]
+            if drops:
+                self._nuisance["phase"] = "loot"
+                self._nuisance["loot_pos"] = min(
+                    drops, key=lambda d: abs(d[0] - pos[0]) + abs(d[1] - pos[1]))
+        # ONLY IF SUCCESSFUL (operator): a real pickup EVENT for our eid — not merely
+        # offering one — flips loot -> deliver, so we cackle home only with loot in hand.
+        if self._nuisance["phase"] == "loot":
+            my_eid = char.get("eid")
+            if any(ev.get("kind") == "pickup" and ev.get("eid") == my_eid for ev in events):
+                self._nuisance["phase"] = "deliver"
+        phase = self._nuisance["phase"]
+        if phase == "loot":
+            target = self._nuisance["loot_pos"]
+            if target is None:
+                self._nuisance["phase"] = "shadow"
+            elif tuple(pos) == target:
+                # standing on the spoils — grab them. The flip to DELIVER waits for the
+                # actual `pickup` EVENT (below): "only if successful", per the operator.
+                offer({"char_uid": uid, "action": "pickup"}, NUISANCE_LOOT_SCORE,
+                      f"nuisance: looting {NUISANCE_GUILD_NAME}'s fallen")
+            else:
+                step = self._step(pos, lambda t: t == target, ctx,
+                                  ctx.bodies | set(ctx.enemies))
+                if step is not None:
+                    offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
+                          NUISANCE_LOOT_SCORE, f"nuisance: beelining to {NUISANCE_GUILD_NAME}'s drop")
+            return
+        if phase == "deliver":
+            if not self._nuisance["laughed"]:
+                self._nuisance["laughed"] = True
+                offer({"char_uid": uid, "action": "say", "text": NUISANCE_LAUGH},
+                      NUISANCE_LAUGH_SCORE, f"nuisance: {NUISANCE_LAUGH} (running home with the loot)")
+            # beeline home (y -> 0); arrival is handled in the village loop, which banks
+            # the spoils into the guild inventory and stands this tour down for a relief.
+            step = self._step(pos, lambda t: t[1] == 0, ctx, ctx.bodies | set(ctx.enemies))
+            if step is not None:
+                offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
+                      NUISANCE_DELIVER_SCORE, "nuisance: carrying the spoils home to the guild")
+            return
+        # SHADOW: hang in the CENTRE of Will's group. The centroid tile itself is usually
+        # occupied by one of his characters (blocked), so the goal is "within
+        # NUISANCE_HANG_RADIUS of the centroid" — near enough to be in the thick of what
+        # they fight (helping kill falls out of the develop-fight offer when armed).
+        centroid = self._centroid([tuple(e["pos"]) for e in self._will_party(frame)])
+        if centroid is not None:
+            cx, cy = centroid
+            near = abs(pos[0] - cx) + abs(pos[1] - cy) <= NUISANCE_HANG_RADIUS
+            step = None if near else self._greedy_toward(
+                pos, centroid, ctx.known, ctx.bodies | set(ctx.enemies))
+            if step is not None:
+                offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
+                      NUISANCE_FOLLOW_SCORE,
+                      f"nuisance: shadowing {NUISANCE_GUILD_NAME}'s party (hanging in the centre)")
 
     def _ride_prober_ready(self, char, pos, hp, max_hp, stamina,
                            ctx: "FieldContext") -> bool:

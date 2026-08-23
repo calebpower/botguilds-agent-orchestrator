@@ -4755,3 +4755,24 @@ This is the STRUCTURAL fix I flagged for 3 passes — arming un-benches the rost
 lets chars fight instead of stamina-shuffling. NEXT: #187 armed-share climb; then the
 band-local death-latch (un-bench shallow foragers) and the dodge-when-healthy tweak as
 smaller follow-ups; ML Pass 4 still open.
+
+ITER 76 (2026-08-23, explorer/0.96.0): THE NUISANCE (operator fun, built live across six
+messages). A yellow role that shadows rival WillMorr (guild g_63837f — his chars are
+Barbarian/Ranger/etc, which is why 'WillMorr' never matched a char name) in the vale.
+Full questline: designate one volunteer when >=3 of Will's chars share the vale ->
+SHADOW (hang within 2 of his centroid via greedy step; help kill via positioning +
+develop-fight; say ':(' when a Will char hits it) -> reclassify when Will leaves
+(GONE_TTL=40) or the nuisance dies (relief at once), re-designate on return -> LOOT (a
+Will member drops on death -> beeline) -> DELIVER on a real pickup EVENT (only if
+successful): cackle 'mwahahahaha' then run the spoils home; reaching the village banks
+them (sell funds the arm rate) + completes the tour. Survival outranks every nuisance
+offer (3.6-6.1 << flee/heal 8.0+), so 'try not to die' holds by construction. Dashboard
+paints it via intel(kind='nuisance') since the designation is runtime state, not a pure
+function. Will is NOT currently fielded (stale track feed), so verified entirely by 15
+unit tests; 8/8 mutants killed. BUILD BUGS: rival chars are ctx.bodies blockers and the
+centroid sits on one -> greedy step + proximity(<=2) goal; my test _DIR was inverted
+(this game N=+y, home is -y) so the behaviour was right all along; the loot->deliver
+flip was optimistically on OFFER -> made it pickup-event-driven to honour 'only if
+successful'. NB THIS IS A ONE-OFF FUN FEATURE, not a wishlist-scored lever. NEXT: back
+to the loop proper — measure 0.95.0 forge-to-arm on #187 (armed share climbing?), ML
+Pass 4, then the band-local latch / dodge-when-healthy follow-ups.

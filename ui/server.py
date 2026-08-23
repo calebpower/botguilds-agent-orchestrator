@@ -1091,6 +1091,16 @@ def api_roster(db_path: str) -> dict:
         # applied to the same roster snapshot, so the panel and the strategy can never
         # disagree about who the wizards are.
         _seats = select_wizards([c for (_t, c, _w) in best.values()])
+        # v0.96.0: the nuisance is a RUNTIME designation (who volunteered against Will),
+        # not a pure function — the strategy records it to intel so the panel can show it.
+        _nuisance_uid = None
+        try:
+            nrow = conn.execute("SELECT payload_json FROM intel WHERE kind='nuisance' "
+                                "ORDER BY seq DESC LIMIT 1").fetchone()
+            if nrow:
+                _nuisance_uid = (json.loads(nrow["payload_json"]) or {}).get("uid")
+        except _db.Error:
+            _nuisance_uid = None
         chars = []
         for uid, (tick, c, world) in best.items():
             eq = c.get("equipment") or {}
@@ -1110,7 +1120,7 @@ def api_roster(db_path: str) -> dict:
                 "hp": c.get("hp"), "max_hp": c.get("max_hp"),
                 "stamina": c.get("stamina"), "max_stamina": c.get("max_stamina"),
                 "level": c.get("level"), "xp": c.get("xp"),
-                "role": role_of(c, _seats),   # v0.88.0: seat-aware (same pure ranking as the bot)
+                "role": role_of(c, _seats, _nuisance_uid),   # v0.88.0 seat-aware; v0.96.0 nuisance overlay
                 "stats": c.get("stats") or {}, "gifts": list(c.get("gifts") or []),
                 "equipment": {k: _slot_kind(eq.get(k)) for k in
                               ("hand", "offhand", "outfit", "trinket", "boots")},
@@ -1943,6 +1953,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
 .pc-role.role-forager{background:color-mix(in srgb,var(--good) 22%,transparent);color:var(--good)}
 .pc-role.role-wizard{background:color-mix(in srgb,#a371f7 22%,transparent);color:#a371f7}
 .pc-role.role-fodder{background:color-mix(in srgb,#f778ba 22%,transparent);color:#f778ba}
+.pc-role.role-nuisance{background:color-mix(in srgb,#e3b341 22%,transparent);color:#e3b341}
 .pc-where{color:var(--muted);font-size:12px}
 .bar{height:9px;border-radius:5px;background:var(--border);overflow:hidden;margin:3px 0 8px}
 .bar>span{display:block;height:100%}
@@ -3176,7 +3187,7 @@ function pcCard(c){
   const carry=c.carry||{};
   return '<div class="pc">'
     +'<div class="pc-head"><span class="pc-name">'+esc(c.name)+'</span>'
-      +(c.role?('<span class="pc-role role-'+esc(c.role)+'" title="risk role: guardians disengage early, foragers work the edges, wizards (int-gifted) are protected at any level, fodder (bottom rolls) is expendable">'+esc(c.role)+'</span>'):"")
+      +(c.role?('<span class="pc-role role-'+esc(c.role)+'" title="risk role: guardians disengage early, foragers work the edges, wizards (int-gifted) are protected at any level, fodder (bottom rolls) is expendable, nuisance shadows WillMorr party in the vale">'+esc(c.role)+'</span>'):"")
       +'<span class="pc-where">'+esc(c.world)+(c.pos?(" ("+esc(c.pos[0])+","+esc(c.pos[1])+")"):"")+'</span></div>'
     + pcBar(hpCls, c.hp, c.max_hp, "HP")
     + (c.max_stamina!=null ? pcBar("sta", c.stamina, c.max_stamina, "Stamina") : "")
