@@ -310,7 +310,9 @@ class GuildBot:
                 self._dead.add(ev["char_uid"])
                 hook = getattr(self.strategy, "on_char_death", None)
                 if callable(hook):
-                    hook(ev["char_uid"])
+                    # v0.92.1: the death's WORLD and tick ride along — a corpse is the
+                    # one danger sensor that never needs two predators in frame at once
+                    hook(ev["char_uid"], frame.get("world"), self.tick)
                 continue
             if ev.get("kind") == "returned" and ev.get("char_uid"):
                 self._returned_at[ev["char_uid"]] = self.tick

@@ -4638,3 +4638,22 @@ deploy's restart. Registry canary earned its keep once more: it rejected the eva
 snapshot dropped into models/ (schema None) -> models/evals/ subdir. NEXT: #180+#181
 measure portal-block (transits 0 on #180 already) + green gate (recruit deaths, recruit
 rate); ML Pass 4 shadow acceptance now needs >=3 runs WITH stint scores flowing.
+
+ITER 70 (2026-08-23, explorer/0.92.1): THE GATE THAT NEVER FIRED. #181 mature at 27.8k
+frames in ~20 min (server ticking fast): 19 our-deaths, the SAME chaser band, only 4/19
+fodder — and the smoking gun: embark->death median gap 38 TICKS (13/19 under 47). The
+0.92.0 green gate was open the whole time because its predicate is a DENSITY census
+(>=2 melee predators in one view / undead>=0.08) and a spread-out chaser band kills
+serially — one delver per victim, never two in frame. LEVER (same lever, corrected by
+measurement): DEATH LATCH — one of OUR corpses (uid in the sightings ledger) marks its
+world dangerous for DEATH_GATE_TTL=900; every further victim re-latches; rival/village
+deaths latch nothing; wizards share the predicate so their gate inherits it. Hook now
+carries (uid, world, tick) through the bot. 5/5 mutants killed. PROCESS LESSON: the
+0.92.0 gate suppressed embarks with a silent `continue` — no decision row, no log line —
+so proving "the gate never fired" took embark-gap archaeology instead of one query.
+A suppressed action deserves an observable as much as a taken one (decision_share
+lesson, gate edition). ML PASS 4 progress: parity checker CLEAN on both closed shadow
+runs (#179 44/44, #180 19/19 at 1e-6); stint shadow flowing on #181 (10,958 score rows
+by 27.8k frames — the >=2000 scored-decisions floor is met); remaining: stint parity
+extension for the checker, shadow.py zero-diff replay, live calibration on >=30 deaths,
+tick p95 — after #181/#182 close.

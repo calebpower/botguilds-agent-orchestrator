@@ -522,6 +522,9 @@ WILDLIFE_SAFE = frozenset({"turtle", "chicken", "cow", "sheep", "frog", "skunk",
 # Confirmed-dangerous kinds seen so far (documentation only — the LOGIC uses the
 # allowlist above, so this need not be exhaustive): golem_stone, delver, boar, drake,
 # lake_drake, spider_brown, wolf, crab_green, lava_ant, rhino_beetle.
+DEATH_GATE_TTL = 900       # v0.92.1: one of OUR corpses marks its world dangerous for
+                           # this long — under a band cycle, so a cleared band un-gates,
+                           # but serial killings re-latch on every victim
 THREAT_TTL = 1200          # v0.26.0: a world's observed undead level is trusted for this
 #   many ticks; after that it's treated as unknown (re-scoutable) so a world that has
 #   emptied out (everyone fled) gets re-checked once its band may have cycled back to
@@ -1104,7 +1107,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
 
 
 class Explorer:
-    version = "explorer/0.92.0"
+    version = "explorer/0.92.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1227,6 +1230,7 @@ class Explorer:
         # rather than undead. Cohering on it alone would leave us dispersed in exactly the
         # world we most want to raid, so danger counts both.
         self._world_danger: dict[str, tuple[float, int, int]] = {}
+        self._death_gate: dict[str, int] = {}   # world -> tick of our last death there
         # Characters currently closing on an ally — the hysteresis latch.
         self._cohering: set[str] = set()
 
@@ -2720,6 +2724,9 @@ class Explorer:
         which preserves the gathering economy and means a world we have not scouted cannot
         silently collapse the roster into one tile.
         """
+        dg = self._death_gate.get(world or "")
+        if dg is not None and tick - dg < DEATH_GATE_TTL:
+            return True                    # v0.92.1: a recent corpse outranks any census
         d = self._world_danger.get(world or "")
         if not d or tick - d[2] >= THREAT_TTL:
             return False
@@ -2733,11 +2740,21 @@ class Explorer:
                                     "level": char.get("level") or 0,
                                     "gifts": list(char.get("gifts") or [])}
 
-    def on_char_death(self, uid: str) -> None:
+    def on_char_death(self, uid: str, world: str | None = None,
+                      tick: int | None = None) -> None:
         """v0.88.0: a death frees its seat INSTANTLY — the pure ranking promotes the next
         candidate the moment the corpse leaves the ledger. Called from the bot's event
-        parser (the same place forged/overburdened learn)."""
-        self._char_ledger.pop(uid, None)
+        parser (the same place forged/overburdened learn).
+
+        v0.92.1: OUR death also LATCHES the world's danger gate for DEATH_GATE_TTL. Run
+        #181 exposed the green gate's blind spot: _world_is_dangerous needs >=2 melee
+        predators in one view, but a spread-out chaser band kills SERIALLY — each lone
+        recruit meets ONE delver, so vale never read dangerous while the median victim
+        lasted 38 ticks from embark. A corpse needs no density threshold. Only a uid we
+        held in OUR ledger latches (a rival's death is not in it), and only field worlds."""
+        was_ours = self._char_ledger.pop(uid, None) is not None
+        if was_ours and world and world != "village" and tick is not None:
+            self._death_gate[world] = tick
         self._party.pop(uid, None)
 
     def wizard_seats(self) -> set:

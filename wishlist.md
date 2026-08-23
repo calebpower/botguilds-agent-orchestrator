@@ -50,47 +50,47 @@ with `## Done` unmaintained since 2026-08-20):
   20 score tables — an omission is worse than a wrong number and far harder to notice.
 
 
-Recalculated fresh each pass. `tc` at deploy-minor **92** (`explorer/0.92.0`), counting
+Recalculated fresh each pass. `tc` at deploy-minor **92.1** (`explorer/0.92.1`), counting
 DEPLOYS since an item was added — a pass that ships no deploy does not advance it.
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| Scope-error quarantine | 0.82 | 0.96 | 1 | **-0.197** | 0.590 | just added (tc=1) |
-| Model: XP-rate per placement | 0.85 | 0.95 | 1 | **-0.202** | 0.606 | just added (tc=1) |
-| Model: death-cause classifier | 0.77 | 0.99 | 1 | **-0.191** | 0.572 | just added (tc=1) |
-| Model: aggro/leash radius | 0.78 | 0.96 | 1 | **-0.187** | 0.562 | just added (tc=1) |
-| Model: time-to-kill | 0.76 | 0.95 | 1 | **-0.180** | 0.541 | just added (tc=1) |
-| Model: refresh-clock inference | 0.74 | 0.99 | 1 | **-0.183** | 0.549 | just added (tc=1) |
-| Model: combat outcome | 0.75 | 0.95 | 1 | **-0.178** | 0.534 | just added (tc=1) |
-| Model: server-patch change detection | 0.72 | 0.99 | 1 | **-0.178** | 0.535 | just added (tc=1) |
-| Model: swarm formation | 0.74 | 0.96 | 1 | **-0.178** | 0.533 | just added (tc=1) |
-| Model: forge success hidden-variable | 0.72 | 0.98 | 1 | **-0.176** | 0.529 | just added (tc=1) |
-| Model: frame staleness | 0.73 | 0.96 | 1 | **-0.175** | 0.526 | just added (tc=1) |
-| Model: anomaly detection (own KPIs) | 0.70 | 0.99 | 1 | **-0.173** | 0.520 | just added (tc=1) |
-| Model: recruit quality projection | 0.70 | 0.97 | 1 | **-0.170** | 0.509 | just added (tc=1) |
-| Model: wizard-pipeline ETA | 0.68 | 0.99 | 1 | **-0.168** | 0.505 | just added (tc=1) |
-| Model: spawn composition | 0.68 | 0.97 | 1 | **-0.165** | 0.495 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
-| Model: chest-refill clock | 0.66 | 0.98 | 1 | **-0.162** | 0.485 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
-| Model: loot-value maps | 0.65 | 0.97 | 1 | **-0.158** | 0.473 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
-| Model: seat-selection value | 0.62 | 0.96 | 1 | **-0.149** | 0.446 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
-| Model: rival behaviour | 0.60 | 0.98 | 1 | **-0.147** | 0.441 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
-| Model: portal-destination safety | 0.55 | 0.96 | 1 | **-0.132** | 0.396 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
-| Model: brew-output priors | 0.55 | 0.97 | 1 | **-0.133** | 0.400 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
-| Model: market price | 0.55 | 0.97 | 1 | **-0.133** | 0.400 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
-| Model: test selection for the loop | 0.52 | 1.00 | 1 | **-0.130** | 0.390 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
-| Magic — CASTING (chain sound; INT+tome slice unblocks) | 0.90 | 0.85 | 42 | **0.556** | 0.574 | **qualifies — BLOCKED: treasury (gold 113 vs ~220 for a tome)** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 78 | **0.520** | 0.529 | **qualifies — BLOCKED: no subject (rivals fielded 0 chars in 22h; sidecar healthy, feed empty by reality)** |
-| RIDE the rails (cap discoverable only empirically) | 0.82 | 0.90 | 23 | **0.521** | 0.553 | **qualifies** |
-| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 29 | **0.487** | 0.510 | below 0.5 — ages toward ceiling 0.510 |
-| Portal-aware routing (portal tile = edge to its twin; graph from our own events) | 0.90 | 0.80 | 11 | **0.475** | 0.540 | below 0.5 — ages toward ceiling 0.540 |
-| Tick-participation bar (operator: block-explorer style, last 500 ticks green/red) | 0.72 | 1.00 | 11 | **0.475** | 0.540 | below 0.5 — ages toward ceiling 0.540 |
-| Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 23 | **0.497** | 0.528 | below 0.5 — ages toward ceiling 0.528 |
-| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 58 | **0.472** | 0.483 | INELIGIBLE — ceiling<0.5 |
-| Rival-awareness dashboard panel | 0.62 | 0.97 | 89 | **0.444** | 0.451 | INELIGIBLE — ceiling<0.5 |
-| Impassable-tile analysis | 0.60 | 1.00 | 91 | **0.443** | 0.450 | INELIGIBLE — ceiling<0.5 |
-| Short-TTL predator memory | 0.60 | 0.90 | 63 | **0.396** | 0.405 | INELIGIBLE — ceiling<0.5 |
-| Log-scale overview bars | 0.45 | 1.00 | 73 | **0.331** | 0.338 | INELIGIBLE — ceiling<0.5 |
-| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 90 | **0.325** | 0.330 | INELIGIBLE — ceiling<0.5 |
+| Scope-error quarantine | 0.82 | 0.96 | 2 | **0.197** | 0.590 | below 0.5 — ages toward ceiling 0.590 |
+| Model: XP-rate per placement | 0.85 | 0.95 | 2 | **0.202** | 0.606 | below 0.5 — ages toward ceiling 0.606 |
+| Model: death-cause classifier | 0.77 | 0.99 | 2 | **0.191** | 0.572 | below 0.5 — ages toward ceiling 0.572 |
+| Model: aggro/leash radius | 0.78 | 0.96 | 2 | **0.187** | 0.562 | below 0.5 — ages toward ceiling 0.562 |
+| Model: time-to-kill | 0.76 | 0.95 | 2 | **0.180** | 0.541 | below 0.5 — ages toward ceiling 0.541 |
+| Model: refresh-clock inference | 0.74 | 0.99 | 2 | **0.183** | 0.549 | below 0.5 — ages toward ceiling 0.549 |
+| Model: combat outcome | 0.75 | 0.95 | 2 | **0.178** | 0.534 | below 0.5 — ages toward ceiling 0.534 |
+| Model: server-patch change detection | 0.72 | 0.99 | 2 | **0.178** | 0.535 | below 0.5 — ages toward ceiling 0.535 |
+| Model: swarm formation | 0.74 | 0.96 | 2 | **0.178** | 0.533 | below 0.5 — ages toward ceiling 0.533 |
+| Model: forge success hidden-variable | 0.72 | 0.98 | 2 | **0.176** | 0.529 | below 0.5 — ages toward ceiling 0.529 |
+| Model: frame staleness | 0.73 | 0.96 | 2 | **0.175** | 0.526 | below 0.5 — ages toward ceiling 0.526 |
+| Model: anomaly detection (own KPIs) | 0.70 | 0.99 | 2 | **0.173** | 0.520 | below 0.5 — ages toward ceiling 0.520 |
+| Model: recruit quality projection | 0.70 | 0.97 | 2 | **0.170** | 0.509 | below 0.5 — ages toward ceiling 0.509 |
+| Model: wizard-pipeline ETA | 0.68 | 0.99 | 2 | **0.168** | 0.505 | below 0.5 — ages toward ceiling 0.505 |
+| Model: spawn composition | 0.68 | 0.97 | 2 | **0.165** | 0.495 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: chest-refill clock | 0.66 | 0.98 | 2 | **0.162** | 0.485 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: loot-value maps | 0.65 | 0.97 | 2 | **0.158** | 0.473 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: seat-selection value | 0.62 | 0.96 | 2 | **0.149** | 0.446 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: rival behaviour | 0.60 | 0.98 | 2 | **0.147** | 0.441 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: portal-destination safety | 0.55 | 0.96 | 2 | **0.132** | 0.396 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: brew-output priors | 0.55 | 0.97 | 2 | **0.133** | 0.400 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: market price | 0.55 | 0.97 | 2 | **0.133** | 0.400 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Model: test selection for the loop | 0.52 | 1.00 | 2 | **0.130** | 0.390 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
+| Magic — CASTING (chain sound; INT+tome slice unblocks) | 0.90 | 0.85 | 43 | **0.556** | 0.574 | **qualifies — BLOCKED: treasury (gold 113 vs ~220 for a tome)** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 79 | **0.520** | 0.529 | **qualifies — BLOCKED: no subject (rivals fielded 0 chars in 22h; sidecar healthy, feed empty by reality)** |
+| RIDE the rails (cap discoverable only empirically) | 0.82 | 0.90 | 24 | **0.523** | 0.553 | **qualifies** |
+| Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 30 | **0.487** | 0.510 | below 0.5 — ages toward ceiling 0.510 |
+| Portal-aware routing (portal tile = edge to its twin; graph from our own events) | 0.90 | 0.80 | 12 | **0.480** | 0.540 | below 0.5 — ages toward ceiling 0.540 |
+| Tick-participation bar (operator: block-explorer style, last 500 ticks green/red) | 0.72 | 1.00 | 12 | **0.480** | 0.540 | below 0.5 — ages toward ceiling 0.540 |
+| Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 24 | **0.499** | 0.528 | below 0.5 — ages toward ceiling 0.528 |
+| Exploration matrix (B) experiment arm | 0.92 | 0.70 | 59 | **0.472** | 0.483 | INELIGIBLE — ceiling<0.5 |
+| Rival-awareness dashboard panel | 0.62 | 0.97 | 90 | **0.444** | 0.451 | INELIGIBLE — ceiling<0.5 |
+| Impassable-tile analysis | 0.60 | 1.00 | 92 | **0.443** | 0.450 | INELIGIBLE — ceiling<0.5 |
+| Short-TTL predator memory | 0.60 | 0.90 | 64 | **0.397** | 0.405 | INELIGIBLE — ceiling<0.5 |
+| Log-scale overview bars | 0.45 | 1.00 | 74 | **0.331** | 0.338 | INELIGIBLE — ceiling<0.5 |
+| Campaign layer remainder (narrative+A/B) | 0.80 | 0.55 | 91 | **0.325** | 0.330 | INELIGIBLE — ceiling<0.5 |
 
 **Danger-as-cost RE-DERIVED (2026-08-23, promised iter 95):** risk raised 0.75 → 0.90 with
 the scope narrowed to make that honest: the change applies ONLY to the desperation branch

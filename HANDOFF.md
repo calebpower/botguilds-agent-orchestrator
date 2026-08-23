@@ -6,7 +6,17 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.92.0` on **run #181** (pushed; see git log).
+- **Live:** `explorer/0.92.1` on **run #182** (pushed; see git log).
+- **DEATH LATCH (0.92.1)**: #181 proved the 0.92.0 green gate NEVER FIRED — median
+  embark->death gap 38 ticks; the census predicate (>=2 predators in one view) can't see
+  a spread-out chaser band that kills serially. Now one of OUR corpses latches its world
+  dangerous for DEATH_GATE_TTL=900 (ledger-uid only; village/rival deaths latch nothing);
+  wizards share the predicate. PROCESS: gates must emit an observable when they SUPPRESS
+  (the silent `continue` cost an archaeology session). MEASURE on #182: embark->death
+  gaps lengthen, recruit deaths in hot bands drop, gate latches visible after deaths.
+- **ML PASS 4 progress**: parity CLEAN on #179 (44/44) + #180 (19/19); stint shadow
+  ~11k rows on #181 alone (decisions floor met). REMAINING: extend check_shadow_parity
+  to replay stint scores; shadow.py zero-diff; live calibration (>=30 deaths); tick p95.
 - **GREEN-RECRUIT BAND GATE (0.92.0)**: #180's first hours: 16 our-deaths, ALL fresh
   recruits, ALL shallow — vale band 0 rolled a chaser pit (lava_ant/spider_brown/delver,
   chaser ~0.93) and level-1 bare-handed replacements were run down fleeing (11/16); 0/16

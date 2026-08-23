@@ -120,3 +120,66 @@ def test_a_stale_danger_read_does_not_gate():
     bot.strategy._world_danger["mines"] = (0.0, 3.0, 500 - TTL)
     acts = bot.on_frame(_village([_recruit("fresh")], PAD))
     assert _embarks(acts), "an expired danger read still gated the recruit"
+
+
+# ---- v0.92.1: the death latch --------------------------------------------------------
+# Run #181: median embark->death gap 38 ticks — the census predicate (>=2 predators in
+# ONE view) never fired against a spread-out chaser band that killed serially. A corpse
+# latches the gate with no density threshold. TTL literal 900, pinned.
+
+DEATH_TTL = 900
+
+
+def test_death_ttl_literal_matches():
+    from steemer.strategy import explorer
+    assert explorer.DEATH_GATE_TTL == DEATH_TTL
+
+
+def test_our_corpse_latches_the_world_for_greens():
+    """A field frame shows our char in vale; a later frame carries its death event.
+    The next green villager must NOT embark to vale (mines full -> waits), even though
+    no predator census ever reached the danger ledger."""
+    bot = _bot()
+    victim = _recruit("victim")
+    bot.on_frame({"type": "frame", "world": "vale", "tick": 500, "events": [],
+                  "bounds": [24, 200], "chars": [victim],
+                  "visible": {"tiles": [[x, y, "floor", 0, 0] for x in range(6)
+                                        for y in range(6)],
+                              "entities": [], "items": [], "gold": []}})
+    bot.tick = 510
+    bot.on_frame({"type": "frame", "world": "vale", "tick": 510,
+                  "events": [{"kind": "death", "char_uid": "victim"}],
+                  "bounds": [24, 200], "chars": [],
+                  "visible": {"tiles": [], "entities": [], "items": [], "gold": []}})
+    bot.tick = 520
+    acts = bot.on_frame(_village([_recruit("fresh")],
+                                 {"vale": ["va", "vb", "vc"],
+                                  "mines": ["ma", "mb", "mc", "md", "me"]}))  # mines FULL
+    assert not _embarks(acts), f"green embarked into the corpse world: {acts}"
+
+
+def test_the_latch_expires_after_its_ttl():
+    bot = _bot()
+    st = bot.strategy
+    st.note_char({"char_uid": "victim", "stats": {}, "level": 1, "gifts": []})
+    st.on_char_death("victim", "vale", 500)
+    assert st._world_is_dangerous("vale", 500 + DEATH_TTL - 1) is True
+    assert st._world_is_dangerous("vale", 500 + DEATH_TTL) is False
+
+
+def test_a_rival_corpse_does_not_latch():
+    """Only a uid we held in OUR ledger latches — rival deaths in the same stream must
+    not gate our fielding (rivals die to their own mistakes constantly)."""
+    bot = _bot()
+    st = bot.strategy
+    st.on_char_death("g_them_c999", "vale", 500)     # never in our ledger
+    assert st._world_is_dangerous("vale", 501) is False
+
+
+def test_a_village_death_latches_nothing():
+    bot = _bot()
+    st = bot.strategy
+    st.note_char({"char_uid": "victim", "stats": {}, "level": 1, "gifts": []})
+    st.on_char_death("victim", "village", 500)
+    assert st._world_is_dangerous("village", 501) is False
+    assert st._world_is_dangerous("vale", 501) is False
