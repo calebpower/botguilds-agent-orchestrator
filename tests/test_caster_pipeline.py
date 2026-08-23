@@ -117,7 +117,8 @@ def test_the_designate_is_a_GUARDIAN_at_level_one():
     consumed tome — the whole pipeline. The role system already knows how to be cautious;
     the designate gets it at any level, and ungifted level-1s stay foragers."""
     from steemer.strategy.explorer import role_of
-    assert role_of({"gifts": ["int"], "level": 1}) == "guardian"
+    assert role_of({"gifts": ["int"], "level": 1}) == "wizard", \
+        "the designate's role is its own name — the operator watches the panel"
     assert role_of({"gifts": ["str"], "level": 1}) == "forager"
     assert role_of({"gifts": ["str"], "level": 9}) == "guardian"
 
@@ -153,3 +154,25 @@ def test_the_tome_buy_WAITS_for_the_INT_grind():
     assert buy4 and buy4["kind"] == "tome_veil", f"no tome at INT 4 and 400g: {acts4}"
     from steemer.strategy.explorer import TOME_BUY_MIN_INT
     assert TOME_BUY_MIN_INT == 4, "the gate moved; re-read the numbers in this test"
+
+
+def test_the_wizard_is_never_LABELLED_a_barren_forager():
+    """The spacing trace's label is what the operator reads in the decision panel. The
+    barren-band downgrade label belongs to foragers (whose boldness it explains); a wizard
+    spacing off in a barren band must still say 'wizard'. Caught as a surviving mutant —
+    nothing read the label until this test."""
+    from steemer.reasoning import DecisionTrace
+    from steemer.strategy.base import FieldContext
+    bot = _bot()
+    char = _char(xp=0)
+    char.update({"pos": [5, 5], "stamina": 40, "max_stamina": 60, "level": 1,
+                 "statuses": [], "carry": {"used": 0, "cap": 20}})
+    known = {(x, y): "floor" for x in range(11) for y in range(11)}
+    ctx = FieldContext(world="vale", known=known,
+                       enemies={(5, 7): {"eid": 9, "kind": "wolf", "hp_frac": 1.0}},
+                       bounds=(11, 11))
+    tr = DecisionTrace(tick=500, world="vale", char_uid="c1")
+    bot.strategy.act(bot, char, {"world": "vale", "tick": 500, "chars": [char]}, ctx, tr)
+    spacing = [c.why for c in tr.candidates if "spacing off" in c.why]
+    assert spacing, f"no spacing offer with a wolf two away: {[c.why for c in tr.candidates]}"
+    assert spacing[0].startswith("wizard:"), f"mislabelled: {spacing[0]!r}"

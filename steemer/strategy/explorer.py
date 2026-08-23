@@ -1003,12 +1003,15 @@ def role_of(char: dict[str, Any]) -> str:
     # designate some XP rate (cautious thresholds, no predator trades); the investment
     # maths favours it long before level 4.
     if "int" in (char.get("gifts") or []):
-        return "guardian"
+        return "wizard"     # v0.83.2: its own name — the operator watches the panel, and
+                            # a protected designate labelled "guardian" is invisible. Every
+                            # behaviour check keys on == "forager", so any non-forager role
+                            # inherits the cautious thresholds automatically.
     return "guardian" if (char.get("level") or 0) >= GUARDIAN_LEVEL else "forager"
 
 
 class Explorer:
-    version = "explorer/0.83.1"
+    version = "explorer/0.83.2"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1931,7 +1934,7 @@ class Explorer:
                     severe = undead_frac >= uf or len(preds) >= dn
                     score = SPACE_SCORE_SEVERE if severe else SPACE_SCORE_CALM
                     band = "severe" if severe else "calm"
-                    label = role if (role == "guardian" or has_value) else "forager(barren)"
+                    label = role if (role != "forager" or has_value) else "forager(barren)"
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, best)},
                           score, f"{label}: a {kind} is {_sp_dist(pos)} away ({band} band) — spacing off",
                           urgent=True)
