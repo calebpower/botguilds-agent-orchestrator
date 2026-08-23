@@ -646,6 +646,20 @@ VAULT_DEAD_LIMIT = 8       # phantom vault ids tolerated before withdrawals stop
 #   market_listings in any village frame; sale events item=lumber gold<=1
 MARKET_PROBE_KIND = "lumber"
 MARKET_PROBE_PRICE = 3
+# v0.83.0 — THE CASTER PIPELINE. Magic is the one mechanic nobody on the server has
+# touched, and its unblock chain is: tome (shop 120g; loot has gone dry — zero tome
+# events in two runs) -> INT (the `use` is refused `stat_requirement`; threshold unknown
+# but discoverable free, since a refusal costs nothing and _tome_to_learn already retries
+# after stat growth) -> the `learned` event -> casting, whose essence ammunition the
+# taste engine has already stocked (9 kinds, 6 essences).
+#
+# Two gaps this closes: (1) nobody banked INT until a tome was ALREADY refused in their
+# pack, so the tome and the INT grind ran sequentially when the int-GIFTED character
+# (half-cost INT) could pre-bank in parallel; (2) nothing ever bought a tome.
+# PREMISE(2026-08-23, tome INT threshold unknown; 6 is a guess spanning docs/06's
+#   spell_cap breakpoints): first successful `use` reveals it — re-derive then.
+CASTER_INT_TARGET = 6      # pre-bank INT up to this on int-gifted characters
+TOME_BUY_KIND = "tome_veil"   # the cheap form (120g); bolt (150g) can wait
 
 # v0.58.0 BOTTLES. The heal supply had a hole in it that nothing was watching.
 #
@@ -985,7 +999,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.82.0"
+    version = "explorer/0.83.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1037,6 +1051,7 @@ class Explorer:
         # v0.82.0: one market probe per run; True also on rejection (fail closed).
         self._listed = False
         self._market_reclaimed = False   # stale-probe unlist, once per run
+        self._tome_bought = False        # v0.83.0: one tome purchase per run
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -1368,6 +1383,22 @@ class Explorer:
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "buy", "kind": kind},
                         f"buying a {kind} ({price}g; bare-handed — arming to break the poverty trap)")]
+            # 3a-bis) v0.83.0 BUY THE TOME — the magic unlock, for the caster-designate
+            #    only ("int" in gifts). Gated like every other purchase on the potion
+            #    reserve, so it can never eat the heal; once per run; skipped while ANY
+            #    tome is already in this character's pack (one unlock at a time — the
+            #    tome is consumed on learning, so a second is a hoard, not a spare).
+            if ("int" in (char.get("gifts") or []) and not self._tome_bought
+                    and not any(str(i.get("kind", "")).startswith(TOME_PREFIX)
+                                for i in inv)):
+                price = self._shop_price(frame, TOME_BUY_KIND)
+                if price is not None and gold - price >= POTION_RESERVE:
+                    self._tome_bought = True
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "buy",
+                                   "kind": TOME_BUY_KIND},
+                        f"buying a {TOME_BUY_KIND} ({price}g) — the magic unlock nobody "
+                        f"on this server has touched; INT pre-banked on this char")]
             # 3b) ARMORED, not just armed (v0.47.0). Only once the hand is filled, and
             #     only above ARMOR_BUY_FLOOR (> the weapon floor), so arming a bare char
             #     always outranks armoring an equipped one.
@@ -1446,7 +1477,13 @@ class Explorer:
                     bot, uid, {"char_uid": uid, "action": "forge",
                                "product": recipe[0], "item_ids": item_ids}, why)]
             # 5) spend banked XP on durability (safe in the village).
-            stat = self._pick_xp_stat(char, wants_int=self._needs_int(uid, inv))
+            # v0.83.0: an int-GIFTED character pre-banks INT (half cost) toward the
+            # caster target even before any tome is held — parallelising the tome and
+            # the INT grind instead of running them in sequence.
+            gifted_caster = ("int" in (char.get("gifts") or [])
+                             and char.get("stats", {}).get("int", 0) < CASTER_INT_TARGET)
+            stat = self._pick_xp_stat(char, wants_int=self._needs_int(uid, inv)
+                                      or gifted_caster)
             if stat is not None:
                 v = char.get("stats", {}).get(stat, 1)
                 gifted = stat in set(char.get("gifts", []))
