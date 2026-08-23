@@ -1056,7 +1056,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.87.0"
+    version = "explorer/0.87.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1700,14 +1700,24 @@ class Explorer:
                         guard_here = next((u for u in here_avail if u != cand
                                            and role_of(here_chars.get(u) or {}) == "guardian"),
                                           None)
-                        if guard_here is not None and fielded + len(inflight) + 2 <= world_cap:
+                        safe_maps = [m for m in open_maps
+                                     if not self._world_is_dangerous(m, tick)]
+                        if (guard_here is not None and safe_maps
+                                and fielded + len(inflight) + 2 <= world_cap):
                             uid, pair_with = cand, guard_here
-                            target = min(open_maps,
+                            target = min(safe_maps,
                                          key=lambda m: (threat(m), by_world.get(m, 0)))
                             break
-                        w_opts = [m for m in open_maps if m in guardian_worlds]
+                        # v0.87.1: wizards sit out DANGEROUS bands entirely. #175's
+                        # undead cycle killed 9 wizards at y=2-16 — near home, escorts
+                        # present — because the doctrine shipped them wherever a guardian
+                        # stood. In a hostile band a wizard has nothing to gain (xp was
+                        # 2.0/10k) and a pipeline to lose; guardians and fodder work the
+                        # band, wizards wait it out.
+                        w_opts = [m for m in open_maps if m in guardian_worlds
+                                  and not self._world_is_dangerous(m, tick)]
                         if not w_opts:
-                            continue          # no escort available — the wizard waits
+                            continue          # no SAFE escorted world — the wizard waits
                         uid = cand
                         target = min(w_opts, key=lambda m: (threat(m), by_world.get(m, 0)))
                         break
@@ -2147,7 +2157,11 @@ class Explorer:
                 return (c.get("stats") or {}).get("int", 0)
             arch = max(wizards, key=lambda c: (_int_of(c), c["char_uid"])) if wizards else None
             if my_role == "wizard":
-                if not has_guardian:
+                if self._world_is_dangerous(ctx.world, bot.tick):
+                    self._retreat(uid, pos, ctx, blocked, offer, WIZARD_FALLBACK_SCORE,
+                                  "band too dangerous for the wizard — the pipeline "
+                                  "waits out the cycle at home")
+                elif not has_guardian:
                     self._retreat(uid, pos, ctx, blocked, offer, WIZARD_FALLBACK_SCORE,
                                   "no guardian to party with — falling back to the "
                                   "village until one ventures out with me")

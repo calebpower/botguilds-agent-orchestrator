@@ -264,3 +264,35 @@ def test_a_guardian_reinforces_the_thin_world():
     emb = [a for a in acts if a.get("action") == "embark"]
     assert emb and emb[0]["map"] == "mines", \
         f"guardian did not reinforce the guardian-less world: {acts}"
+
+
+# ---- v0.87.1: wizards sit out dangerous bands ----------------------------------
+
+def test_a_wizard_does_not_embark_into_a_DANGEROUS_world_even_with_guardians():
+    """#175's undead cycle killed 9 wizards near home with escorts present: an escort is
+    not an answer to a hostile band. The wizard waits; guardians and fodder work it."""
+    from steemer.strategy.explorer import COHESION_PRED_DENSE
+    bot = _bot()
+    bot.config["roster_cap"] = 9
+    bot.strategy._world_danger["vale"] = (0.0, COHESION_PRED_DENSE, 500)
+    bot.on_frame(_field([_char("guard", ["vit"], level=5)]))       # guardian sighted in vale
+    acts = bot.on_frame(_village([_char("wiz", ["int"])],
+                                 {"vale": ["guard"], "mines": [f"v{i}" for i in range(7)]}))
+    emb = [a for a in acts if a.get("action") == "embark"]
+    assert not any("wiz" in (a.get("char_uids") or []) for a in emb), \
+        f"wizard shipped into a dangerous band: {acts}"
+
+
+def test_a_fielded_wizard_LEAVES_when_the_band_turns_dangerous():
+    """A refresh brings undead mid-stint: the wizard heads home even with its guardian
+    right there — the pipeline waits out the cycle."""
+    from steemer.strategy.explorer import COHESION_PRED_DENSE
+    bot = _bot()
+    frame = _field([_char("wiz", ["int"], pos=(3, 9)),
+                    _char("guard", ["vit"], pos=(4, 9), level=5)])
+    bot.on_frame(frame)
+    bot.strategy._world_danger["vale"] = (0.0, COHESION_PRED_DENSE, 500)
+    acts = bot.on_frame(frame)
+    mine = _act_for(acts, "wiz")
+    assert mine and mine[0]["action"] == "move" and mine[0]["dir"] == "S", \
+        f"wizard stayed out in a dangerous band: {mine}"
