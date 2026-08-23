@@ -190,6 +190,15 @@ class GuildBot:
         our_eids = {c["eid"]: c["char_uid"] for c in frame.get("chars", []) or []
                     if c.get("eid") is not None}
         for ev in frame.get("events") or []:
+            # v0.88.0: deaths are handled BY THEIR OWN char_uid, before the eid gate —
+            # a corpse is never among the frame's chars, so the eid lookup that scopes
+            # every other event can never resolve it. The seat ranking prunes instantly;
+            # a rival's uid prunes nothing (not in our ledger) and is harmless.
+            if ev.get("kind") == "death" and ev.get("char_uid"):
+                hook = getattr(self.strategy, "on_char_death", None)
+                if callable(hook):
+                    hook(ev["char_uid"])
+                continue
             uid = our_eids.get(ev.get("eid"))
             if uid is None:
                 continue
@@ -198,6 +207,7 @@ class GuildBot:
                 self._overburdened[uid] = self.tick
             elif kind == "forged":
                 self._forged[uid] = self.tick
+
             # v0.74.0: feed the chatter HERE, where every frame lands and ownership has
             # already been resolved. Hooking it into `village()` instead would repeat
             # 0.64.0's mistake exactly — that parser sat in the field path, never saw the

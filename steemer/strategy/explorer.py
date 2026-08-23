@@ -1021,7 +1021,50 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 #   what kills the 0.15.0 pickup<->drop thrash (a shed item re-grabbed off own tile).
 
 
-def role_of(char: dict[str, Any]) -> str:
+WIZARD_SEATS = 6           # v0.88.0 (operator): a MAXIMUM of six wizards, two per map
+WIZARD_SEATS_PER_WORLD = 2
+
+
+def wizard_rank_key(char: dict[str, Any]):
+    """The operator's ordering, verbatim: 'chosen by their int. If we have a tie, order
+    by level and by other stats.' The int GIFT slots between level and raw stats (it
+    halves every future INT point, which is exactly what the seats exist to buy), and the
+    uid tail makes ties deterministic so the seat set can never flap between frames."""
+    stats = char.get("stats") or {}
+    return (-stats.get("int", 0), -(char.get("level") or 0),
+            0 if "int" in (char.get("gifts") or []) else 1,
+            -sum(v for v in stats.values() if isinstance(v, int)),
+            str(char.get("char_uid") or ""))
+
+
+MAKE_ROOM_TTL = 300        # ticks a make-room flag stays live before the request lapses
+WIZARD_MIN_POOL = 12       # seats exist only when the ranked pool is at least this deep.
+                           # Without the floor, the two chars sighted right after a
+                           # restart would BOTH rank into the top-6, turn wizard, and
+                           # fall back home — momentary roster-wide paralysis until the
+                           # ledger fills (the exact state weirdness the operator warned
+                           # about). Below the floor there are NO wizards and everyone
+                           # plays their level/stat role; the ledger crosses 12 within a
+                           # frame or two of the first village sighting.
+
+
+def select_wizards(chars: list[dict[str, Any]], cap: int = WIZARD_SEATS) -> set:
+    """The chosen circle: a PURE function of a roster snapshot — no stored seat state to
+    corrupt, desync, or survive a restart wrongly. Self-stabilising by construction: the
+    moment a seat-holder spends one INT point it outranks every INT-1 challenger, so the
+    set entrenches exactly as fast as the investment it exists to protect."""
+    uids = {}
+    for c in chars:
+        u = c.get("char_uid")
+        if u and u not in uids:
+            uids[u] = c
+    if len(uids) < WIZARD_MIN_POOL:
+        return set()
+    ranked = sorted(uids.values(), key=wizard_rank_key)
+    return {c["char_uid"] for c in ranked[:cap]}
+
+
+def role_of(char: dict[str, Any], wizard_uids: "set | None" = None) -> str:
     """v0.39.0 per-character role, derived from level (not stored, so it self-adjusts as a
     char levels up). A leveled veteran is a GUARDIAN (worth protecting -> disengages early);
     a fresh recruit is a FORAGER (cheap -> works the edges of danger for income). Shared by
@@ -1033,11 +1076,16 @@ def role_of(char: dict[str, Any]) -> str:
     # the entire pipeline — where a dead forager loses a club. Protection costs the
     # designate some XP rate (cautious thresholds, no predator trades); the investment
     # maths favours it long before level 4.
-    if "int" in (char.get("gifts") or []):
-        return "wizard"     # v0.83.2: its own name — the operator watches the panel, and
-                            # a protected designate labelled "guardian" is invisible. Every
-                            # behaviour check keys on == "forager", so any non-forager role
-                            # inherits the cautious thresholds automatically.
+    # v0.88.0: wizardhood is a CHOSEN SEAT (top-WIZARD_SEATS by wizard_rank_key over the
+    # whole roster), not a gift of the dice. Callers with a roster view pass the seat set;
+    # the gift-based fallback survives ONLY for callers that cannot see the roster, and
+    # over-approximates deliberately (an int-gifted char is a likely seat) rather than
+    # under-protecting.
+    if wizard_uids is not None:
+        if char.get("char_uid") in wizard_uids:
+            return "wizard"
+    elif "int" in (char.get("gifts") or []):
+        return "wizard"
     # v0.87.0 (operator: "if we get a really shitty recruit, we should probably
     # classify them as 'fodder' and have them sacrifice themselves"): a roll in the
     # bottom ~11% (stats sum <= FODDER_STAT_SUM; rolls are 1-2 per stat, so the range is
@@ -1056,7 +1104,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.87.1"
+    version = "explorer/0.88.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1115,6 +1163,12 @@ class Explorer:
         self._roles: dict = {}
         self._escorting: set = set()   # guardians mid-escort (hysteresis)
         self._party: dict = {}         # v0.86.0: wizard_uid -> guardian_uid (the pairing IS the party)
+        # v0.88.0: per-character sightings ledger — the roster never appears in one frame
+        # (village frames show villagers, field frames show one world), so seat selection
+        # ranks over the union of last sightings. Pruned on death; a restart re-derives
+        # the same seats because the seat-holders' invested INT outranks the pool.
+        self._char_ledger: dict = {}
+        self._make_room: dict = {}     # world -> tick: a seat needs a slot there
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -1258,6 +1312,10 @@ class Explorer:
 
         for char in chars:
             uid = char["char_uid"]
+            self.note_char(char)            # v0.88.0: ledger BEFORE any seat check —
+                                            # the spend/tome branches below ask
+                                            # wizard_seats() and a char absent from the
+                                            # ledger can hold no seat
             if char.get("craft"):
                 continue                    # busy crafting; don't disturb or embark it
             # In-flight guard: a char that just acted is skipped for a few ticks so
@@ -1396,7 +1454,7 @@ class Explorer:
             # v0.87.0: not one coin is ever spent on FODDER — no heal, no weapon, no
             # armor, no bottle. It sells, tastes, brews with what it has, banks XP
             # (spend_xp is free and its stats are cheap), and dies working.
-            is_fodder = role_of(char) == "fodder"
+            is_fodder = role_of(char, self.wizard_seats()) == "fodder"
             potions_held = sum(1 for i in inv if i["kind"] == "potion_red")
             if potions_held < POTION_KEEP and not is_fodder:
                 # 3-zero) WITHDRAW FROM THE BANK FIRST (v0.78.0). Found on run #159 while
@@ -1461,7 +1519,7 @@ class Explorer:
             # nothing. NB a tome is only CONSUMED on successful learning — a refused
             # `use` keeps the item — so the true worst case was always a shelf, not a
             # burn; this makes the shelf-time short too.
-            if ("int" in (char.get("gifts") or []) and not self._tome_bought
+            if (uid in self.wizard_seats() and not self._tome_bought
                     and char.get("stats", {}).get("int", 0) >= TOME_BUY_MIN_INT
                     and not any(str(i.get("kind", "")).startswith(TOME_PREFIX)
                                 for i in inv)):
@@ -1551,13 +1609,15 @@ class Explorer:
                     bot, uid, {"char_uid": uid, "action": "forge",
                                "product": recipe[0], "item_ids": item_ids}, why)]
             # 5) spend banked XP on durability (safe in the village).
-            # v0.83.0: an int-GIFTED character pre-banks INT (half cost) toward the
-            # caster target even before any tome is held — parallelising the tome and
-            # the INT grind instead of running them in sequence.
-            gifted_caster = ("int" in (char.get("gifts") or [])
-                             and char.get("stats", {}).get("int", 0) < CASTER_INT_TARGET)
-            stat = self._pick_xp_stat(char, wants_int=self._needs_int(uid, inv)
-                                      or gifted_caster)
+            # v0.88.0 (operator: "max int on selected chosen characters as quickly as
+            # possible"): a SEAT-holder routes EVERY XP to INT, uncapped (the stat cap is
+            # 24), banking when the next point is unaffordable — never a coin of XP on
+            # vit. Everyone else keeps the survival priority.
+            is_seat = uid in self.wizard_seats()
+            if is_seat:
+                stat = self._pick_xp_stat(char, wants_int=True, int_only=True)
+            else:
+                stat = self._pick_xp_stat(char, wants_int=self._needs_int(uid, inv))
             if stat is not None:
                 v = char.get("stats", {}).get(stat, 1)
                 gifted = stat in set(char.get("gifts", []))
@@ -1682,26 +1742,41 @@ class Explorer:
                                   for w, uids in by_world_uids.items()}
                 guardian_worlds = {w for w, n in guardian_count.items() if n > 0}
                 here_chars = {c.get("char_uid"): c for c in chars}
+                for c in chars:
+                    self.note_char(c)
+                seats = self.wizard_seats()
+                seat_count = {w: sum(1 for u in (uids or []) if u in seats)
+                              for w, uids in by_world_uids.items()}
                 for cand in here_avail:
                     cch = here_chars.get(cand)
                     if cch is not None:
-                        self._roles[cand] = role_of(cch)
+                        self._roles[cand] = role_of(cch, seats)
                 uid = None
                 target = None
                 pair_with = None
                 for cand in here_avail:
                     cch = here_chars.get(cand)
-                    crole = role_of(cch) if cch is not None else None
+                    crole = role_of(cch, seats) if cch is not None else None
                     if crole == "wizard":
                         # v0.87.0 PAIR-EMBARK (operator): a guardian standing HERE ships
                         # out WITH the wizard in one embark — the party forms at the
                         # gate, not by luck in the field. Failing that, join a world
                         # that already holds a guardian; failing that, wait.
                         guard_here = next((u for u in here_avail if u != cand
-                                           and role_of(here_chars.get(u) or {}) == "guardian"),
+                                           and role_of(here_chars.get(u) or {}, seats) == "guardian"),
                                           None)
+                        # v0.88.0: two seats per world, and never into danger. When
+                        # every safe under-seated world is party-full, flag it so its
+                        # lowest-stat non-seat walks home and makes the slot.
                         safe_maps = [m for m in open_maps
-                                     if not self._world_is_dangerous(m, tick)]
+                                     if not self._world_is_dangerous(m, tick)
+                                     and seat_count.get(m, 0) < WIZARD_SEATS_PER_WORLD]
+                        full_safe = [m for m in maps
+                                     if m not in open_maps
+                                     and not self._world_is_dangerous(m, tick)
+                                     and seat_count.get(m, 0) < WIZARD_SEATS_PER_WORLD]
+                        if not safe_maps and full_safe:
+                            self._make_room[full_safe[0]] = tick
                         if (guard_here is not None and safe_maps
                                 and fielded + len(inflight) + 2 <= world_cap):
                             uid, pair_with = cand, guard_here
@@ -1715,7 +1790,8 @@ class Explorer:
                         # 2.0/10k) and a pipeline to lose; guardians and fodder work the
                         # band, wizards wait it out.
                         w_opts = [m for m in open_maps if m in guardian_worlds
-                                  and not self._world_is_dangerous(m, tick)]
+                                  and not self._world_is_dangerous(m, tick)
+                                  and seat_count.get(m, 0) < WIZARD_SEATS_PER_WORLD]
                         if not w_opts:
                             continue          # no SAFE escorted world — the wizard waits
                         uid = cand
@@ -1766,7 +1842,9 @@ class Explorer:
         hp, max_hp = char.get("hp", 0), char.get("max_hp", 1)
         stamina = char.get("stamina", 0)
         self._stat_total[uid] = self._stat_sum(char)
-        my_role = role_of(char)                   # v0.87.0: hoisted — used by combat,
+        self.note_char(char)                      # v0.88.0: the seat ranking's ledger
+        _seats = self.wizard_seats()
+        my_role = role_of(char, _seats)           # v0.87.0: hoisted — used by combat,
         self._roles[uid] = my_role                # spacing, and the party block alike
         carry = char.get("carry", {"used": 0, "cap": 1})
         cfg = bot.config
@@ -2082,7 +2160,7 @@ class Explorer:
                     # plays safe — fixing the 0.39 flaw where bold foragers died for nothing in
                     # barren bands (re-feeding the death->recruit drain). Guardians are always
                     # cautious (protect the XP investment).
-                    role = role_of(char)
+                    role = my_role
                     has_value = bool(ctx.gold or ctx.loot or ctx.containers)
                     if (role == "forager" and has_value) or role == "fodder":
                         # fodder is bold UNCONDITIONALLY — barren band or not, its job
@@ -2151,11 +2229,25 @@ class Explorer:
             # nobody; wizards with no guardian in the world go home, arch or not.
             chars_here = [c for c in frame.get("chars", []) or []
                           if c.get("char_uid") and c.get("pos")]
-            wizards = [c for c in chars_here if role_of(c) == "wizard"]
-            has_guardian = any(role_of(c) == "guardian" for c in chars_here)
+            wizards = [c for c in chars_here if role_of(c, _seats) == "wizard"]
+            has_guardian = any(role_of(c, _seats) == "guardian" for c in chars_here)
             def _int_of(c):
                 return (c.get("stats") or {}).get("int", 0)
             arch = max(wizards, key=lambda c: (_int_of(c), c["char_uid"])) if wizards else None
+            # v0.88.0 MAKE ROOM: the village flagged this world because a chosen wizard
+            # is waiting for a slot in it. The LOWEST-STAT non-seat character here walks
+            # home (deterministic: stat sum, uid tiebreak — every member computes the
+            # same victim, so exactly one leaves).
+            room_tick = self._make_room.get(ctx.world)
+            if (room_tick is not None and bot.tick - room_tick < MAKE_ROOM_TTL
+                    and my_role != "wizard"):
+                pool = [(sum(v for v in (c.get("stats") or {}).values()
+                             if isinstance(v, int)), c.get("char_uid"))
+                        for c in chars_here if c.get("char_uid") not in _seats]
+                if pool and min(pool)[1] == uid:
+                    self._retreat(uid, pos, ctx, blocked, offer, WIZARD_FALLBACK_SCORE,
+                                  "recalled — making room for a chosen wizard in this "
+                                  "world")
             if my_role == "wizard":
                 if self._world_is_dangerous(ctx.world, bot.tick):
                     self._retreat(uid, pos, ctx, blocked, offer, WIZARD_FALLBACK_SCORE,
@@ -2601,6 +2693,24 @@ class Explorer:
         if not d or tick - d[2] >= THREAT_TTL:
             return False
         return d[0] >= UNDEAD_SEVERE_GUARDIAN or d[1] >= COHESION_PRED_DENSE
+
+    def note_char(self, char: dict) -> None:
+        """Feed the sightings ledger (call for every char in every frame)."""
+        u = char.get("char_uid")
+        if u:
+            self._char_ledger[u] = {"char_uid": u, "stats": dict(char.get("stats") or {}),
+                                    "level": char.get("level") or 0,
+                                    "gifts": list(char.get("gifts") or [])}
+
+    def on_char_death(self, uid: str) -> None:
+        """v0.88.0: a death frees its seat INSTANTLY — the pure ranking promotes the next
+        candidate the moment the corpse leaves the ledger. Called from the bot's event
+        parser (the same place forged/overburdened learn)."""
+        self._char_ledger.pop(uid, None)
+        self._party.pop(uid, None)
+
+    def wizard_seats(self) -> set:
+        return select_wizards(list(self._char_ledger.values()))
 
     def _hold_formation(self, uid, pos, anchor, ctx, blocked, offer, why_tail):
         """One member holding the party square: step toward `anchor` (a tile every member
@@ -3100,7 +3210,8 @@ class Explorer:
                    for item in inv if str(item.get("kind", "")).startswith(TOME_PREFIX))
 
     @staticmethod
-    def _pick_xp_stat(char: dict[str, Any], wants_int: bool = False) -> str | None:
+    def _pick_xp_stat(char: dict[str, Any], wants_int: bool = False,
+                      int_only: bool = False) -> str | None:
         """The stat to raise next: the highest survival-priority stat (VIT>END>STR)
         that is BOTH below the cap AND affordable with the character's banked XP.
 
@@ -3113,6 +3224,13 @@ class Explorer:
         stats = char.get("stats", {})
         gifts = set(char.get("gifts", []))
         xp = char.get("xp", 0)
+        # v0.88.0: a SEAT maxes INT — int_only banks everything for the next INT point
+        # (stat cap 24 is the only ceiling; the operator's glass-ceiling directive).
+        if int_only:
+            v = stats.get("int", 0)
+            if v < 24 and Explorer._xp_cost(v, "int" in gifts) <= xp:
+                return "int"
+            return None
         for s in (XP_PRIORITY_CASTER if wants_int else XP_PRIORITY):
             v = stats.get(s, 0)
             if v < XP_STAT_TARGET and Explorer._xp_cost(v, s in gifts) <= xp:

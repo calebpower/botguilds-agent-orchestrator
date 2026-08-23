@@ -14,10 +14,12 @@ def _bot():
     b.config = {"party_cap": 5, "world_cap": 10, "roster_cap": 10,
                 "maps": [{"id": "vale"}]}
     b.tick = 500
-    return b
+    from support import seat_bench
+    return seat_bench(b)          # v0.88.0: seats need a pool; int>=3 fixtures claim one
 
 
-def _char(gifts=("int",), int_=1, xp=50, inv=(), uid="c1"):
+def _char(gifts=("int",), int_=5, xp=50, inv=(), uid="c1"):
+    # int_ default 5: an int-gifted fixture char must outrank the seat bench (v0.88.0)
     return {"char_uid": uid, "eid": 7, "hp": 30, "max_hp": 30, "xp": xp,
             "inventory": list(inv), "stats": {"vit": 8, "end": 8, "str": 8, "int": int_},
             "gifts": list(gifts), "spells": [], "spell_cap": 1,
@@ -46,20 +48,24 @@ def test_an_int_GIFTED_char_banks_INT_first():
     assert sp and sp["stat"] == "int", f"the gifted caster banked {sp} instead of int"
 
 
-def test_an_UNGIFTED_char_keeps_the_survival_priority():
-    acts = _bot().on_frame(_frame(_char(gifts=("str", "end"))))
+def test_a_NON_SEAT_char_keeps_the_survival_priority():
+    """v0.88.0 narrowed this claim: gift no longer decides — an ungifted char holding a
+    SEAT rightly maxes INT (promotion by stats). What must hold is that a char OUTSIDE
+    the six (int 1, below the bench) never spends its XP on INT."""
+    acts = _bot().on_frame(_frame(_char(gifts=("str", "end"), int_=1)))
     sp = _first(acts, "spend_xp")
-    assert sp is None or sp["stat"] != "int", f"ungifted char banked int: {sp}"
+    assert sp is None or sp["stat"] != "int", f"a non-seat banked int: {sp}"
 
 
-def test_at_the_caster_target_the_gifted_char_reverts_to_survival():
-    """INT 6 = CASTER_INT_TARGET (duplicated: see the pin below): the pre-bank stops and
-    XP goes back to durability. Without this the gift would drain every XP forever."""
-    acts = _bot().on_frame(_frame(_char(int_=6)))
+def test_a_seat_keeps_banking_int_PAST_six():
+    """v0.88.0 DELETED the INT-6 cap, on operator direction ("I deliberately want to try
+    to max their int... break the magic glass ceiling"): a seat-holder at INT 6 keeps
+    routing every XP to INT — the only ceiling is the stat cap at 24."""
+    # int 9, past XP_STAT_TARGET=8: at 6 the legacy caster priority behaves identically
+    # and the cap-restoring mutant survived — 9 is where the two paths genuinely diverge.
+    acts = _bot().on_frame(_frame(_char(int_=9, xp=200)))
     sp = _first(acts, "spend_xp")
-    assert sp is None or sp["stat"] != "int", f"kept banking int past the target: {sp}"
-    from steemer.strategy.explorer import CASTER_INT_TARGET
-    assert CASTER_INT_TARGET == 6, "the target moved; re-read the numbers in this test"
+    assert sp and sp["stat"] == "int", f"stopped banking int below the 24 stat cap: {sp}"
 
 
 # ---- buying the tome ----------------------------------------------------------
@@ -86,14 +92,16 @@ def test_no_tome_below_the_line():
     assert not (buy and buy["kind"] == "tome_veil"), f"ate into the heal reserve: {buy}"
 
 
-def test_an_UNGIFTED_char_never_buys_a_tome():
-    """The tome is consumed on learning by its HOLDER; buying it onto a char whose INT
-    will never rise strands 120g of unlock on the wrong shelf."""
-    char = _char(gifts=("str",), int_=4, inv=[{"kind": "potion_red", "item_id": "p",
+def test_a_NON_SEAT_char_never_buys_a_tome():
+    """v0.88.0: seats, not gifts, define wizardhood — an ungifted char CAN hold a seat
+    now (promotion by stats). What must still hold: a character OUTSIDE the chosen six
+    never spends 120g on an unlock it is not the vehicle for. int 1 ranks below the seat
+    bench, so this char holds no seat."""
+    char = _char(gifts=("str",), int_=1, inv=[{"kind": "potion_red", "item_id": "p",
                                        "uses": ["drink"]}])
     acts = _bot().on_frame(_frame(char, gold=400, stock=_TOME_STOCK))
     buy = _first(acts, "buy")
-    assert not (buy and buy["kind"] == "tome_veil"), f"ungifted char bought the tome: {buy}"
+    assert not (buy and buy["kind"] == "tome_veil"), f"a non-seat bought the tome: {buy}"
 
 
 def test_a_char_already_HOLDING_a_tome_does_not_buy_another():

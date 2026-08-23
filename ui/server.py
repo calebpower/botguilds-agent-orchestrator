@@ -45,7 +45,7 @@ from urllib.parse import parse_qs, urlparse
 # owns the authored lab-notebook loader, and db owns the SQLite/MariaDB seam.
 from steemer import db as _db
 from steemer import findings, metrics
-from steemer.strategy.explorer import role_of
+from steemer.strategy.explorer import role_of, select_wizards
 from steemer.storage import DEFAULT_DB
 
 # Repo root is the parent of this ui/ directory; the authored notebook and the
@@ -1074,6 +1074,10 @@ def api_roster(db_path: str) -> dict:
                 if uid and (uid not in best or tick > best[uid][0]):
                     best[uid] = (tick, c, world)
 
+        # v0.88.0: wizardhood is a chosen SEAT — the same pure ranking the bot runs,
+        # applied to the same roster snapshot, so the panel and the strategy can never
+        # disagree about who the wizards are.
+        _seats = select_wizards([c for (_t, c, _w) in best.values()])
         chars = []
         for uid, (tick, c, world) in best.items():
             eq = c.get("equipment") or {}
@@ -1093,7 +1097,7 @@ def api_roster(db_path: str) -> dict:
                 "hp": c.get("hp"), "max_hp": c.get("max_hp"),
                 "stamina": c.get("stamina"), "max_stamina": c.get("max_stamina"),
                 "level": c.get("level"), "xp": c.get("xp"),
-                "role": role_of(c),        # v0.39.0 per-char role (shared source of truth)
+                "role": role_of(c, _seats),   # v0.88.0: seat-aware (same pure ranking as the bot)
                 "stats": c.get("stats") or {}, "gifts": list(c.get("gifts") or []),
                 "equipment": {k: eq.get(k) for k in
                               ("hand", "offhand", "outfit", "trinket", "boots")},

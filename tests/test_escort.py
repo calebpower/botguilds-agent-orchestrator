@@ -15,13 +15,17 @@ def _bot():
     b.config = {"party_cap": 5, "world_cap": 10, "roster_cap": 10,
                 "maps": [{"id": "vale"}, {"id": "mines"}]}
     b.tick = 500
-    return b
+    from support import seat_bench
+    return seat_bench(b)          # v0.88.0: seats need a pool; int>=3 fixtures claim one
 
 
 def _char(uid, gifts, pos=(3, 3), level=5, hp=30):
+    # v0.88.0: wizardhood is a SEAT (top-6 by INT over the ledger); an int-GIFTED fixture
+    # char gets int 5 so it outranks the seat bench, an ungifted one stays int 1 below it.
     return {"char_uid": uid, "eid": abs(hash(uid)) % 10000, "pos": list(pos), "hp": hp,
             "max_hp": 30, "stamina": 48, "max_stamina": 56, "level": level,
-            "stats": {"int": 1}, "gifts": list(gifts), "statuses": [], "spells": [],
+            "stats": {"int": 5 if "int" in gifts else 1}, "gifts": list(gifts),
+            "statuses": [], "spells": [],
             "spell_cap": 1, "carry": {"used": 0, "cap": 20}, "inventory": [],
             "equipment": {"hand": {"kind": "club"}}}
 
@@ -228,7 +232,7 @@ def test_wizards_CLUSTER_into_one_detail_around_the_arch_wizard():
     toward a stationary target."""
     bot = _bot()
     w1 = _char("w1", ["int"], pos=(4, 3))
-    w1["stats"]["int"] = 3
+    w1["stats"]["int"] = 6
     frame = _field([_char("guard", ["vit"], pos=(3, 3), level=5),
                     w1,
                     _char("w2", ["int"], pos=(12, 3))])
