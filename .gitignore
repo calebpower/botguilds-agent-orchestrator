@@ -55,3 +55,4 @@ orchestrator/advice.md
 
 # crash dumps (a segfaulting runner drops these in the repo root)
 *.core
+reaper_db.toml
