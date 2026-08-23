@@ -118,6 +118,16 @@ def run_recorder(roster_fn: Callable[[], dict], base_url: str, conn, our_prefix:
     queue: list[tuple[str, str]] = []
     fails = 0
     while not should_stop():
+        # v0.97.0 HEARTBEAT: prove the track thread AND its OWN db connection are alive,
+        # every loop iteration, INDEPENDENT of whether rivals are fielded. When the
+        # connection dies (the 'MySQL Connection not available' crash-loop that left the
+        # feed silently stale for a day) this write fails and the beat goes stale — the
+        # watchdog's signal to restart the sidecar. spectate/color keep writing on the
+        # MAIN connection, so the any-intel heartbeat could not see this; the beat can.
+        try:
+            _intel.record(conn, "track_beat", None, time.time(), {"alive": True})
+        except Exception as e:
+            log(f"track: heartbeat write failed ({e}) — connection likely dead")
         backoff = min(idle_sleep, 3.0 * (2 ** min(fails, 4)))     # 3,6,12,24,48 capped
         if not queue:
             try:

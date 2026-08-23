@@ -118,6 +118,12 @@ class GuildBot:
         self.tick = 0
         self.config: dict[str, Any] = {}
         self.guild: dict[str, Any] = {}
+        # v0.97.0 HINTS: the sidecar watches the whole map (spectate/track intel) and the
+        # bot's chars only see locally. The hint channel closes that gap — the bot reads
+        # the sidecar's latest rival positions periodically and exposes them so a strategy
+        # can act on map-wide knowledge (the nuisance finding Will across the vale).
+        self.rival_hints: dict[str, list[dict[str, Any]]] = {}   # world -> [{guild_id,pos,name}]
+        self._hints_at: int = -10 ** 9
         self.client: Any = None   # set by Client
         # Authoritative roster from the public spectate HTTP endpoint. Attached
         # (and its poller started) only by the live runner — None under tests and
@@ -182,8 +188,45 @@ class GuildBot:
         if callable(hook):
             hook(self, message)
 
+    HINT_REFRESH_TICKS = 8     # read the sidecar's rival positions this often (cheap, cached)
+
+    def _refresh_hints(self) -> None:
+        """Pull the sidecar's latest rival-position snapshot (intel kind='track') into
+        self.rival_hints, keyed by world. Fail-closed: a read hiccup or a stale/missing
+        feed leaves the last hints in place and never touches the frame loop. Staleness of
+        the FEED is the sidecar watchdog's job; here we just consume what's fresh."""
+        if self.storage is None:
+            return
+        if self.tick - self._hints_at < self.HINT_REFRESH_TICKS:
+            return
+        self._hints_at = self.tick
+        try:
+            import json as _json
+            row = self.storage.conn.execute(
+                "SELECT tick, payload_json FROM intel WHERE kind='track' "
+                "ORDER BY seq DESC LIMIT 1").fetchone()
+            if row is None:
+                return
+            payload = row["payload_json"] if hasattr(row, "keys") else row[1]
+            d = _json.loads(payload)
+            by_world: dict[str, list] = {}
+            world = d.get("map")
+            for rv in d.get("rivals") or []:
+                if rv.get("pos") and rv.get("guild_id"):
+                    by_world.setdefault(world, []).append(
+                        {"guild_id": rv["guild_id"], "pos": tuple(rv["pos"]),
+                         "name": rv.get("name")})
+            # only replace the world that this snapshot covers; other worlds' last hints
+            # stand until their own snapshot arrives
+            if world is not None:
+                self.rival_hints[world] = by_world.get(world, [])
+        except Exception as e:                        # noqa: BLE001 — hints are advisory
+            print(f"[hints] refresh failed ({e.__class__.__name__}) — keeping last",
+                  flush=True)
+
     def on_frame(self, frame: dict[str, Any]) -> list[dict[str, Any]]:
         self.tick = frame.get("tick", self.tick)
+        self._refresh_hints()
         # v0.66.1: learn from events on EVERY frame, village included.
         #
         # This lived inside _field(), and village frames never reach _field() -- they route

@@ -186,3 +186,48 @@ def test_collect_uses_the_web_thresholds_for_the_sidecar_not_the_bot_ones():
     assert reports["bot"]["level"] == "warn"        # 150s > BOT_STALE_S (120)
     assert reports["web"]["level"] == "ok"          # 150s < WEB_STALE_S (180)
     assert reports["dash"]["level"] == "critical"
+
+
+# --- v0.97.0: the TRACK-thread heartbeat (the masked-staleness fix) -------------------
+import sqlite3
+
+
+def _intel_db(rows):
+    """rows: list of (kind, observed_at) inserted in order (seq ascending)."""
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    c.execute("CREATE TABLE intel(seq INTEGER PRIMARY KEY AUTOINCREMENT, "
+              "observed_at REAL, tick INTEGER, kind TEXT, payload_json TEXT)")
+    for kind, at in rows:
+        c.execute("INSERT INTO intel(observed_at, tick, kind, payload_json) "
+                  "VALUES (?,0,?,'{}')", (at, kind))
+    c.commit()
+    return c
+
+
+def test_track_beat_is_read_independently_of_other_intel():
+    conn = _intel_db([("spectate", 100.0), ("track_beat", 90.0), ("color", 101.0)])
+    assert health.latest_track_beat_at(conn) == 90.0
+    assert health.latest_intel_at(conn) == 101.0     # any-intel is the newest row
+
+
+def test_web_heartbeat_PREFERS_the_track_beat_over_fresh_spectate():
+    """THE REGRESSION: the track feed is dead (beat old) but spectate/color keep writing
+    on the healthy main connection. The any-intel heartbeat reads fresh and hides it; the
+    web heartbeat must follow the track_beat and report the sidecar stale."""
+    conn = _intel_db([("track_beat", 50.0), ("spectate", 500.0), ("color", 501.0)])
+    assert health.web_heartbeat_at(conn) == 50.0, "web heartbeat masked a dead track feed"
+    # and the classifier turns that beat age into a restart-worthy state (the watchdog
+    # feeds web_heartbeat_at into exactly this call inside collect)
+    from steemer import watchdog
+    rep = watchdog.classify_liveness(50.0 + health.WEB_DEAD_S + 1,
+                                     health.web_heartbeat_at(conn),
+                                     health.WEB_STALE_S, health.WEB_DEAD_S)
+    assert rep["level"] == "critical", rep
+
+
+def test_web_heartbeat_FALLS_BACK_to_any_intel_before_the_first_beat():
+    """A sidecar predating the beat (or fresh, before its first beat) must not be falsely
+    restarted — fall back to the coarse any-intel heartbeat."""
+    conn = _intel_db([("spectate", 300.0), ("color", 305.0)])   # no track_beat yet
+    assert health.web_heartbeat_at(conn) == 305.0

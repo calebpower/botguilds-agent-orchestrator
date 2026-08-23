@@ -1182,7 +1182,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.96.0"
+    version = "explorer/0.97.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -3039,10 +3039,16 @@ class Explorer:
         it exists only while Will's party is actually here."""
         if frame.get("world") != NUISANCE_WORLD:
             return
-        party = self._will_party(frame)
+        party = self._will_party(frame)                 # locally visible Will chars
         for e in party:
             self._will_eids[e["eid"]] = tick
-        if len(party) >= NUISANCE_TRIGGER:
+        # v0.97.0: also count Will via the sidecar's HINTS (map-wide), so we designate
+        # even when Will is across the vale, out of our chars' local sight — the reason
+        # the nuisance never fired while Will was demonstrably in the vale.
+        hint_party = [h for h in getattr(bot, "rival_hints", {}).get(NUISANCE_WORLD, [])
+                      if h.get("guild_id") == NUISANCE_GUILD]
+        seen_count = max(len(party), len(hint_party))
+        if seen_count >= NUISANCE_TRIGGER:
             self._nuisance["seen_tick"] = tick
             if self._nuisance["uid"] is None:
                 # this char sees Will and is here — it volunteers (armed volunteers are
@@ -3119,11 +3125,16 @@ class Explorer:
                 offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
                       NUISANCE_DELIVER_SCORE, "nuisance: carrying the spoils home to the guild")
             return
-        # SHADOW: hang in the CENTRE of Will's group. The centroid tile itself is usually
-        # occupied by one of his characters (blocked), so the goal is "within
-        # NUISANCE_HANG_RADIUS of the centroid" — near enough to be in the thick of what
-        # they fight (helping kill falls out of the develop-fight offer when armed).
-        centroid = self._centroid([tuple(e["pos"]) for e in self._will_party(frame)])
+        # SHADOW: hang in the CENTRE of Will's group. Prefer LOCALLY-visible chars (exact
+        # positions); if none are in sight, fall back to the sidecar's HINT positions to
+        # cross the vale toward him (map-wide knowledge closing the local-vision gap).
+        local = [tuple(e["pos"]) for e in self._will_party(frame)]
+        if local:
+            centroid = self._centroid(local)
+        else:
+            hints = [h["pos"] for h in getattr(bot, "rival_hints", {}).get(NUISANCE_WORLD, [])
+                     if h.get("guild_id") == NUISANCE_GUILD]
+            centroid = self._centroid(hints)
         if centroid is not None:
             cx, cy = centroid
             near = abs(pos[0] - cx) + abs(pos[1] - cy) <= NUISANCE_HANG_RADIUS

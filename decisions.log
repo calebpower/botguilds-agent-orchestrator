@@ -4776,3 +4776,25 @@ flip was optimistically on OFFER -> made it pickup-event-driven to honour 'only 
 successful'. NB THIS IS A ONE-OFF FUN FEATURE, not a wishlist-scored lever. NEXT: back
 to the loop proper — measure 0.95.0 forge-to-arm on #187 (armed share climbing?), ML
 Pass 4, then the band-local latch / dodge-when-healthy follow-ups.
+
+ITER 77 (2026-08-23, explorer/0.97.0): HINTS + SIDECAR HEARTBEAT (operator, chasing "Will
+is in the vale and I don't see a nuisance"). TWO root causes found: (1) the track
+recorder (rival positions via SSE) was crash-looping on 'MySQL Connection not available'
+— its OWN db connection died (stale after the LAN exposure) while the sidecar's spectate/
+color writers kept flowing on the healthy MAIN connection, so the watchdog's any-intel
+heartbeat never noticed. Restart revived it (track tick 1.67M -> live). (2) The nuisance
+read only LOCAL frame vision; our vale chars were shallow-NE, Will's deep-SW, never in
+sight. LEVER A — HINTS (operator's idea "the bot should accept hints from the component
+watching the feed"): GuildBot._refresh_hints() reads the latest track intel every 8 ticks
+into bot.rival_hints {world:[{guild_id,pos,name}]} (cached, fail-closed); the nuisance now
+DETECTS Will map-wide (>=3 by hint OR local) and ROUTES to his hint centroid when unseen,
+switching to exact local positions in sight. A general capability, not just the nuisance.
+LEVER B — TRACK HEARTBEAT (operator "the sidecar needs a heartbeat so it restarts on death
+if unintentionally stale"): the recorder writes kind='track_beat' every loop on its OWN
+connection (dies exactly when that connection dies); health.web_heartbeat_at() uses the
+beat (falls back to any-intel pre-beat) so the watchdog restarts web when the TRACK feed
+alone goes stale — the masked failure. 12 new tests (hints 4, nuisance-hint 4, heartbeat
+3, +1 winning-reason helper); ALL mutation-checked incl. a directional test trap (a deep
+char heads home regardless of the nuisance) fixed by asserting the WINNING action's
+reasoning not its direction. NEXT: measure #189 (does the nuisance fire now Will's live +
+hints flowing?); then back to loop proper (forge-to-arm measurement, ML Pass 4).

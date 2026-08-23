@@ -283,3 +283,75 @@ def test_reaching_the_village_with_the_spoils_completes_the_tour():
     bot.on_frame(village)
     assert bot.strategy._nuisance["uid"] is None, "tour did not complete at home"
     assert bot.strategy._nuisance["phase"] == "shadow"
+
+
+# --- v0.97.0: HINTS from the feed-watcher (map-wide, no local vision) -----------------
+
+def _winning_why(bot, frame):
+    """The reasoning string of the highest-scored offer — the action the bot will take.
+    Lets a test assert WHICH behaviour won, not just a coincidental direction."""
+    import steemer.reasoning as R
+    seen = []
+    orig = R.DecisionTrace.consider
+    def spy(self, action, score, why):
+        seen.append((score, why))
+        return orig(self, action, score, why)
+    R.DecisionTrace.consider = spy
+    try:
+        bot.on_frame(frame)
+    finally:
+        R.DecisionTrace.consider = orig
+    return max(seen, key=lambda t: t[0])[1] if seen else ""
+
+
+def _hint_bot(vale_hints):
+    """A bot whose rival_hints already carry Will's vale positions (as the sidecar would
+    supply), with NO Will chars in local frame vision."""
+    b = _bot()
+    b.rival_hints = {"vale": vale_hints}
+    return b
+
+
+def _will_hints(positions):
+    return [{"guild_id": WILL, "pos": list(p), "name": "Barbarian"} for p in positions]
+
+
+def test_hints_alone_designate_a_nuisance_with_NO_local_vision():
+    """The exact failure the operator hit: Will is in the vale (the sidecar sees him) but
+    our chars can't see him locally. Hints must be enough to designate."""
+    bot = _hint_bot(_will_hints([(60, 40), (61, 40), (60, 41)]))
+    bot.tick = 600
+    # frame has our char but ZERO Will entities in visible
+    _acts(bot, _frame(600, char_pos=(10, 10), will=()))
+    assert bot.strategy._nuisance["uid"] == "c1", "hints did not designate a nuisance"
+
+
+def test_TWO_hint_chars_do_NOT_trigger():
+    bot = _hint_bot(_will_hints([(60, 40), (61, 40)]))
+    bot.tick = 600
+    _acts(bot, _frame(600, char_pos=(10, 10), will=()))
+    assert bot.strategy._nuisance["uid"] is None
+
+
+def test_the_nuisance_routes_toward_the_HINT_centroid_when_will_is_unseen():
+    """Designated but Will unseen locally: the nuisance crosses the vale toward his hint
+    positions. Will's hints are toward LOW y (home side) while the scout/frontier pull is
+    toward HIGH y (unexplored) — so a move that closes on the low-y hint centroid can only
+    be the nuisance follow, not a coincidental scout step (which would go the other way)."""
+    bot = _hint_bot(_will_hints([(30, 5), (31, 5), (30, 6)]))   # centroid ~ (30,5)
+    bot.tick = 600
+    # a HEALTHY, shallow char (no home/heal pull); the WINNING action must be the nuisance
+    # follow — a direction assert alone can be satisfied by a coincidental scout step.
+    why = _winning_why(bot, _frame(600, char_pos=(10, 5), will=()))
+    assert "nuisance" in why and "shadowing" in why, f"nuisance follow did not win: {why!r}"
+
+
+def test_local_vision_OVERRIDES_hints_when_will_is_actually_in_sight():
+    """Once our char can see Will, exact local positions win over the coarser hints. Local
+    Will is toward LOW y; the hints point HIGH y (where the scout pull also is). A move
+    that closes on the low-y LOCAL centroid proves local won — a scout step or a hint
+    follow would both go high y."""
+    bot = _hint_bot(_will_hints([(10, 22), (11, 22), (10, 21)]))   # hints HIGH y
+    bot.tick = 600
+    acts = _acts(bot, _frame(600, char_pos=(10, 12), will=_party((10, 2))))  # local LOW y
+    assert _closer(acts, (10, 12), (10, 3)), f"ignored local vision for hints: {acts}"

@@ -114,12 +114,33 @@ def overall_level(reports: dict[str, dict[str, Any]]) -> str:
 # --------------------------------------------------------------------------- #
 
 def latest_intel_at(conn: Any) -> float | None:
-    """Newest `intel` row's ``observed_at`` — the sidecar's heartbeat, via the seq PK."""
+    """Newest `intel` row's ``observed_at`` — a coarse sidecar heartbeat, via the seq PK."""
     row = conn.execute(
         "SELECT observed_at FROM intel ORDER BY seq DESC LIMIT 1").fetchone()
     if row is None:
         return None
     return row["observed_at"] if hasattr(row, "keys") else row[0]
+
+
+def latest_track_beat_at(conn: Any) -> float | None:
+    """Newest `track_beat` observed_at — the TRACK THREAD's own liveness (v0.97.0). This
+    is the heartbeat that matters: it beats on the recorder's own db connection, so it
+    goes stale exactly when that connection dies — the failure the any-intel heartbeat
+    masks because spectate/color keep writing on the healthy main connection."""
+    row = conn.execute(
+        "SELECT observed_at FROM intel WHERE kind='track_beat' "
+        "ORDER BY seq DESC LIMIT 1").fetchone()
+    if row is None:
+        return None
+    return row["observed_at"] if hasattr(row, "keys") else row[0]
+
+
+def web_heartbeat_at(conn: Any) -> float | None:
+    """The sidecar's heartbeat for liveness: the track_beat when the new sidecar is
+    running, else the coarse any-intel (back-compat for a sidecar predating the beat, so
+    a fresh deploy is not falsely restarted before the first beat lands)."""
+    beat = latest_track_beat_at(conn)
+    return beat if beat is not None else latest_intel_at(conn)
 
 
 def tcp_alive(host: str, port: int, timeout_s: float = 2.0) -> bool:
@@ -197,7 +218,7 @@ def collect(conn: Any, *, now: float | None = None, dash_host: str = "127.0.0.1"
     return {
         "bot": watchdog.classify_liveness(now, watchdog.latest_received_at(conn),
                                           BOT_STALE_S, BOT_DEAD_S),
-        "web": watchdog.classify_liveness(now, latest_intel_at(conn),
+        "web": watchdog.classify_liveness(now, web_heartbeat_at(conn),
                                           WEB_STALE_S, WEB_DEAD_S),
         "dash": port_report(_tcp(dash_host, dash_port), now=now),
     }

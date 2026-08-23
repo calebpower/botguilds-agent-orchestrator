@@ -6,7 +6,17 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.96.0` on **run #188** (pushed; see git log).
+- **Live:** `explorer/0.97.0` on **run #189** (pushed; see git log).
+- **HINTS + SIDECAR HEARTBEAT (0.97.0, operator)**: the nuisance never fired because (a)
+  the sidecar's track recorder was crash-looping on a dead DB connection (its any-intel
+  heartbeat was masked by spectate/color on the healthy main conn — restart revived it)
+  and (b) the nuisance used only LOCAL vision. FIX A: the bot reads the sidecar's track
+  feed into bot.rival_hints every 8 ticks (a general 'hints from the feed-watcher'
+  capability); the nuisance detects Will map-wide and routes to his hint centroid when
+  unseen. FIX B: the recorder writes kind='track_beat' each loop on its OWN connection;
+  health.web_heartbeat_at() uses it so the watchdog restarts web when the TRACK feed
+  alone goes stale. WATCH #189: does the nuisance designate + route to Will now?
+  (Will IS live in the vale as of this pass — track feed flowing.)
 - **THE NUISANCE (0.96.0, operator FUN)**: a YELLOW role that shadows rival WillMorr
   (guild g_63837f) in the vale when >=3 of his chars are there — hangs in his party's
   centre, helps kill, says ':(' when he hits it, loots his fallen, and cackles
