@@ -55,6 +55,11 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
+| Hints: rival-avoidance for wizards | 0.82 | 0.95 | 0 | — | 0.584 | just added (tc=0) — ELIGIBLE |
+| Hints: any-rival death-loot vulture | 0.80 | 0.92 | 0 | — | 0.552 | just added (tc=0) — ELIGIBLE |
+| Hints: map-wide danger early-warning | 0.80 | 0.95 | 0 | — | 0.570 | just added (tc=0) — ELIGIBLE |
+| Hints: least-contested world routing | 0.75 | 0.93 | 0 | — | 0.523 | just added (tc=0) — ELIGIBLE |
+| Hints: rival-position dashboard overlay | 0.68 | 1.00 | 0 | — | 0.510 | just added (tc=0) — ELIGIBLE |
 | Deterministic party-card order | 0.68 | 1.00 | 1 | **-0.170** | 0.510 | below 0.5 — ages toward ceiling 0.510 |
 | Scope-error quarantine | 0.82 | 0.96 | 4 | **0.394** | 0.590 | below 0.5 — ages toward ceiling 0.590 |
 | Model: XP-rate per placement | 0.85 | 0.95 | 4 | **0.404** | 0.606 | below 0.5 — ages toward ceiling 0.606 |
@@ -80,7 +85,7 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 | Model: market price | 0.55 | 0.97 | 4 | **0.267** | 0.400 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
 | Model: test selection for the loop | 0.52 | 1.00 | 4 | **0.260** | 0.390 | **INELIGIBLE FOREVER (ceiling < 0.5)** |
 | Magic — CASTING (chain sound; INT+tome slice unblocks) | 0.90 | 0.85 | 45 | **0.557** | 0.574 | **qualifies — BLOCKED: treasury (gold 113 vs ~220 for a tome)** |
-| Move-prediction (b) rivals | 0.72 | 0.98 | 81 | **0.520** | 0.529 | **qualifies — BLOCKED: no subject (rivals fielded 0 chars in 22h; sidecar healthy, feed empty by reality)** |
+| Move-prediction (b) rivals | 0.72 | 0.98 | 81 | **0.520** | 0.529 | **qualifies — UNBLOCKED 2026-08-23: WillMorr is live in the vale + the hint channel (0.97.0) feeds his positions/moves; the subject finally exists** |
 | RIDE the rails (slices 2+: nav integration, ram tactics — awaits probe result) | 0.82 | 0.90 | 26 | **0.525** | 0.553 | **slice 1 SHIPPED 0.93.0** — re-scope after the first ride lands |
 | Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 32 | **0.489** | 0.510 | below 0.5 — ages toward ceiling 0.510 |
 | Portal-aware routing (portal tile = edge to its twin; graph from our own events) | 0.90 | 0.80 | 14 | **0.489** | 0.540 | below 0.5 — ages toward ceiling 0.540 |
@@ -154,6 +159,42 @@ technique when a metric is flat despite activity._
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
 
 ## Open
+
+### Hints-system ideas (2026-08-23, operator asked for 20; the good ones added below + to the table)
+
+The hint channel (0.97.0) = the bot acting on anything the sidecar sees MAP-WIDE (rival
+positions/moves from the track feed, guild rosters/levels/equipment/world-counts from
+spectate). The nuisance is the first consumer; these are the rest. **Good (added to the
+score table):**
+
+- [ ] **Hints: rival-avoidance for wizards** — keep our protected wizards (the compounding
+  INT investment) away from rival war-bands the hints reveal — WillMorr fields a lvl-29
+  wizard that would one-shot ours. Route wizards to rival-free worlds/bands; a guardian
+  escort holds/reroutes if a rival party approaches. Serves the wizard directive directly.
+- [ ] **Hints: any-rival death-loot vulture** — generalise the nuisance's loot phase to ANY
+  rival death (not just Will): when a rival char dies within reach, a nearby forager grabs
+  the drop. Free gear/gold — feeds the arm rate. The loot->deliver code already exists.
+- [ ] **Hints: map-wide danger early-warning** — rival deaths and mob swarms the sidecar
+  sees in worlds/bands our chars haven't reached yet = a free danger signal. Feed it into
+  the death-latch / band-forecast so we gate fielding into a hot world BEFORE we lose a
+  char discovering it ourselves.
+- [ ] **Hints: least-contested world routing** — spectate world-counts show where rivals
+  are crowding; field our gatherers into the LEAST contested world (more loot/char). Ties
+  into the income-dispatcher idea.
+- [ ] **Hints: rival-position dashboard overlay** — plot rival positions on the map viewer
+  / a rival heatmap (operator plays too; visibility). Cheap, dashboard-only.
+
+**Considered but NOT added (weaker):** loot-density heatmap from rival clustering
+(speculative — assumes rivals loot where they cluster; ceiling ~0.50); portal-network
+mapping via rival transits (portal-block already solved our need); "follow the leader"
+exploration shadowing a rival's best char (fun but redundant with the nuisance); rival
+forge/craft espionage (we already know the spear recipe); recruit-tempo matching (weak
+signal); market intelligence (market is dead); own-roster cross-world coordination (the
+bot already sees all our positions per-frame); rival-tier combat-seek targeting (folds
+into combat-outcome model); chokepoint/ambush avoidance (subsumed by rival-avoidance);
+rival-death mechanics postmortem (subsumed by map-wide danger warning). The rival
+MOVE-PREDICTION model itself is already a table item — now UNBLOCKED by the live feed.
+
 
 - [ ] **Deterministic party-card order (operator, 2026-08-23)** — the Party tab maps cards
   in raw `/api/roster` order and re-renders every 2s, so cards JUMP on each update when the
