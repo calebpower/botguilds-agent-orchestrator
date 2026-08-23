@@ -103,6 +103,9 @@
     "listing a surplus": {
       "through_bot_test": "test_a_surplus_lumber_is_LISTED_before_the_shop_gets_it"
     },
+    "pair-embarking guardian": {
+      "through_bot_test": "test_PAIR_EMBARK_ships_the_guardian_with_the_wizard"
+    },
     "recruiting (roster": {
       "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
     },

@@ -215,15 +215,52 @@ def test_partied_characters_SKIP_cohesion():
         f"a partied guardian also rallied to the centroid — two targets, jitter: {whys}"
 
 
-def test_two_wizards_cannot_claim_ONE_guardian():
-    """The second wizard finds the only guardian taken and falls back home rather than
-    forming a three-body chase."""
+def test_wizards_CLUSTER_into_one_detail_around_the_arch_wizard():
+    """v0.87.0 INVERTED the morning's contract, on operator direction: "It's okay for
+    wizards to cluster into a single party. In that case the wizard with the most int
+    needs to be protected by the other wizards too." The second wizard no longer falls
+    back — it joins the detail and holds formation on the arch-wizard's square. w1 has
+    INT 3 (the arch); w2 (INT 1) shields it; both stay fielded with one guardian.
+
+    NB the mutant that sends the ARCH through the lesser-wizard branch is EQUIVALENT
+    (anchor == its own tile -> gap 0 -> no move, in_party still set), so it survives
+    mutation by construction; the arch's stillness is asserted implicitly by w2's motion
+    toward a stationary target."""
     bot = _bot()
+    w1 = _char("w1", ["int"], pos=(4, 3))
+    w1["stats"]["int"] = 3
     frame = _field([_char("guard", ["vit"], pos=(3, 3), level=5),
-                    _char("w1", ["int"], pos=(4, 3)),
-                    _char("w2", ["int"], pos=(9, 9))])
+                    w1,
+                    _char("w2", ["int"], pos=(12, 3))])
     bot.on_frame(frame)
     acts = bot.on_frame(frame)
     w2 = _act_for(acts, "w2")
-    assert w2 and w2[0]["action"] == "move" and w2[0]["dir"] == "S", \
-        f"the unclaimed wizard did not fall back: {w2}"
+    assert w2 and w2[0]["action"] == "move" and w2[0]["dir"] == "W", \
+        f"the lesser wizard should close on the arch-wizard, not flee home: {w2}"
+
+
+# ---- v0.87.0: the party forms at the village gate ------------------------------
+
+def test_PAIR_EMBARK_ships_the_guardian_with_the_wizard():
+    """One embark, two char_uids, guardian first: the party exists from tick one instead
+    of forming by sighting-luck in the field."""
+    bot = _bot()
+    bot.config["roster_cap"] = 9        # roster at cap, else recruit-to-cap (0.87.0)
+    acts = bot.on_frame(_village([_char("wiz", ["int"]), _char("guard", ["vit"], level=5)],
+                                 {"mines": [f"v{i}" for i in range(7)]}))
+    emb = [a for a in acts if a.get("action") == "embark"]
+    assert emb and sorted(emb[0]["char_uids"]) == ["guard", "wiz"], \
+        f"no pair-embark: {acts}"
+
+
+def test_a_guardian_reinforces_the_thin_world():
+    """Operator: at least two guardians per world. vale holds two sighted guardians,
+    mines none — the next guardian must ship to mines despite vale being no worse."""
+    bot = _bot()
+    bot.config["roster_cap"] = 7        # roster at cap, else recruit-to-cap (0.87.0)
+    bot.on_frame(_field([_char("g1", ["vit"], level=5), _char("g2", ["vit"], pos=(5, 5), level=5)]))
+    acts = bot.on_frame(_village([_char("g3", ["vit"], level=5)],
+                                 {"vale": ["g1", "g2"], "mines": [f"v{i}" for i in range(4)]}))
+    emb = [a for a in acts if a.get("action") == "embark"]
+    assert emb and emb[0]["map"] == "mines", \
+        f"guardian did not reinforce the guardian-less world: {acts}"

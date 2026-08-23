@@ -499,10 +499,12 @@ SPACE_SCORE_CALM = 1.5      # beats rest(0.5)/scout(1.0), LOSES to frontier(2.0+
 #   FORAGER  = a fresh recruit   -> works the EDGES of danger for income (high thresholds);
 #              cheap to replace, and a forager that banks coins before dying beats a timid one.
 GUARDIAN_LEVEL = 4             # level >= this -> Guardian; else Forager
+FODDER_STAT_SUM = 7            # v0.87.0: stats sum <= this (and no int gift) = fodder
 UNDEAD_SEVERE_GUARDIAN = 0.08  # veteran trips "severe" at half the undead fraction...
 MELEE_DENSE_GUARDIAN = 2       # ...and at 2 melee predators (disengage early)
 UNDEAD_SEVERE_FORAGER = 0.20   # recruit tolerates a denser band before disengaging...
 MELEE_DENSE_FORAGER = 4        # ...and needs 4 melee predators to call it severe
+MELEE_DENSE_FODDER = 6         # v0.87.0: fodder barely acknowledges a swarm at all
 # v0.32.0: INVERTED to a benign ALLOWLIST. The 0.30/0.31 denylist (golem_stone,
 # delver, boar, spider_brown, …) was structurally doomed: every band-refresh rotates
 # in NEW mobs, so a hardcoded threat list is always a cycle behind and chars die to
@@ -891,6 +893,7 @@ WEAPON_BUY_FLOOR = 150
 # harvest/survive. No per-tick treasury read needed in the field.
 DEVELOP_HP = 0.7          # only pick a fight comfortably above the 0.6 retreat line
 DEVELOP_STAMINA = 15      # enough stamina to attack AND still afford a step to disengage
+DEVELOP_HP_FODDER = 0.4   # v0.87.0: fodder keeps swinging far below the 0.7 line
 COMBAT_SEEK_RADIUS = 5    # seek wildlife / gauge predator density within this many tiles
 COMBAT_SWARM = 2          # >=2 melee predators within reach -> too dangerous to fight, flee
 
@@ -1035,11 +1038,25 @@ def role_of(char: dict[str, Any]) -> str:
                             # a protected designate labelled "guardian" is invisible. Every
                             # behaviour check keys on == "forager", so any non-forager role
                             # inherits the cautious thresholds automatically.
+    # v0.87.0 (operator: "if we get a really shitty recruit, we should probably
+    # classify them as 'fodder' and have them sacrifice themselves"): a roll in the
+    # bottom ~11% (stats sum <= FODDER_STAT_SUM; rolls are 1-2 per stat, so the range is
+    # 6-12 and mean 9) with no int gift is FODDER — no coin is ever spent on it, it
+    # works at maximum boldness, and it trades hits where others dodge. Checked after
+    # wizard (an int-gifted bad roll is still a wizard: INT is the point) and before
+    # guardian (levelling does not promote fodder out of its class — its stats stay
+    # cheap and so does it).
+    stats = char.get("stats") or {}
+    _SIX = ("str", "dex", "int", "vit", "end", "agi")
+    if all(k in stats for k in _SIX) and sum(stats[k] for k in _SIX) <= FODDER_STAT_SUM:
+        # ALL six must be present: an absent stat is unknown, not zero, and a char we
+        # cannot fully read must never be condemned to the expendable class by default.
+        return "fodder"
     return "guardian" if (char.get("level") or 0) >= GUARDIAN_LEVEL else "forager"
 
 
 class Explorer:
-    version = "explorer/0.86.0"
+    version = "explorer/0.87.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1376,8 +1393,12 @@ class Explorer:
             #    heal is confined to the bottom 12 rows of the map, so this is the cheapest
             #    20 gold we can spend — it is the difference between a roster that can
             #    reach the content carrying the XP and one that cannot.
+            # v0.87.0: not one coin is ever spent on FODDER — no heal, no weapon, no
+            # armor, no bottle. It sells, tastes, brews with what it has, banks XP
+            # (spend_xp is free and its stats are cheap), and dies working.
+            is_fodder = role_of(char) == "fodder"
             potions_held = sum(1 for i in inv if i["kind"] == "potion_red")
-            if potions_held < POTION_KEEP:
+            if potions_held < POTION_KEEP and not is_fodder:
                 # 3-zero) WITHDRAW FROM THE BANK FIRST (v0.78.0). Found on run #159 while
                 # measuring the trek: the guild inventory held 202 potion_red — banked
                 # loot and old brews, roughly TEN TIMES everything we have ever bought —
@@ -1422,7 +1443,7 @@ class Explorer:
             #    prices + stat reqs; a club at 15 lowers the bootstrap escape from
             #    45 gold to 15, so the guild can arm a char the moment it scrapes
             #    a little loot, and that char can then survive → loot → recover.
-            if eqp.get("hand") is None and gold > WEAPON_BUY_FLOOR:   # v0.40.0: arm above the floor
+            if eqp.get("hand") is None and gold > WEAPON_BUY_FLOOR and not is_fodder:
                 buy = self._afford_weapon(char, frame, gold)
                 if buy is not None:
                     kind, price = buy
@@ -1455,7 +1476,7 @@ class Explorer:
             # 3b) ARMORED, not just armed (v0.47.0). Only once the hand is filled, and
             #     only above ARMOR_BUY_FLOOR (> the weapon floor), so arming a bare char
             #     always outranks armoring an equipped one.
-            if eqp.get("hand") is not None and gold > ARMOR_BUY_FLOOR:
+            if eqp.get("hand") is not None and gold > ARMOR_BUY_FLOOR and not is_fodder:
                 buy = self._afford_armor(char, eqp, frame, gold)
                 if buy is not None:
                     kind, price = buy
@@ -1485,7 +1506,7 @@ class Explorer:
             # (see server_bugs.md), so the shop is the only real source.
             # PREMISE(2026-08-23, brewing is our cheap heal supply and the shop its only
             #   bottle source): brew products by kind; vault withdrawal rejections
-            if picks and bottles < BOTTLE_KEEP and gold - 2 >= POTION_RESERVE:
+            if picks and bottles < BOTTLE_KEEP and gold - 2 >= POTION_RESERVE and not is_fodder:
                 price = self._shop_price(frame, "bottle_empty")
                 if price is not None:
                     return [self._village_act(
@@ -1602,7 +1623,13 @@ class Explorer:
         # RECRUIT_COOLDOWN — a just-recruited char isn't in the count for a few frames.)
         maps = [m["id"] for m in cfg.get("maps", [])] or list(DEFAULT_MAPS)
         party_cap = cfg.get("party_cap", 5)
-        recruit_target = min(world_cap, roster_cap, party_cap * len(maps) + RECRUIT_BENCH)
+        # v0.87.0 (operator: "we should probably fill the roster"): recruit to ROSTER
+        # CAP. Recruits are free and the gift lottery is the only wizard source — two
+        # random gifts a roll means ~1 in 3 recruits comes int-gifted, so an empty bench
+        # is unfilled wizard candidates. The old min() kept the roster near the fieldable
+        # count out of recruit-burst trauma (0.43.0), but that bug was lagging COUNTS,
+        # not bench size, and the settled-count gate already fixed it.
+        recruit_target = roster_cap
         # v0.43.0: count recruits WE'VE just issued that may not show in either count yet, so a
         # startup burst can't overshoot before the counts catch up. Without this, at t+0 both
         # counts read the not-yet-checked-in roster (9) and the gate fires every RECRUIT_COOLDOWN
@@ -1650,22 +1677,48 @@ class Explorer:
                 # explicit cost that a thin guardian bench pauses the INT grind. Never
                 # blocks anyone else: the picker walks past held-back wizards.
                 by_world_uids = guild.get("chars_by_world", {}) or {}
-                guardian_worlds = {w for w, uids in by_world_uids.items()
-                                   for u in (uids or [])
-                                   if self._roles.get(u) == "guardian"}
+                guardian_count = {w: sum(1 for u in (uids or [])
+                                         if self._roles.get(u) == "guardian")
+                                  for w, uids in by_world_uids.items()}
+                guardian_worlds = {w for w, n in guardian_count.items() if n > 0}
                 here_chars = {c.get("char_uid"): c for c in chars}
-                uid = None
-                target = None
                 for cand in here_avail:
                     cch = here_chars.get(cand)
                     if cch is not None:
                         self._roles[cand] = role_of(cch)
-                    if cch is not None and role_of(cch) == "wizard":
+                uid = None
+                target = None
+                pair_with = None
+                for cand in here_avail:
+                    cch = here_chars.get(cand)
+                    crole = role_of(cch) if cch is not None else None
+                    if crole == "wizard":
+                        # v0.87.0 PAIR-EMBARK (operator): a guardian standing HERE ships
+                        # out WITH the wizard in one embark — the party forms at the
+                        # gate, not by luck in the field. Failing that, join a world
+                        # that already holds a guardian; failing that, wait.
+                        guard_here = next((u for u in here_avail if u != cand
+                                           and role_of(here_chars.get(u) or {}) == "guardian"),
+                                          None)
+                        if guard_here is not None and fielded + len(inflight) + 2 <= world_cap:
+                            uid, pair_with = cand, guard_here
+                            target = min(open_maps,
+                                         key=lambda m: (threat(m), by_world.get(m, 0)))
+                            break
                         w_opts = [m for m in open_maps if m in guardian_worlds]
                         if not w_opts:
                             continue          # no escort available — the wizard waits
                         uid = cand
                         target = min(w_opts, key=lambda m: (threat(m), by_world.get(m, 0)))
+                        break
+                    if crole == "guardian":
+                        # v0.87.0 (operator): "at least two guardians per world" — a
+                        # guardian reinforces the open world with the FEWEST guardians
+                        # (worlds under 2 first, then threat, then headcount).
+                        uid = cand
+                        target = min(open_maps,
+                                     key=lambda m: (min(guardian_count.get(m, 0), 2),
+                                                    threat(m), by_world.get(m, 0)))
                         break
                     uid = cand
                     target = min(open_maps, key=lambda m: (threat(m), by_world.get(m, 0)))
@@ -1673,6 +1726,13 @@ class Explorer:
                 if uid is None:
                     return []
                 self._embark_at[uid] = tick
+                if pair_with is not None:
+                    self._embark_at[pair_with] = tick
+                    return [self._village_act(
+                        bot, None, {"action": "embark", "map": target,
+                                    "char_uids": [pair_with, uid]},
+                        f"pair-embarking guardian {pair_with} + wizard {uid} to {target} "
+                        f"— the party forms at the village gate")]
                 return [self._village_act(
                     bot, None, {"action": "embark", "map": target,
                                 "char_uids": [uid]},
@@ -1696,7 +1756,8 @@ class Explorer:
         hp, max_hp = char.get("hp", 0), char.get("max_hp", 1)
         stamina = char.get("stamina", 0)
         self._stat_total[uid] = self._stat_sum(char)
-        self._roles[uid] = role_of(char)          # v0.85.0: the escort gate's ledger
+        my_role = role_of(char)                   # v0.87.0: hoisted — used by combat,
+        self._roles[uid] = my_role                # spacing, and the party block alike
         carry = char.get("carry", {"used": 0, "cap": 1})
         cfg = bot.config
         statuses = char.get("statuses", []) or []
@@ -1927,7 +1988,11 @@ class Explorer:
         # wildlife XP still flows, but the dodge-override and the closing seek are for
         # characters whose death costs a club, not a pipeline.
         caster = "int" in (char.get("gifts") or [])
-        develop = (armed and not homing and not caster and hp >= max_hp * DEVELOP_HP
+        # v0.87.0: fodder trades hits down to DEVELOP_HP_FODDER — it is the one class
+        # whose death is budgeted. (It is usually bare-handed since no coin buys it a
+        # weapon, but looted and forged gear still equips for free.)
+        hp_bar = DEVELOP_HP_FODDER if my_role == "fodder" else DEVELOP_HP
+        develop = (armed and not homing and not caster and hp >= max_hp * hp_bar
                    and stamina >= DEVELOP_STAMINA)
         near_preds = [p for p in preds
                       if abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= COMBAT_SEEK_RADIUS]
@@ -2009,8 +2074,10 @@ class Explorer:
                     # cautious (protect the XP investment).
                     role = role_of(char)
                     has_value = bool(ctx.gold or ctx.loot or ctx.containers)
-                    if role == "forager" and has_value:
-                        uf, dn = UNDEAD_SEVERE_FORAGER, MELEE_DENSE_FORAGER
+                    if (role == "forager" and has_value) or role == "fodder":
+                        # fodder is bold UNCONDITIONALLY — barren band or not, its job
+                        # is to be out there soaking risk the real roster should not
+                        uf, dn = UNDEAD_SEVERE_FORAGER, MELEE_DENSE_FODDER if role == "fodder" else MELEE_DENSE_FORAGER
                     else:
                         uf, dn = UNDEAD_SEVERE_GUARDIAN, MELEE_DENSE_GUARDIAN
                     severe = undead_frac >= uf or len(preds) >= dn
@@ -2064,59 +2131,36 @@ class Explorer:
         # ESCORT_NEAR -> walk home (6.0 preempts all income; survival still outranks it).
         # The guardian side: a wizard drifting past ESCORT_PULL is closed on at 4.2 —
         # escort duty beats one more coin, never beats staying alive.
-        my_role = role_of(char)
         in_party = False
         if not homing:
-            by_uid = {c.get("char_uid"): c for c in frame.get("chars", []) or []
-                      if c.get("char_uid") and c.get("pos")}
+            # v0.87.0 THE DETAIL (operator: wizards may cluster into a single party; "the
+            # wizard with the most int needs to be protected by the other wizards too").
+            # The per-world party square is the ARCH-WIZARD'S TILE — the highest-INT
+            # wizard present (uid tiebreak, so every member computes the same anchor).
+            # Guardians AND lesser wizards hold formation on it; the arch-wizard chases
+            # nobody; wizards with no guardian in the world go home, arch or not.
+            chars_here = [c for c in frame.get("chars", []) or []
+                          if c.get("char_uid") and c.get("pos")]
+            wizards = [c for c in chars_here if role_of(c) == "wizard"]
+            has_guardian = any(role_of(c) == "guardian" for c in chars_here)
+            def _int_of(c):
+                return (c.get("stats") or {}).get("int", 0)
+            arch = max(wizards, key=lambda c: (_int_of(c), c["char_uid"])) if wizards else None
             if my_role == "wizard":
-                # PAIR: keep my guardian if it is still here; else claim the nearest
-                # free one. The pairing is the party; it dissolves only when the
-                # partner leaves the world (or dies, which is the same absence).
-                partner = self._party.get(uid)
-                if partner not in by_uid or self._roles.get(partner) != "guardian":
-                    taken = set(self._party.values())
-                    frees = [(abs(tuple(c["pos"])[0] - pos[0])
-                              + abs(tuple(c["pos"])[1] - pos[1]), u)
-                             for u, c in by_uid.items()
-                             if u != uid and role_of(c) == "guardian" and u not in taken]
-                    partner = min(frees)[1] if frees else None
-                    if partner is None:
-                        self._party.pop(uid, None)
-                    else:
-                        self._party[uid] = partner
-                if partner is None:
+                if not has_guardian:
                     self._retreat(uid, pos, ctx, blocked, offer, WIZARD_FALLBACK_SCORE,
                                   "no guardian to party with — falling back to the "
                                   "village until one ventures out with me")
+                elif arch is not None and arch.get("char_uid") == uid:
+                    in_party = True          # the protected asset holds the square
                 else:
                     in_party = True
-            elif my_role == "guardian":
-                mine = next((w for w, g in self._party.items() if g == uid), None)
-                wchar = by_uid.get(mine) if mine else None
-                if wchar is not None:
-                    in_party = True
-                    # THE PARTY SQUARE: the wizard's tile. One fixed point, identical
-                    # for every member — the guardian holds formation ON it; nobody
-                    # computes a target from anyone else's target.
-                    anchor = tuple(wchar["pos"])
-                    agap = abs(anchor[0] - pos[0]) + abs(anchor[1] - pos[1])
-                    threshold = ESCORT_HOLD if uid in self._escorting else ESCORT_PULL
-                    if threshold < agap <= ESCORT_MAX_GAP:
-                        wstep = nav.weighted_step(
-                            pos, lambda t: abs(t[0] - anchor[0])
-                            + abs(t[1] - anchor[1]) <= ESCORT_HOLD,
-                            ctx.known, blocked, fresh=ctx.fresh)
-                        if wstep is not None:
-                            self._escorting.add(uid)
-                            offer({"char_uid": uid, "action": "move",
-                                   "dir": nav.step_dir(pos, wstep)}, ESCORT_SCORE,
-                                  f"holding formation on the party square ({agap} from "
-                                  f"my wizard) — the party is the unit")
-                        else:
-                            self._escorting.discard(uid)
-                    else:
-                        self._escorting.discard(uid)
+                    self._hold_formation(uid, pos, tuple(arch["pos"]), ctx, blocked,
+                                         offer, "a lesser wizard shields the arch-wizard")
+            elif my_role == "guardian" and arch is not None:
+                in_party = True
+                self._hold_formation(uid, pos, tuple(arch["pos"]), ctx, blocked,
+                                     offer, "guardians protect the INT investment")
         form_up = (bool(allies) and not homing and not in_party
                    and self._world_is_dangerous(ctx.world, bot.tick))
         rally = False
@@ -2543,6 +2587,24 @@ class Explorer:
         if not d or tick - d[2] >= THREAT_TTL:
             return False
         return d[0] >= UNDEAD_SEVERE_GUARDIAN or d[1] >= COHESION_PRED_DENSE
+
+    def _hold_formation(self, uid, pos, anchor, ctx, blocked, offer, why_tail):
+        """One member holding the party square: step toward `anchor` (a tile every member
+        computes identically) with escort hysteresis; never beyond ESCORT_MAX_GAP —
+        re-pairing at distance is the village's job."""
+        agap = abs(anchor[0] - pos[0]) + abs(anchor[1] - pos[1])
+        threshold = ESCORT_HOLD if uid in self._escorting else ESCORT_PULL
+        if threshold < agap <= ESCORT_MAX_GAP:
+            wstep = nav.weighted_step(
+                pos, lambda t: abs(t[0] - anchor[0]) + abs(t[1] - anchor[1]) <= ESCORT_HOLD,
+                ctx.known, blocked, fresh=ctx.fresh)
+            if wstep is not None:
+                self._escorting.add(uid)
+                offer({"char_uid": uid, "action": "move",
+                       "dir": nav.step_dir(pos, wstep)}, ESCORT_SCORE,
+                      f"holding formation on the party square ({agap} away) — {why_tail}")
+                return
+        self._escorting.discard(uid)
 
     @staticmethod
     def _cohesion_step(pos: tuple[int, int], allies: list[tuple[int, int]],

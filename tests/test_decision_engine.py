@@ -487,22 +487,27 @@ def _world_field_frame(world, tiles, entities=()):
                         "items": [], "gold": []}}
 
 
-def test_recruiting_stops_at_the_fieldable_cap_not_the_server_cap():
-    # v0.27.0: with a high server cap (30) but only party_cap*maps+bench fieldable,
-    # recruiting stops at the fieldable target (5*3+2=17), not the server's 30 — so we
-    # don't grow (and arm) an undeployable bench that drains all the gold.
+def test_recruiting_fills_the_ROSTER_CAP():
+    """v0.87.0 REPLACED the v0.27.0 contract, on operator direction ("we should probably
+    fill the roster"). The old rule stopped at the fieldable count (17) to avoid arming
+    an undeployable bench — but recruits are free, the gift lottery is the only wizard
+    source (~1 in 3 rolls int-gifted), FODDER absorbs the bad rolls at zero coin, and
+    the gold-drain fear died when arming moved behind its floors. Recruiting now stops
+    only at roster_cap."""
     bot = _bot()
     bot.config = {"party_cap": 5, "world_cap": 30, "roster_cap": 30,
                   "maps": [{"id": "vale"}, {"id": "mines"}, {"id": "spire"}]}
     here17 = [f"h{i}" for i in range(17)]
-    at_cap = {"world": "village", "tick": 3,
-              "guild": {"gold": 5, "chars_here": here17, "chars_by_world": {}},
-              "chars": [_idle_village_char("h0")]}
-    assert all(a.get("action") != "recruit" for a in bot.on_frame(at_cap))   # roster 17 == target
-    below = {"world": "village", "tick": 3,
-             "guild": {"gold": 5, "chars_here": here17[:16], "chars_by_world": {}},
+    at_17 = {"world": "village", "tick": 3,
+             "guild": {"gold": 5, "chars_here": here17, "chars_by_world": {}},
              "chars": [_idle_village_char("h0")]}
-    assert any(a.get("action") == "recruit" for a in bot.on_frame(below))    # roster 16 < 17
+    assert any(a.get("action") == "recruit" for a in bot.on_frame(at_17)), \
+        "17 of 30 must keep recruiting — the bench is wizard candidates now"
+    at_30 = {"world": "village", "tick": 3,
+             "guild": {"gold": 5, "chars_here": [f"h{i}" for i in range(30)],
+                       "chars_by_world": {}},
+             "chars": [_idle_village_char("h0")]}
+    assert all(a.get("action") != "recruit" for a in bot.on_frame(at_30))   # cap is cap
 
 
 def test_embark_routes_to_the_safest_world():
