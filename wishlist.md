@@ -60,6 +60,8 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 | Danger as COST, not wall (desperation-branch only) | 0.88 | 0.90 | 7 | 0.479 | 0.594 | below 0.5 — qualifies at tc>=9 |
 | RIDE the rails (cap discoverable only empirically) | 0.82 | 0.90 | 13 | 0.497 | 0.553 | below 0.5 |
 | Errand-budget audit (size every errand vs stint length) | 0.80 | 0.85 | 19 | 0.474 | 0.510 | below 0.5 |
+| Portal-aware routing (portal tile = edge to its twin; graph from our own events) | 0.90 | 0.80 | 1 | -0.180 | 0.540 | just added |
+| Portal hazard-mask (bare chars treat portal tiles as blocked) | 0.78 | 0.95 | 1 | -0.185 | 0.556 | just added — cheap, defect-adjacent |
 | Tick-participation bar (operator: block-explorer style, last 500 ticks green/red) | 0.72 | 1.00 | 1 | -0.180 | 0.540 | just added — operator-requested |
 | Stale-ground SWEEP (revisit map instead of walking home) | 0.88 | 0.80 | 13 | 0.474 | 0.528 | below 0.5 |
 | Exploration matrix (B) experiment arm | 0.92 | 0.70 | 48 | 0.470 | 0.483 | INELIGIBLE — ceiling<0.5 |
