@@ -6,7 +6,12 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.86.0` on **run #174**, repo HEAD (pushed; see git log).
+- **Live:** `explorer/0.87.1` on **run #176** (pushed; see git log).
+- **DOCTRINE ERA** (0.87.x): roster filled to cap (gift lottery: ~9 wizards rolled), fodder
+  class (bottom rolls, zero spend, max bold), pair-embark, >=2 guardians/world, wizard
+  cluster on the arch-wizard. #175 taught the hard lesson: NINE wizard deaths in an undead
+  band — 0.87.1 makes wizards SIT OUT dangerous bands entirely. Watch: wizard deaths in
+  calm bands, move_failed composition (210/10k churn watch), INT grind in first calm cycle.
 - **THE PARTY IS THE UNIT** (0.86.0, operator architecture): self._party pairs wizard->
   guardian persistently; the party square = the wizard's tile (one fixed point for all);
   partied chars SKIP cohesion; cohesion's centroid now INCLUDES SELF for everyone else.

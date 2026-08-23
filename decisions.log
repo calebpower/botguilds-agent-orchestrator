@@ -4492,3 +4492,22 @@ its own reachability of the common square).
 LIVE #174 (4k frames): formation gap hovers 4-7, spikes close monotonically, ZERO traces
 with both party-square and cohesion targets. No jitter signature.
 GATE 950 reaper / 941 local.
+
+================================================================================
+iter 103 (2026-08-23) — explorer/0.87.1 — the doctrine meets an undead band
+================================================================================
+MATURE #175: honest regression. 20 deaths (8.2/10k, 4x prior), NINE wizards — at y=2-16,
+NEAR HOME, escorts present. Attribution: undead-heavy cycle + tripled rookie roster; the
+doctrine shipped wizards wherever a guardian stood, and an escort answers a BOX, not a
+BAND. xp 2.0/10k, zero INT ground (wizards earned nothing). move_failed 210/10k = churn
+composition (wall 244/floor 234 across scout/retreat/flee; no anchor-tile signature) —
+left as an explicit WATCH, not chased.
+0.87.1: wizards sit out dangerous bands three ways (safe-only pair-embark, safe-only
+join-a-guardian-world, walk-home on hostile refresh even beside their guardian). Both
+mutants killed. Findings entry written SAME PASS (the currency ratchet now enforces the
+practice the operator had to demand).
+WATCHES for next mature run: wizard deaths -> ~0 in calm bands & ZERO fielded-wizard
+frames in dangerous ones; move_failed falls with the band or gets its own diagnosis; INT
+grind resumes in the first calm cycle; fodder death share rises (they now carry the
+dangerous-band work — that is their job).
+GATE 960 reaper / 951 local.
