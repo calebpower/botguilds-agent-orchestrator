@@ -634,6 +634,18 @@ SAY_READY_FRAC = 0.9       # ...and only from a character with nothing to gain b
 # because the conservative reading of missing data is the one that cannot cost a recovery.
 POTION_KEEP = 1            # potions to carry into the field per character
 VAULT_DEAD_LIMIT = 8       # phantom vault ids tolerated before withdrawals stop for the run
+# v0.82.0 — PLAYER-MARKET PROBE. The market is EMPTY: guild.market_listings has been []
+# in every frame ever recorded — no guild on this server, the dev's included, has ever
+# listed an item — while the shop pays 20% of list and the docs say in as many words
+# "sell to players when you can; only use the shop's buyback as a last resort". One
+# listing per run probes whether ANY rival bot buys: a surplus lumber, at triple its ~1g
+# shop-sell. Cost of a never-sold probe: the foregone ~1g, reclaimed by unlist at the
+# NEXT run's start. Every listing/sale event shape is unobserved; the parser pattern is
+# taste's — tolerant fields, loud raw print, fail closed on rejection.
+# PREMISE(2026-08-22, the player market is unused and lumber shop-sells at ~1g):
+#   market_listings in any village frame; sale events item=lumber gold<=1
+MARKET_PROBE_KIND = "lumber"
+MARKET_PROBE_PRICE = 3
 
 # v0.58.0 BOTTLES. The heal supply had a hole in it that nothing was watching.
 #
@@ -973,7 +985,7 @@ def role_of(char: dict[str, Any]) -> str:
 
 
 class Explorer:
-    version = "explorer/0.81.0"
+    version = "explorer/0.82.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1022,6 +1034,9 @@ class Explorer:
         # Once per kind per run — taste is destructive, and a parser that missed the
         # result must not eat a second herb for nothing.
         self._tasted: set = set()
+        # v0.82.0: one market probe per run; True also on rejection (fail closed).
+        self._listed = False
+        self._market_reclaimed = False   # stale-probe unlist, once per run
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -1106,6 +1121,9 @@ class Explorer:
             dead = self._vault_pending.pop(uid, None)
             if dead is not None:
                 self._vault_dead.add(dead)
+        # v0.82.0: NO on_action_error handler for `list`, deliberately — the offer sets
+        # _listed when it fires, so a refusal has nothing left to disable and a handler
+        # here would be unobservable dead code (the 0.74.1/0.80.0 deletions, same rule).
         # v0.81.0: a refused `taste` — whatever the reason — burns no more herbs of that
         # kind this run. The kind is already in _tasted (set when offered), so nothing to
         # do beyond not clearing it; recorded here for the reader.
@@ -1232,6 +1250,47 @@ class Explorer:
             #    supply) or sells as before. Ground survey on #165: glimmerweed 490,
             #    bitterroot 392, frostmoss 272 sightings — if even one decodes to vigor,
             #    the brew supply multiplies.
+            # 2-pre-a0) v0.82.0 RECLAIM a stale probe: a listing of ours present before
+            #    we listed anything this run survived a prior run unsold — nobody buys at
+            #    that price. Unlist it (the item returns to inventory; the shop fallback
+            #    banks its ~1g) and let the probe branch below post a fresh one. Listing
+            #    shapes have never been observed; unreadable ones are logged and left.
+            if not self._market_reclaimed and not self._listed:
+                for l in guild.get("market_listings") or []:
+                    if str(l.get("guild_id") or "") != str(guild.get("guild_id") or "\0"):
+                        continue
+                    lid = l.get("listing_id") or l.get("id")
+                    if lid is None:
+                        print(f"[market] unreadable listing of ours: {l!r}", flush=True)
+                        continue
+                    self._market_reclaimed = True
+                    return [self._village_act(
+                        bot, None, {"action": "unlist", "listing_id": lid},
+                        f"unlisting probe {lid} — it survived a full run unsold, so "
+                        f"nobody buys at that price")]
+                self._market_reclaimed = True
+            # 2-pre-a) v0.82.0 MARKET PROBE — before shop-selling a surplus lumber, list
+            #    ONE on the player market per run. Guarded three ways: once per run
+            #    (_listed), never while we already have a live listing (market_listings),
+            #    and fail-closed on rejection (on_action_error sets _listed).
+            if (not self._listed
+                    and not any(str(l.get("guild_id") or "") == str(guild.get("guild_id") or "\0")
+                                for l in (guild.get("market_listings") or []))):
+                probe = next((i for i in inv
+                              if i["kind"] == MARKET_PROBE_KIND
+                              and i["item_id"] not in feedstock_keep
+                              and self._should_sell(i, eqp, brew_keep, smelt_keep,
+                                                    feedstock_keep, scarce_keep,
+                                                    can_learn)), None)
+                if probe is not None:
+                    self._listed = True
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "list",
+                                   "item_id": probe["item_id"],
+                                   "price": MARKET_PROBE_PRICE},
+                        f"listing a surplus {MARKET_PROBE_KIND} on the player market at "
+                        f"{MARKET_PROBE_PRICE}g (shop pays ~1) — the market has been "
+                        f"EMPTY all project; probing whether anyone buys")]
             for item in inv:
                 if (knowledge.essence_of(item["kind"]) is None
                         and "brew" in (item.get("uses") or [])

@@ -94,6 +94,9 @@
     "learning": {
       "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
     },
+    "listing a surplus": {
+      "through_bot_test": "test_a_surplus_lumber_is_LISTED_before_the_shop_gets_it"
+    },
     "recruiting (roster": {
       "exempt_reason": "pre-dates the village reachability gate (2026-08-22); covered by tests that drive the village loop directly, not GuildBot.on_frame. Convert to a through-the-bot test when this behaviour is next touched."
     },
@@ -108,6 +111,9 @@
     },
     "tasting a stranded": {
       "through_bot_test": "test_village_TASTES_an_undecoded_stranded_brewable_before_selling_it"
+    },
+    "unlisting probe": {
+      "through_bot_test": "test_a_STALE_probe_is_reclaimed_at_the_next_run"
     },
     "withdrawing a banked potion_red (item": {
       "through_bot_test": "test_the_withdrawal_is_reachable_THROUGH_THE_BOT"
