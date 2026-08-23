@@ -55,7 +55,7 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
-| Deterministic party-card order | 0.62 | 1.00 | 0 | — | 0.465 | just added (tc=0) |
+| Deterministic party-card order | 0.68 | 1.00 | 0 | — | 0.510 | just added (tc=0) — ELIGIBLE, qualifies at tc>=6 |
 | Scope-error quarantine | 0.82 | 0.96 | 3 | **0.328** | 0.590 | below 0.5 — ages toward ceiling 0.590 |
 | Model: XP-rate per placement | 0.85 | 0.95 | 3 | **0.336** | 0.606 | below 0.5 — ages toward ceiling 0.606 |
 | Model: death-cause classifier | 0.77 | 0.99 | 3 | **0.318** | 0.572 | below 0.5 — ages toward ceiling 0.572 |
