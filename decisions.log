@@ -4511,3 +4511,24 @@ frames in dangerous ones; move_failed falls with the band or gets its own diagno
 grind resumes in the first calm cycle; fodder death share rises (they now carry the
 dangerous-band work — that is their job).
 GATE 960 reaper / 951 local.
+
+================================================================================
+iter 104 (2026-08-23) — explorer/0.88.0 — the chosen six
+================================================================================
+OPERATOR DIRECTIVE (verbatim parts): max 6 wizards, 2/map, chosen by INT (tie: level,
+gift, stats), DELIBERATELY MAX INT ("break the magic glass ceiling"), demote the rest,
+instant promotion on death from the global pool, lowest-stat recall makes room, "make
+sure we don't run into state weirdness".
+ANSWER TO THE STATE QUESTION: no stored seat state AT ALL — select_wizards() is a pure
+function of a per-char sightings ledger; restarts re-derive; promotion is the ranking
+re-read after the corpse leaves the ledger (deaths routed by their OWN char_uid before
+the eid gate, which can never resolve a corpse); one ground INT point entrenches a seat.
+TWO REAL STATE BUGS caught by tests: restart paralysis (2 sighted chars both crowned →
+walked home; fixed with WIZARD_MIN_POOL=12) and ledger-fed-after-seat-checks (no villager
+could hold a seat on its own sighting tick). Seat XP: int-only, uncapped to 24
+(discriminating test value INT 9 — at 6 the legacy priority is identical and the mutant
+survived). UI runs the same ranking. 4 contracts amended in place with reasons.
+LIVE #177: panel shows EXACTLY six (all INT 2, tie-broken deterministically), rest
+demoted; wizards home under the band gate awaiting safe pair-embarks.
+GATE 965 reaper / 956 local. Seat mutants: corpse-keeps-seat, restart-paralysis,
+inverted-tie-order, cap-sneaks-back — ALL KILLED.

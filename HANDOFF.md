@@ -6,7 +6,12 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.87.1` on **run #176** (pushed; see git log).
+- **Live:** `explorer/0.88.0` on **run #177** (pushed; see git log).
+- **THE CHOSEN SIX** (0.88.0): wizardhood = a SEAT — pure top-6 ranking (INT, level, gift,
+  stats, uid) over a sightings ledger, NO stored state; WIZARD_MIN_POOL=12 guards restart
+  paralysis; death = instant re-rank promotion; lowest-stat recall makes room; seats bank
+  EVERY XP into INT uncapped. Watch: INT climb, tome at INT>=4 + gold>=220, the learned
+  event = glass ceiling broken.
 - **DOCTRINE ERA** (0.87.x): roster filled to cap (gift lottery: ~9 wizards rolled), fodder
   class (bottom rolls, zero spend, max bold), pair-embark, >=2 guardians/world, wizard
   cluster on the arch-wizard. #175 taught the hard lesson: NINE wizard deaths in an undead
