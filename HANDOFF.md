@@ -6,7 +6,10 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.83.1` on **run #169**, repo HEAD `7fa609a`, branch `main` (pushed).
+- **Live:** `explorer/0.84.0` on **run #171**, repo HEAD `abdbf15`, branch `main` (pushed).
+- **THE PLANNED ESCAPE** (0.84.0): danger priced (nav AVOID_COST=8), not walled, in the
+  hurt+cornered branch only — built from two wizard corpses that rested/bounced to death
+  in mob boxes on #170. Watch: boxed-death mode ~0, deaths/10k not rising from crossings.
 - **THE WIZARD PROJECT IS ON (operator directive)**: int-gifted chars pre-bank INT (first
   ever spend_xp int landed on #168); designate is a protected GUARDIAN at any level, never
   trades hits; tome_veil bought at gold>=220 AND designate INT>=4. Tomes only consumed on

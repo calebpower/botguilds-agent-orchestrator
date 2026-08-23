@@ -4424,3 +4424,26 @@ the tome lands; first successful `use` -> `learned` event -> re-derive CASTER_IN
 from the revealed threshold. WATCH: designate survival (they are now cautious), and XP
 inflow to a guardian-role level-1 (wildlife-only may be slow — if INT stalls, revisit).
 GATE 933 reaper / 924 local (0.83.1).
+
+================================================================================
+iter 99 (2026-08-23) — explorer/0.84.0 — the planned escape (wizard corpses -> lever)
+================================================================================
+OPERATOR: "why do my wizards keep dying" — traced both #170 wizard deaths to ONE
+geometry: BOXED IN. c17384 rested SIX ticks at full stamina while eaten (retreat +
+desperation both empty; strike range absolute in blocked); c17392 bounced the same
+doomed move 4x. The operator's mob-box screenshot, with corpses. The danger-as-cost
+item qualified this pass by the plain formula (tc=10 -> 0.515).
+0.84.0: nav.weighted_step `avoid` tier (AVOID_COST=8 ~ one eaten hit); the hurt+cornered
+branch plans a route HOME with strike range PRICED, bodies/learned-walls absolute; 8.2 —
+above one-step desperation (8.0), below clean retreat (8.5). Strike set built separately,
+unioned into blocked, so ONLY the escape prices danger.
+TESTS = the death box reconstructed from the frames. The route-quality oracle took THREE
+geometries: twice the safe corridor was also raw-shortest and the cost-deleted mutant
+SURVIVED — an oracle that cannot fail, caught twice by its own mutant. Final geometry
+makes the dangerous route the short one.
+ALSO this session (operator-driven): wizard role named + purple badge (dash restart now
+part of deploys — the dash imports role_of at startup and ran 2-day-old code), tome buy
+gated on INT>=4, 3 wizards in training (c17368 INT 2 front-runner).
+FALSIFICATION: boxed-death mode ~zero next mature run; deaths/10k must not rise from bad
+crossings (if it does, AVOID_COST is miscalibrated, not the idea wrong).
+GATE 938 reaper / 929 local.
