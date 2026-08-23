@@ -4402,3 +4402,25 @@ stuck-death case). Ceiling 0.594 eligible; tc gates ~2 more deploys. Not gamed �
 term priced a global change this no longer is.
 NO DEPLOY: nothing >0.5 is unblocked, and #167 is the best run in memory — left running.
 GATE: no code change (last: 923 reaper / 914 local at 0.82.0).
+
+================================================================================
+iter 98 (2026-08-23) — explorer/0.83.0 + 0.83.1 — the caster pipeline, operator-shaped
+================================================================================
+OPERATOR ASKED FOR THE MAGIC UNBLOCK THEORY, then endorsed with two notes (wizard must be
+PROTECTED; wary of burning gold on the tome). Facts established: tomes only CONSUMED on
+successful learning (refusals are free -> the INT-threshold search is automatic via
+_tome_to_learn's stat-growth retry, which ALREADY EXISTED — the gap I theorized was
+already closed); loot tomes have gone DRY (0 events in 2 runs); exactly one int-gifted
+villager (c17358).
+0.83.0: int-GIFTED chars pre-bank INT to CASTER_INT_TARGET=6 (half cost; parallel with
+treasury saving) + the designate buys tome_veil at gold>=220. VERIFIED LIVE IN MINUTES:
+first INT ever banked (spend_xp int on #168).
+0.83.1 (operator notes): designate is GUARDIAN at any level + excluded from predator
+trades (permadeath makes the wizard investment compound); tome buy also waits for INT>=4
+(stranded-capital window ~0). One 0.83.0 mutant survived by shadowing (learnable tome ->
+learning branch preempts the buy); fixture re-pinned on the reachable refused-tome case.
+FALSIFICATION for the pipeline: designate INT climbs run over run; at INT>=4 + gold>=220
+the tome lands; first successful `use` -> `learned` event -> re-derive CASTER_INT_TARGET
+from the revealed threshold. WATCH: designate survival (they are now cautious), and XP
+inflow to a guardian-role level-1 (wildlife-only may be slow — if INT stalls, revisit).
+GATE 933 reaper / 924 local (0.83.1).

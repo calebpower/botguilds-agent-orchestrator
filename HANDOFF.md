@@ -6,7 +6,11 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.82.0` on **run #167**, repo HEAD `974187f`, branch `main` (pushed).
+- **Live:** `explorer/0.83.1` on **run #169**, repo HEAD `7fa609a`, branch `main` (pushed).
+- **THE WIZARD PROJECT IS ON (operator directive)**: int-gifted chars pre-bank INT (first
+  ever spend_xp int landed on #168); designate is a protected GUARDIAN at any level, never
+  trades hits; tome_veil bought at gold>=220 AND designate INT>=4. Tomes only consumed on
+  SUCCESSFUL learning — refusals are free retries. Watch: INT climb, then the `learned` event.
 - **WE ARE THE SERVER'S FIRST MERCHANT** (0.82.0): one lumber listed at 3g/run on a market
   that had been empty all project. Listing shape now known (listing_id 'L393559', per-viewer
   `mine` flag). Watch: does any rival ever `buy_listing`? Stale probes auto-unlist next run.
