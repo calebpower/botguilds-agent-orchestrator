@@ -107,6 +107,37 @@ def test_unhealed_char_still_explores_when_shallow():
         _field_frame(char, tiles))
 
 
+def test_unhealed_char_at_the_cap_wont_chase_loot_deeper_the_line_dance():
+    # v0.103.0 THE LINE DANCE (run #195, c19457 at y12/13): an un-healed char AT the
+    # depth cap is pulled NORTH (deeper) by loot one tile past the cap at 4.0, which
+    # out-scored the safe-depth home-retreat (2.5). It stepped past the cap, the
+    # retreat turned it back, and the two alternated forever at the boundary. Gating
+    # the gather step on the same POISON_SAFE_DEPTH the retreat uses kills the deeper
+    # pull: the char commits to home instead of oscillating.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    tiles = _vert_corridor(POISON_SAFE_DEPTH + 4)
+    char = _field_char(pos=[0, POISON_SAFE_DEPTH], stamina=40, inventory=[])
+    acts = bot.on_frame(_field_frame(
+        char, tiles, items=[{"pos": [0, POISON_SAFE_DEPTH + 1], "kind": "egg"}]))
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts        # heads home
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts)
+
+
+def test_unhealed_char_still_gathers_loot_within_the_safe_depth():
+    # The guard must bite only PAST the cap. Loot the char can reach without crossing
+    # POISON_SAFE_DEPTH is still pursued — otherwise we would starve shallow gathering
+    # to kill an edge oscillation. Loot lies EAST at a safe depth; the frontier would
+    # pull elsewhere, so an EAST step proves the guard left the in-cap step alone.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    y = POISON_SAFE_DEPTH - 2
+    tiles = [[x, yy, "floor"] for x in range(6) for yy in range(0, POISON_SAFE_DEPTH + 4)]
+    char = _field_char(pos=[1, y], stamina=40, inventory=[])
+    acts = bot.on_frame(_field_frame(char, tiles, items=[{"pos": [4, y], "kind": "egg"}]))
+    assert {"char_uid": "c1", "action": "move", "dir": "E"} in acts        # toward the loot
+
+
 # --- v0.37.0 predator spacing, v0.38.0 mode-gated by band severity ---
 # Geometry: char at (0,2), mob(s) NORTH. (0,3) borders the unknown -> a north frontier
 # (score 2.5). Spacing scores 3.0 in a SEVERE band (beats the frontier -> char steps

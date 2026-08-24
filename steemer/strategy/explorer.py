@@ -1210,7 +1210,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.102.0"
+    version = "explorer/0.103.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2098,6 +2098,23 @@ class Explorer:
         homing = uid in self._homing
         # Don't walk onto other characters OR monsters.
         blocked = ctx.bodies | set(ctx.enemies)
+        # v0.103.0: hoisted from the retreat block (was v0.23.0, computed ~650 lines
+        # down). An un-healed char (no potion_red) is capped at POISON_SAFE_DEPTH —
+        # the retreat block turns it home from y>=cap at 2.5. But the gather block
+        # above offers loot/gold/chest steps at 4.0-5.0 with NO depth check, so a
+        # loot tile just past the cap out-scores the home-retreat: the char steps
+        # deeper for loot, the safe-depth rule turns it back, and the two alternate
+        # every tick at the boundary — the "line dance" (run #195, c19457 at y12/13).
+        # Gating gather steps on the SAME threshold the retreat uses stops the pull
+        # past the cap, so an un-healed char at the boundary heads home decisively.
+        has_heal = any(i.get("kind") == "potion_red"
+                       for i in char.get("inventory", []) or [])
+
+        def deep_ok(step, _has_heal=has_heal):
+            """A gather STEP is allowed unless it would carry an un-healed char past
+            POISON_SAFE_DEPTH (deeper than it may safely retreat from)."""
+            return _has_heal or step[1] <= POISON_SAFE_DEPTH
+
         # v0.96.0: nuisance upkeep — learn Will's positions, (re)designate a volunteer,
         # stand down when he leaves the vale. Cheap; runs for every vale char.
         self._nuisance_track(bot, char, uid, frame, bot.tick)
@@ -2569,12 +2586,16 @@ class Explorer:
                 # a kill (so they need no fighting). Then to chests (direct 1-21g +
                 # loot). Then ordinary loot.
                 gstep = self._step(pos, lambda p: p in ctx.gold, ctx, blocked)
+                if gstep and not deep_ok(gstep):
+                    gstep = None
                 if gstep:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, gstep)},
                           5.0, "beeline to a gold coin (instant banked gold)")
                     productive = True
                 cstep = self._step(pos, lambda p: any(n in ctx.containers for n in nav.neighbors(p)),
                                    ctx, blocked)
+                if cstep and not deep_ok(cstep):
+                    cstep = None
                 if cstep:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, cstep)},
                           4.5, "beeline to a chest (direct gold + loot)")
@@ -2592,6 +2613,8 @@ class Explorer:
                         loot_goal = toward
                         loot_why = "moving toward loot near an ally (forming up as we work)"
                 lstep = self._step(pos, lambda p: p in loot_goal, ctx, blocked)
+                if lstep and not deep_ok(lstep):
+                    lstep = None
                 if lstep:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, lstep)},
                           4.0, loot_why)
@@ -2706,8 +2729,8 @@ class Explorer:
             # survive (v0.23.0). Adjacent loot/attack (offered above, higher score)
             # still win, so it stays opportunistic; it just won't push further out.
             # A char carrying a heal may range deep (it can drink en route home).
-            has_heal = any(i.get("kind") == "potion_red"
-                           for i in char.get("inventory", []) or [])
+            # has_heal is hoisted to the loop header (v0.103.0) — the gather block
+            # gates on the same POISON_SAFE_DEPTH threshold this retreat uses.
             if not has_heal and pos[1] >= POISON_SAFE_DEPTH:
                 self._retreat(uid, pos, ctx, blocked, offer, 2.5,
                               "no heal past the safe depth — heading home before poison strands us")

@@ -4925,3 +4925,24 @@ after adding the end-to-end test (the unit tests stamped manually, masking the s
 mutant). Should sharply cut the 2711 returns AND stop wasting the arch-wizard's time so it
 can STAY OUT and level toward the tome. NEXT: measure #195 — returns/1k down? arch-wizard
 stint length up? (still the brewing/gold lever owed for the tome itself.)
+
+ITER 85 (2026-08-24, explorer/0.103.0): THE LINE DANCE — un-healed chars oscillating at
+the poison-safe-depth boundary (operator: "it looks like the guild is line dancing
+again"). Traced c19457 on run #195 flip-flopping N/S/N/S at y12/13 (POISON_SAFE_DEPTH=12),
+hp 36/36 healthy, UNHEALED (no potion_red). MECHANISM: the gather block (gold/chest/loot
+beelines, 5.0/4.5/4.0) was gated ONLY on `not homing` — no depth check. The retreat block
+turns an un-healed char home from y>=cap at 2.5 ("no heal past the safe depth"). So loot
+one tile past the cap (N, 4.0) OUT-SCORED the home-retreat (S, 2.5): step N past the cap,
+retreat turns it back S, loot reappears N, forever. A two-attractor boundary thrash with a
+stamina-rest gate between steps. FIX (bot-side, hoisted has_heal + a `deep_ok(step)`
+guard): a gather STEP is suppressed when it would carry an un-healed char past
+POISON_SAFE_DEPTH — the SAME threshold the retreat already uses, so the two rules agree
+about the cap instead of fighting over it. At the boundary the deeper loot pull vanishes
+and the char commits home; loot within the cap is still pursued. Applied to all three
+gather steps (gold/chest/loot). 2 tests in test_decision_engine.py, both mutation-checked
+from OPPOSITE sides: line-dance test fails when the guard is neutralised (allow-all
+mutant, char chases loot N); over-suppression test fails when the guard denies-all (char
+won't gather in-cap loot E). Together they pin `has_heal or step[1] <= POISON_SAFE_DEPTH`
+exactly. 1096 local/reaper green. NEXT: measure #196 — un-healed-char oscillation (rapid
+dir reversals at a fixed pos) down? no loss of shallow gather income? (still the
+brewing/gold lever owed for the tome, and #195's wizard-recall returns/1k measurement.)

@@ -13,7 +13,13 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   (0.98.0) is the live thread; slice 2 = ingot scarcity. Return to ML only when a model
   is load-bearing (recruit-quality / XP-rate feeding leveling), not the ones we have.
 
-- **Live:** `explorer/0.102.0` on **run #195** (pushed).
+- **Live:** `explorer/0.103.0` (pending self-deploy; #195 is the last measured run).
+- **LINE DANCE FIX (0.103.0)**: un-healed chars oscillated N/S at the POISON_SAFE_DEPTH=12
+  boundary (run #195 c19457 at y12/13) — the gather block pulled them past the cap for loot
+  (4.0) while the retreat pushed them home (2.5), and the two alternated forever. FIX: a
+  `deep_ok(step)` guard suppresses a gather step that would carry an un-healed char past
+  POISON_SAFE_DEPTH (the same threshold the retreat uses), so the rules agree about the cap
+  instead of fighting. 2 tests, mutation-checked from both sides. NEXT: measure #196.
 - **WIZARD RECALL HYSTERESIS (0.102.0)**: #194's return spam (2711 returns/17k ticks) was
   the arch-wizard (INT 8) oscillating home 222x — an observation-staleness thrash (a
   wizard only knows a world is dangerous while IN it; home it expires, the embark reads it
