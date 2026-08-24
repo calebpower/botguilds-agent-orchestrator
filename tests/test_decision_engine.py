@@ -1884,3 +1884,23 @@ def test_the_DESPERATION_escape_fires_when_the_retreat_has_nowhere_known_to_go()
     assert mine and mine[0].get("action") == "move", (
         "cornered on unknown ground with nowhere KNOWN to retreat, the character was left "
         "to rest and bleed out")
+
+
+def test_an_unhealed_char_feels_no_pull_from_a_vein_past_the_poison_cap():
+    # v0.105.1 — the vein-seek was the other seek 0.105.0 shipped step-gated only
+    # (same named gap as the ride probe). The tile BESIDE a past-cap vein is the goal,
+    # and both such tiles here sit at y>=cap, so a filtered goal means no pull at any
+    # distance: the char heads home instead of marching to the wall.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    top = POISON_SAFE_DEPTH + 4
+    tiles = _vert_corridor(top)
+    tiles[POISON_SAFE_DEPTH + 1] = [0, POISON_SAFE_DEPTH + 1, "vein"]   # scenery, not floor
+    char = _field_char(pos=[0, POISON_SAFE_DEPTH - 2], stamina=40, inventory=[])
+    frame = {"world": "vale", "tick": 10, "chars": [char],
+             "bounds": [1, top + 1],
+             "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
+    acts = bot.on_frame(frame)
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts), acts
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts, \
+        f"should commit home (looted-out), got {acts}"

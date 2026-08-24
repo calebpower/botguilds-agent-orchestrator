@@ -5004,3 +5004,20 @@ also owed: purge/refresh the phantom vault ids feeding VAULT_DEAD_LIMIT. NEXT: m
 #198 — embarks/1k WAY down (was ~245/1k), not_in_village errors collapse, field-time
 share up; watch village doesn't over-bench (all-stamped worst case idles 150 ticks by
 design).
+
+ITER 88 (2026-08-24, explorer/0.105.1): THE CHORUS LINE IN THE MINES (operator: "well now
+they're all lined up in the mines") — the 0.105.0 NAMED GAP bit within the hour. Run #198:
+c19403/c19460/c19491 parked in a row at y=11 (one below the cap), full stamina, no
+potion_red. Mechanism: the RIDE PROBE was one of the two seeks shipped step-gated only —
+the un-healed anchor (c19403) marched N "walking to a known rail" (3.1) toward a rail at
+y>=13 it could never reach, stalled against the cap (y10/y11 flicker), and its TWO ESCORTS
+dutifully held formation on the stall ("holding formation on the party square", 4.2) —
+the escort logic parading the party against the depth wall. FIX: _rail_step and _ore_step
+take goal_ok and AND it into their BFS goal predicate; call sites pass deep_ok. Both gaps
+now closed WITH per-clone mutants (rail predicate un-filtered / beside_ore un-filtered —
+both killed). 2 tests: the chorus-line repro (armed un-healed prober, rail past cap,
+bounded no-frontier world -> commits home S) + the vein twin (goal = tile BESIDE the vein,
+both such tiles past cap). LESSON RECORDED: a "named gap" for a same-pattern clone is a
+prediction, not a dispensation — it fired in production within the hour; close clones in
+the same pass when the fixture cost is this low. 1108 local/reaper green. NEXT: unchanged
+(#198 measurement at the wakeup: embarks/1k, not_in_village/1k; then the brewing lever).

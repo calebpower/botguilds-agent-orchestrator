@@ -1218,7 +1218,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.105.0"
+    version = "explorer/0.105.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2720,7 +2720,7 @@ class Explorer:
             # would otherwise spend wandering.
             if (self._ride_prober_ready(char, pos, hp, max_hp, stamina, ctx)
                     and not self._is_rideable_rail(ctx, pos)):
-                rstep = self._rail_step(pos, ctx, blocked)
+                rstep = self._rail_step(pos, ctx, blocked, goal_ok=deep_ok)
                 if rstep is not None and deep_ok(rstep):
                     offer({"char_uid": uid, "action": "move",
                            "dir": nav.step_dir(pos, rstep)}, RIDE_SEEK_SCORE,
@@ -2743,7 +2743,8 @@ class Explorer:
                              for i in char.get("inventory", []) or [])
                 step = self._ore_step(
                     pos, ctx, blocked,
-                    VEIN_SEEK_RANGE_HEALED if healed else VEIN_SEEK_RANGE)
+                    VEIN_SEEK_RANGE_HEALED if healed else VEIN_SEEK_RANGE,
+                    goal_ok=deep_ok)
                 if step is not None and not deep_ok(step):
                     step = None
                 if step is not None:
@@ -3337,16 +3338,22 @@ class Explorer:
 
     @classmethod
     def _rail_step(cls, pos: tuple[int, int], ctx: "FieldContext", blocked,
-                   reach: int = RIDE_SEEK_RANGE) -> tuple[int, int] | None:
+                   reach: int = RIDE_SEEK_RANGE,
+                   goal_ok=lambda t: True) -> tuple[int, int] | None:
         """One step toward the nearest known RIDE-ABLE rail tile within reach, or None.
         A track tile is WALKABLE (you stand ON it, unlike a vein), so the goal is the
-        tile itself."""
-        return nav.bfs_step(pos, lambda t: cls._is_rideable_rail(ctx, t),
+        tile itself. ``goal_ok`` filters the GOAL (v0.105.1): run #198 showed the ride
+        probe staging a chorus line at the poison cap — an un-healed anchor marched to
+        y11 chasing a past-cap rail it could never reach, and its two escorts held
+        formation on the stall (the exact goal-vs-step lesson of 0.105.0, in the seek
+        this project shipped step-gated only and NAMED as the gap)."""
+        return nav.bfs_step(pos, lambda t: goal_ok(t) and cls._is_rideable_rail(ctx, t),
                             ctx.known, blocked, max_depth=reach)
 
     @staticmethod
     def _ore_step(pos: tuple[int, int], ctx: "FieldContext", blocked,
-                  reach: int = VEIN_SEEK_RANGE) -> tuple[int, int] | None:
+                  reach: int = VEIN_SEEK_RANGE,
+                  goal_ok=lambda t: True) -> tuple[int, int] | None:
         """One step toward the nearest known ORE tile within ``VEIN_SEEK_RANGE``, or None.
 
         The goal tile is SOLID (a vein is scenery you break, not ground you stand on), so
@@ -3356,7 +3363,8 @@ class Explorer:
         neighbour -- which is why the goal is "a walkable tile beside a vein", not the vein.
         """
         def beside_ore(t: tuple[int, int]) -> bool:
-            return any(ctx.known.get(n) in ORE_KINDS for n in nav.neighbors(t))
+            return goal_ok(t) and any(ctx.known.get(n) in ORE_KINDS
+                                      for n in nav.neighbors(t))
         # The range limit is `max_depth` alone. An explicit manhattan check here was
         # redundant — a path of at most N steps cannot end further than N away — and
         # mutation testing proved it: no test could tell the two versions apart.
