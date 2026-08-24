@@ -1216,16 +1216,34 @@ def test_embark_is_not_resent_while_in_flight():
     assert all(a.get("action") != "embark" for a in second)
 
 
-def test_embark_retries_after_the_cooldown_elapses():
-    # if the embark genuinely failed (char still home after EMBARK_COOLDOWN), we
-    # retry rather than stranding it forever.
-    from steemer.strategy.explorer import EMBARK_COOLDOWN
+def test_embark_retries_after_the_issued_ttl_elapses():
+    # if the embark genuinely failed (char still home after EMBARK_ISSUED_TTL), we
+    # retry rather than stranding it forever. Literal + pin per the hygiene ratchet.
+    from steemer.strategy.explorer import EMBARK_ISSUED_TTL
+    assert EMBARK_ISSUED_TTL == 30, "the TTL moved; re-read the numbers in this test"
     bot = _bot()
     by_world = {"vale": [f"v{i}" for i in range(9)]}
     bot.on_frame(_deploy_frame(["c1"], by_world, [_idle_village_char("c1")], tick=3))
     later = bot.on_frame(_deploy_frame(["c1"], by_world, [_idle_village_char("c1")],
-                                       tick=3 + EMBARK_COOLDOWN))
+                                       tick=33))
     assert later and later[0]["action"] == "embark" and later[0]["char_uids"] == ["c1"]
+
+
+def test_a_GHOST_relisting_does_not_recommand_the_embark():
+    """v0.107.0 — the not_in_village storm (3,347 errors on #197): the char embarks,
+    a fresher frame drops it from chars_here (the v0.10.0 guard then DELETED its
+    record), and a staler frame re-lists it — with no record left, the village
+    re-commanded the embark into an error, every few ticks, forever. Records now
+    expire by TIME: the ghost listing inside the TTL must produce no embark."""
+    bot = _bot()
+    by_world = {"vale": [f"v{i}" for i in range(9)]}
+    first = bot.on_frame(_deploy_frame(["c1"], by_world, [_idle_village_char("c1")], tick=3))
+    assert first and first[0]["action"] == "embark"
+    # a fresher frame: c1 has LEFT the village (this used to delete the record)
+    bot.on_frame(_deploy_frame([], by_world, [], tick=6))
+    # the stale flap: c1 re-listed within the TTL — must NOT be re-commanded
+    ghost = bot.on_frame(_deploy_frame(["c1"], by_world, [_idle_village_char("c1")], tick=9))
+    assert all(a.get("action") != "embark" for a in ghost),         f"re-commanded an embark off a ghost listing: {ghost}"
 
 
 def test_embarks_any_available_char_to_fill_the_field():
@@ -1906,3 +1924,85 @@ def test_an_unhealed_char_feels_no_pull_from_a_vein_past_the_poison_cap():
     assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts), acts
     assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts, \
         f"should commit home (looted-out), got {acts}"
+
+
+def test_one_potion_buys_sixteen_rows_not_unlimited_depth():
+    # v0.107.0 — the arch-wizard postmortem (c19403, #201, dead at y=28 after spending
+    # its one potion at y=31): a potion is single-use retreat margin, so the depth it
+    # buys must be a distance one potion can cover. Boundary, literal: base 12 + bonus
+    # 16 = budget 28. Loot at 27 is pursued; loot at 28 is not.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH, HEAL_DEPTH_BONUS
+    assert (POISON_SAFE_DEPTH, HEAL_DEPTH_BONUS) == (12, 16), \
+        "the budget moved; re-read the numbers in this test"
+    def acts_with_loot_at(y):
+        bot = _bot()
+        top = 32
+        char = _field_char(pos=[0, 26], stamina=40,
+                           inventory=[{"kind": "potion_red", "item_id": "p1"}])
+        return bot.on_frame({"world": "vale", "tick": 10, "chars": [char],
+                             "bounds": [1, top + 1],
+                             "visible": {"tiles": _vert_corridor(top), "entities": [],
+                                         "items": [{"pos": [0, y], "kind": "egg"}],
+                                         "gold": []}})
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts_with_loot_at(27), \
+        "one potion no longer covers the observed veins — ore is dead"
+    deep = acts_with_loot_at(28)
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in deep), deep
+
+
+def test_a_wizard_gets_NO_depth_bonus_however_healed():
+    # v0.107.0, the operator's standing directive made structural: the caster
+    # investment stays shallow. A potion-carrying WIZARD must not pursue loot past
+    # the BASE cap (its guardian stands beside it, so the escort fallback cannot be
+    # what keeps it from going — only the wizard-specific budget can).
+    from support import seat_bench
+    bot = seat_bench(_bot())
+    top = 20
+    wiz = {"char_uid": "wiz", "eid": 11, "pos": [0, 10], "hp": 30, "max_hp": 30,
+           "stamina": 40, "max_stamina": 56, "level": 5, "stats": {"int": 5},
+           "gifts": ["int"], "statuses": [], "spells": [], "spell_cap": 1,
+           "carry": {"used": 0, "cap": 20},
+           "inventory": [{"kind": "potion_red", "item_id": "p1"}],
+           "equipment": {"hand": {"kind": "club"}}}
+    guard = {"char_uid": "guard", "eid": 12, "pos": [1, 10], "hp": 30, "max_hp": 30,
+             "stamina": 40, "max_stamina": 56, "level": 5, "stats": {"int": 1},
+             "gifts": ["vit"], "statuses": [], "spells": [], "spell_cap": 1,
+             "carry": {"used": 0, "cap": 20}, "inventory": [],
+             "equipment": {"hand": {"kind": "club"}}}
+    tiles = [[x, y, "floor"] for x in range(2) for y in range(top + 1)]
+    acts = bot.on_frame({"world": "vale", "tick": 10, "chars": [wiz, guard],
+                         "bounds": [2, top + 1],
+                         "visible": {"tiles": tiles, "entities": [],
+                                     "items": [{"pos": [0, 13], "kind": "egg"}],
+                                     "gold": []}})
+    mine = [a for a in acts if a.get("char_uid") == "wiz"]
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in mine), \
+        f"a healed wizard chased loot past the base cap: {mine}"
+
+
+def test_a_healed_wizard_PAST_the_base_cap_retreats_home():
+    # v0.107.0 — the retreat side of the wizard budget (its goal-side twin is
+    # test_a_wizard_gets_NO_depth_bonus_however_healed). The wizard stands at y13
+    # holding a potion; an imminent refresh suppresses the looted-out retreat, so
+    # ONLY the depth-budget retreat can be what sends it south. A mutant that keys
+    # the retreat on "un-healed" instead of the budget leaves it resting here.
+    from support import seat_bench
+    bot = seat_bench(_bot())
+    top = 20
+    wiz = {"char_uid": "wiz", "eid": 11, "pos": [0, 13], "hp": 30, "max_hp": 30,
+           "stamina": 40, "max_stamina": 56, "level": 5, "stats": {"int": 5},
+           "gifts": ["int"], "statuses": [], "spells": [], "spell_cap": 1,
+           "carry": {"used": 0, "cap": 20},
+           "inventory": [{"kind": "potion_red", "item_id": "p1"}],
+           "equipment": {"hand": {"kind": "club"}}}
+    guard = dict(wiz, char_uid="guard", eid=12, pos=[1, 13], stats={"int": 1},
+                 gifts=["vit"], inventory=[])
+    tiles = [[x, y, "floor"] for x in range(2) for y in range(top + 1)]
+    acts = bot.on_frame({"world": "vale", "tick": 10, "chars": [wiz, guard],
+                         "bounds": [2, top + 1],
+                         "next_refresh": {"band": 0, "in_ticks": 1},
+                         "visible": {"tiles": tiles, "entities": [],
+                                     "items": [], "gold": []}})
+    mine = [a for a in acts if a.get("char_uid") == "wiz"]
+    assert {"char_uid": "wiz", "action": "move", "dir": "S"} in mine, \
+        f"a healed wizard camped past the base cap: {mine}"

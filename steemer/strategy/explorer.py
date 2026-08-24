@@ -863,6 +863,11 @@ TOME_PREFIX = "tome"
 # accord once the roster is healed, not a standing drain.
 # PREMISE(2026-08-22, an un-healed character cannot leave the spawn strip): compare the
 #   y-distribution of fielded char-frames with and without a potion_red -- see decisions.log
+HEAL_DEPTH_BONUS = 16      # v0.107.0: extra rows of allowed depth per CARRIED potion_red
+                           # (a potion is single-use retreat margin — the range it buys
+                           # must be coverable by one potion; y<28 with one still reaches
+                           # the observed veins at 26-27, while the arch-wizard's fatal
+                           # y=31 is barred). Wizards get NO bonus (protected, shallow).
 POTION_MIN_BUFFER = 10     # v0.106.0: what a POTION (or bottle) buy must leave behind —
                            # a minimal operating float, NOT the full POTION_RESERVE.
                            # The reserve protects heal-spending from weapons/armor; it
@@ -1050,7 +1055,10 @@ SCOUT_RESEND_TICKS = 40    # v0.106.1: after releasing a scout toward an empty w
                            # wait this long before releasing another to the same world —
                            # chars_by_world lags an embark by a few frames (the 0.43.0
                            # lagging-count lesson), and one sensor per world is the point.
-EMBARK_COOLDOWN = 8   # v0.10.0: after commanding a char to embark, don't re-send
+EMBARK_ISSUED_TTL = 30     # v0.107.0: how long an issued embark blocks re-issuing for
+                           # that char, ROSTER-INDEPENDENT (chars_here flaps stale for
+                           # frames after a departure; presence-based dropping caused the
+                           # not_in_village re-command storm — 3,347 errors on #197).
 #   that char's embark for this many ticks. The village frame we decide on is a few
 #   ticks stale, so a just-embarked char still shows in `chars_here` — without the
 #   guard the bot re-embarks it every tick and the tail bounces no_such_character
@@ -1226,7 +1234,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.106.1"
+    version = "explorer/0.107.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1853,13 +1861,18 @@ class Explorer:
         # recruit count added in the gate below.
         roster_seen = max((auth[0] if auth is not None else 0), len(here) + fielded)
 
-        # In-flight guard (v0.10.0): drop embark records for chars that have left
-        # the village (their embark landed), then treat the rest as still pending
-        # so we neither re-embark them nor count them as home for the world cap.
+        # In-flight guard, v0.107.0: records now expire by TIME, not by roster
+        # presence. The v0.10.0 rule dropped a record the moment the char left the
+        # STALE chars_here — then a later, staler frame re-listed the char, the
+        # cooldown had no record to check, and the village re-commanded the embark
+        # into a not_in_village error, 3,347 times on #197 alone. A record now lives
+        # for EMBARK_ISSUED_TTL ticks regardless of what the lagging roster claims;
+        # a genuinely failed embark retries after the TTL (a bounded delay), while a
+        # landed one can no longer be re-commanded off a ghost listing.
         tick = bot.tick
-        here_set = set(chars_here)
-        self._embark_at = {u: t for u, t in self._embark_at.items() if u in here_set}
-        inflight = {u for u, t in self._embark_at.items() if tick - t < EMBARK_COOLDOWN}
+        self._embark_at = {u: t for u, t in self._embark_at.items()
+                           if tick - t < EMBARK_ISSUED_TTL}
+        inflight = set(self._embark_at)
 
         # RECRUIT — but only up to what we can actually FIELD, not the server's high
         # roster/world cap (v0.27.0). We field at most party_cap per world, and
@@ -2164,20 +2177,31 @@ class Explorer:
         # every tick at the boundary — the "line dance" (run #195, c19457 at y12/13).
         # Gating gather steps on the SAME threshold the retreat uses stops the pull
         # past the cap, so an un-healed char at the boundary heads home decisively.
-        has_heal = any(i.get("kind") == "potion_red"
-                       for i in char.get("inventory", []) or [])
+        heals = sum(1 for i in char.get("inventory", []) or []
+                    if i.get("kind") == "potion_red")
+        # v0.107.0 DEPTH IS A BUDGET, NOT A BOOLEAN. The 0.106.0 heal-release let any
+        # healed char range without limit — and the arch-wizard (c19403, level 9, the
+        # INT ladder's top) died at y=31 in the mines on #201: it spent its ONE potion
+        # on a burn DOT deep, instantly becoming an un-healed char 31 rows from home,
+        # and stamina-starved to death mid-retreat at y=28. A potion is single-use
+        # margin; the range it buys must be a distance one potion can actually cover.
+        # Each carried heal extends the cap by HEAL_DEPTH_BONUS rows (one potion ->
+        # y < 28, which still covers the observed veins at 26-27, so ore flows; y=31
+        # is barred). WIZARDS GET NO BONUS — the operator's standing directive is a
+        # PROTECTED caster investment, and a wizard has no business hauling ore past
+        # the safe line however many potions it holds.
+        depth_cap = POISON_SAFE_DEPTH + (
+            0 if my_role == "wizard" else HEAL_DEPTH_BONUS * heals)
 
-        def deep_ok(step, _has_heal=has_heal):
-            """An outward STEP is allowed unless it would land an un-healed char ON or
-            past POISON_SAFE_DEPTH. STRICT `<` (v0.104.0): the retreat fires AT
-            `y >= POISON_SAFE_DEPTH`, so a step onto exactly the cap tile is a step
-            onto ground the retreat immediately vacates — 0.103.0's `<=` allowed it
-            and the dance survived one tile shallower (run #196: pulled y11 -> y12,
-            retreated y12 -> y11, forever). Gates EVERY idle/seek pull (gather,
-            combat-seek, ride/vein seek, rally, frontier, scout), never survival
-            moves (dodge/spacing/escape step wherever safety is) and never the
-            nuisance (its mission scores outrank the retreat, so it cannot dance)."""
-            return _has_heal or step[1] < POISON_SAFE_DEPTH
+        def deep_ok(step, _cap=depth_cap):
+            """An outward STEP/GOAL is allowed only below this char's depth budget.
+            STRICT `<` (v0.104.0): the retreat fires AT `y >= cap`, so landing ON the
+            cap tile is landing on ground the retreat immediately vacates (the 0.103.0
+            off-by-one dance). Gates EVERY idle/seek pull (gather, combat-seek,
+            ride/vein seek, rally, frontier, trek, scout), never survival moves
+            (dodge/spacing/escape step wherever safety is) and never the nuisance
+            (its mission scores outrank the retreat, so it cannot dance)."""
+            return step[1] < _cap
 
         # v0.96.0: nuisance upkeep — learn Will's positions, (re)designate a volunteer,
         # stand down when he leaves the vale. Cheap; runs for every vale char.
@@ -2809,7 +2833,11 @@ class Explorer:
             # A char carrying a heal may range deep (it can drink en route home).
             # has_heal is hoisted to the loop header (v0.103.0) — the gather block
             # gates on the same POISON_SAFE_DEPTH threshold this retreat uses.
-            if not has_heal and pos[1] >= POISON_SAFE_DEPTH:
+            if pos[1] >= depth_cap:
+                # v0.107.0: the SAME budget the goals use. For an un-healed char this
+                # is the old cap; for a healed one it fires beyond the potion-covered
+                # range; for a WIZARD it fires at the base cap however healed — the
+                # protected-caster directive, in the field and not just at the gate.
                 self._retreat(uid, pos, ctx, blocked, offer, 2.5,
                               "no heal past the safe depth — heading home before poison strands us")
             else:
@@ -2881,7 +2909,7 @@ class Explorer:
                         # TO the belt, the harvest swings the axe, and the felled tile is
                         # a path next tick.
                         tstep = nav.weighted_step(
-                            pos, lambda p: nav.frontier(p, ctx.known, ctx.bounds),
+                            pos, lambda p: deep_ok(p) and nav.frontier(p, ctx.known, ctx.bounds),
                             ctx.known, blocked, breakable=HARVEST_KINDS,
                             fresh=ctx.fresh)
                         if tstep is not None and ctx.known.get(tstep) not in HARVEST_KINDS:

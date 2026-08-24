@@ -97,16 +97,16 @@ def test_a_fielded_wizard_with_no_guardian_walks_home():
 
 
 def test_a_wizard_WITH_its_guardian_stays_and_works():
-    # v0.105.0: the wizard carries a heal. This fixture's only work is the frontier at
-    # y23 — past POISON_SAFE_DEPTH — and an UN-healed char must not feel that pull (the
-    # goal filter; before it, this fixture "worked" by marching to the cap and line-
-    # dancing there, which this test never looked far enough to see). The claim under
-    # test is escort-vs-fallback, not the poison economy, so equip the wizard the way
-    # the village heal-first step does and let it range.
+    # v0.107.0: wizards are hard-capped at the BASE poison line however healed (the
+    # protected-caster directive; the arch-wizard died at y=28 on #201), so this
+    # fixture's deep frontier can no longer be the wizard's "work" — in-cap loot is.
+    # The claim under test is escort-vs-fallback: WITH a guardian the wizard works
+    # the shallow band instead of falling back to the village.
     bot = _bot()
     wiz = _char("wiz", ["int"], pos=(3, 9))
-    wiz["inventory"] = [{"kind": "potion_red", "item_id": "p1"}]
-    acts = bot.on_frame(_field([wiz, _char("guard", ["vit"], pos=(4, 9), level=5)]))
+    frame = _field([wiz, _char("guard", ["vit"], pos=(4, 9), level=5)])
+    frame["visible"]["items"] = [{"pos": [3, 10], "kind": "egg"}]   # in-cap work
+    acts = bot.on_frame(frame)
     mine = _act_for(acts, "wiz")
     assert not (mine and mine[0].get("dir") == "S"), \
         f"escorted wizard still ran home: {mine}"

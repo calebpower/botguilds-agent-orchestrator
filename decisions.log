@@ -5073,3 +5073,32 @@ it). Mutants: release-removed / by_world-dropped / guard-dropped / stamp-removed
 killed. 1125 local + reaper green. NOTE: gold hit 22 (a potion WAS bought at 42 — the
 0.106.0 heal unblock works; next buy needs 30). NEXT: measure #200+ — field never empty,
 scouts observe refreshes, benched release on refresh, potions/brews accumulate.
+
+ITER 91 (2026-08-24, explorer/0.107.0): ARCH-WIZARD POSTMORTEM + EMBARK STORM (operator:
+"so fix it. tired of your bugs... Plus, you let the arch wiz kick it again"). DEATH TRACE
+(c19403 lvl9, #201 t2388216): at y=31 with BURN, potion already SPENT -> instantly an
+un-healed char 31 rows from home; stamina-starved (1 step/2-3 ticks) while the DOT ate
+30hp; dead y=28, 5 items dropped. ROOT: 0.106.0's heal-release was a BOOLEAN check on a
+SINGLE-USE resource — has_heal granted unlimited depth right up until the tick the potion
+was drunk, then the char stood exactly where POISON_SAFE_DEPTH forbids, 19 rows too late.
+FIXES (0.107.0): (1) DEPTH BUDGET — depth_cap = POISON_SAFE_DEPTH + HEAL_DEPTH_BONUS(16)
+x carried potions (one -> y<28: observed veins 26-27 stay reachable, the fatal y=31 is
+barred); deep_ok gates on the budget, the 2.5 retreat fires on the SAME budget, and the
+TREK is budget-gated (0.77.0's "however far" doctrine is dead — its own file admitted
+worth-it was unproven, and #201 answered with a corpse; over-range trek now refused,
+tested). (2) WIZARDS GET NO BONUS EVER — hard y<12 however healed (the operator's
+protected-caster directive made STRUCTURAL: goal-side + retreat-side both tested, with
+the looted-out backstop suppressed via imminent-refresh so only the budget retreat can
+pass the test — that fixture killed the M3 mutant the first version missed). (3) EMBARK
+STORM — v0.10.0's in-flight guard dropped records on presence in a FLAPPING stale
+chars_here; ghost re-listing then re-commanded embarks into not_in_village x3347. Records
+now expire by TIME (EMBARK_ISSUED_TTL=30); the ghost-relisting sequence is the regression
+test. MUTANTS KILLED: boolean-depth revert / wizard-exemption dropped / retreat-on-
+unhealed-only (after sharpening) / presence-guard revert; oracle extended with the
+OVERRANGE config (fails under boolean-depth). DELIBERATE test updates, reasoned in-file:
+trek fixtures re-seeded to in-budget frontiers (y=25) + explicit over-range refusal test;
+escorted-wizard fixture given in-cap work (wizards no longer work deep BY DESIGN).
+1130 local + reaper green. MEASURED MEANWHILE (#201 @5108t): embarks decayed 155->85/1k,
+3 potions bought, 0 dancers. NEXT: deploy; measure #202 (embark errors ~0, wizard max-y
+<= 12, healed miners peak y <= 27); then STRATEGY per operator (brew throughput, blue-
+potion mana probe).

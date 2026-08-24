@@ -198,3 +198,13 @@ def test_a_HEALED_char_still_reaches_the_deep_loot():
                              items=(((0, CAP + 1), "egg"),), ticks=60)
     assert (0, CAP + 1) not in items, \
         f"healed char never collected the deep loot; track tail {tracks['c1'][-12:]}"
+
+
+def test_a_healed_char_does_not_OVERRANGE_its_potion():
+    # v0.107.0 — the arch-wizard's death class: loot past the ONE-potion budget
+    # (base 12 + 16 = 28) must generate no pull, and the char must head home clean.
+    tracks, items = simulate(_corridor(CAP + 20), (1, CAP + 21),
+                             [_char("c1", (0, CAP - 2), healed=True)],
+                             items=(((0, CAP + 17), "egg"),))
+    assert (0, CAP + 17) in items, "chased loot past the potion budget"
+    assert_clean_and_home(tracks, "c1")

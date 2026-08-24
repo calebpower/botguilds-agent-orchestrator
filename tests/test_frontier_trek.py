@@ -44,7 +44,11 @@ def _frame(char, items=()):
             "visible": {"tiles": tiles, "entities": [], "items": list(items), "gold": []}}
 
 
-def _seed_map(bot, depth=60):
+def _seed_map(bot, depth=26):
+    # v0.107.0: depth 26 -> the frontier row sits at y=25, INSIDE the one-potion depth
+    # budget (12 + 16 = 28) yet far beyond FIELD_GOAL_RANGE=20, so the trek's original
+    # claim (an unbounded-by-ERRAND walk) still holds. The old y=59 frontier is now a
+    # refused over-range — asserted in its own test below, not silently retired.
     bot.known["vale"] = {(x, y): "floor" for x in range(4) for y in range(depth)}
 
 
@@ -53,7 +57,18 @@ def test_a_HEALED_char_treks_to_a_frontier_FAR_beyond_the_errand_bound():
     _seed_map(bot)
     acts = bot.on_frame(_frame(_char(healed=True)))
     assert acts and acts[0]["action"] == "move" and acts[0]["dir"] == "N", \
-        f"expected a northward trek toward the frontier at y=59: {acts}"
+        f"expected a northward trek toward the frontier at y=25: {acts}"
+
+
+def test_a_trek_PAST_the_potion_budget_is_refused():
+    """v0.107.0 — the arch-wizard postmortem applied to the trek: 'however far' is how
+    c19403 ended up dying at y=28 with its one potion spent. A frontier past the
+    one-potion budget (y >= 28) generates no trek; the char heads home instead."""
+    bot = _bot()
+    _seed_map(bot, depth=60)                      # frontier at y=59: over-range
+    acts = bot.on_frame(_frame(_char(healed=True)))
+    assert acts and acts[0]["action"] == "move" and acts[0]["dir"] == "S", \
+        f"trekked past the one-potion budget: {acts}"
 
 
 def test_a_BARE_char_does_NOT_trek():
@@ -113,7 +128,7 @@ def _belt_frame(char):
 
 
 def _seed_belt(bot):
-    known = {(x, y): "floor" for x in range(4) for y in range(60)}
+    known = {(x, y): "floor" for x in range(4) for y in range(26)}   # frontier y=25 < 28
     for x in range(4):
         known[(x, 20)] = "tree"          # a full belt: no way around, only through
     bot.known["vale"] = known
@@ -121,7 +136,7 @@ def _seed_belt(bot):
 
 def test_a_tree_belt_is_a_ROUTE_not_a_dead_end():
     """The healed trekker walks toward the belt rather than giving up: the cheapest path
-    to the frontier at y=59 goes through one tree."""
+    to the frontier at y=25 goes through one tree."""
     bot = _bot()
     _seed_belt(bot)
     acts = bot.on_frame(_belt_frame(_char(healed=True)))
