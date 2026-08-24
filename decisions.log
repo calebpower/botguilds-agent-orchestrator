@@ -5214,3 +5214,25 @@ multi-world dedup / stalled-clock shape reads <1 tick/min / empty-db ok) — 2 m
 killed (missing-always-empty, rate-ignores-wall-clock). 1149 local/reaper green.
 Server-independent by design; bot untouched. NEXT: dash restart + 3-check watch; then
 next loop (income/shallow-combat when the server clock recovers).
+
+ITER 98 (2026-08-24, ui 0.108.4 + server-stall confirmation): OPERATOR ASKED for
+independent confirmation the server tick isn't firing. CONFIRMED INDEPENDENTLY, with a
+twist: the public SSE (/events/spectate, fresh HTTP connections — a separate surface
+from our ZMQ stream) showed the tick SPRINTING 79 ticks/30s at ~15:40 (catch-up burst
+after the freeze), then pausing again — and our bot's stream tracked it to within ONE
+tick (SSE 2448767 vs our 2448766, moving in lockstep). Verdict: the stall is genuinely
+server-side (bursty suspend/resume shape), our client is faithful. BONUS finding chased
+and CORRECTLY NOT "fixed": track intel is ~7.4h stale with a fresh track_beat — checked
+the null hypothesis before patching, and it holds: EVERY guild on the server (WillMorr
+30, Fable 9, Keepers 25, us 30) is 100% in its village — zero rivals fielded, so the
+recorder idling is design, not a wedge (the instance-patch reflex resisted, for once).
+server_bugs.md gained three entries (phantom vault, c19532 limbo, the tick stall with
+the full 08:10-15:20 timeline). LEVER (b) SHIPPED: tickbar 0.108.4 distinguishes tick
+JUMPS (counter leaps >TICK_JUMP_MIN=50 — restarts/catch-up bursts, gray) from genuine
+frame DROPS (small gaps, red): the 08-24 stall read as "369/500 dropped" when most were
+clock-skips; the real-drop signal (run #120's 3.7% loss class) is no longer diluted.
+1 new test (leap-vs-drop with a real 1-tick hole beside a 195-tick leap; disjointness),
+2 mutants killed (all-missing, all-jumped). 1150 local/reaper green. NEXT: dash
+restart + 3-check watch; income lever when the clock genuinely resumes (all guilds
+parked today — nobody has moved all day, so the leveling race is ALSO frozen; no
+relative ground lost).

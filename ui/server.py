@@ -1001,6 +1001,11 @@ def api_story() -> list[dict]:
             for v in sorted(by_ver, key=vkey, reverse=True)]
 
 
+TICK_JUMP_MIN = 50   # a tick gap wider than this is a counter LEAP (restart/catch-up),
+                     # not frame loss — the clock cannot genuinely run 50+ ticks between
+                     # two frames of a stream that delivers several frames per tick.
+
+
 def api_tickbar(db_path: str, window: int = 500) -> dict:
     """Tick participation, block-explorer style (wishlist item, operator 2026-08-23):
     for the last ``window`` server ticks, which ones did we receive at least one frame
@@ -1025,7 +1030,17 @@ def api_tickbar(db_path: str, window: int = 500) -> dict:
         mx = max(ticks)
         lo = mx - window + 1
         present = {t for t in ticks if t >= lo}
-        missing = sorted(set(range(max(0, lo), mx + 1)) - present)
+        # v0.108.4: distinguish tick JUMPS from genuine drops. Between two
+        # successively-observed ticks, a small gap means the clock ran and our
+        # frames for those ticks never landed (a real drop, red); a gap wider
+        # than TICK_JUMP_MIN means the counter LEAPT (run restart, server
+        # catch-up burst) and the intermediate ticks never happened for us —
+        # painting them red overstated loss 369/500 during the 08-24 stall.
+        missing, jumped = [], []
+        seen_sorted = sorted(present | {lo - 1})
+        for a, b in zip(seen_sorted, seen_sorted[1:]):
+            gap = range(max(a + 1, lo), b)
+            (jumped if b - a > TICK_JUMP_MIN else missing).extend(gap)
         recvs = [r["received_at"] for r in rows if r["received_at"] is not None]
         rate = None
         if len(recvs) >= 2:
@@ -1034,7 +1049,7 @@ def api_tickbar(db_path: str, window: int = 500) -> dict:
             if wall > 1:
                 rate = round(60.0 * span / wall, 1)
         return {"ok": True, "max_tick": mx, "window": window, "missing": missing,
-                "rate_per_min": rate, "frames_seen": len(rows)}
+                "jumped": jumped, "rate_per_min": rate, "frames_seen": len(rows)}
     except _db.Error:
         return {"ok": False, "max_tick": None, "missing": [], "rate_per_min": None}
     finally:
@@ -1776,6 +1791,7 @@ main{padding:16px;max-width:1200px;margin:0 auto}
 .tickstrip{display:flex;flex-wrap:nowrap;overflow:hidden;gap:0;height:14px}
 .tickstrip .tk{flex:1 1 auto;min-width:1px;background:var(--good,#2ea043)}
 .tickstrip .tk.miss{background:#d1242f}
+.tickstrip .tk.jump{background:var(--border,#6e7681)}
 .tickstrip .tk.ok{background:#2ea043}
 .tickcap{font-size:12px;color:var(--muted);margin-top:6px}
 .tickrate.good{color:#2ea043}.tickrate.warn{color:#d29922}.tickrate.crit{color:#d1242f;font-weight:700}
@@ -2321,17 +2337,20 @@ async function loadTickbar(){
   host.innerHTML = "";
   if(!t || !t.ok || t.max_tick==null){ host.textContent = "tick data unavailable"; return; }
   const miss = new Set(t.missing||[]);
+  const jump = new Set(t.jumped||[]);
   const lo = t.max_tick - (t.window||500) + 1;
   const strip = el("div","tickstrip");
   for(let k=lo;k<=t.max_tick;k++){
-    const b = el("span", miss.has(k) ? "tk miss" : "tk ok");
+    const cls = miss.has(k) ? "tk miss" : jump.has(k) ? "tk jump" : "tk ok";
+    const b = el("span", cls);
     if(miss.has(k)) b.title = "tick "+k+" dropped";
+    else if(jump.has(k)) b.title = "tick "+k+" skipped by the server clock";
     strip.appendChild(b);
   }
   const rate = t.rate_per_min;
   const rateCls = rate==null ? "" : rate<20 ? "crit" : rate<45 ? "warn" : "good";
   const cap = el("div","tickcap");
-  cap.appendChild(el("span","", `ticks ${lo}–${t.max_tick} · ${miss.size} dropped`));
+  cap.appendChild(el("span","", `ticks ${lo}–${t.max_tick} · ${miss.size} dropped · ${jump.size} clock-skipped`));
   const r = el("span","tickrate "+rateCls,
                rate==null ? " · rate n/a" : ` · ${rate} ticks/min` + (rate<45 ? " (server slow/stalled)" : ""));
   cap.appendChild(r);

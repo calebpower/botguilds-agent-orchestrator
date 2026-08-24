@@ -49,3 +49,23 @@ def test_an_empty_db_is_ok_and_empty_not_an_error(tmp_path):
     _seed(db, [])
     out = srv.api_tickbar(db, window=10)
     assert out["ok"] and out["max_tick"] is None and out["missing"] == []
+
+
+def test_a_counter_LEAP_is_clock_skipped_not_dropped(tmp_path):
+    # v0.108.4 — during the 08-24 stall the bar read 369/500 "dropped" when most of
+    # that was the tick counter LEAPING across restarts/catch-up bursts: ticks that
+    # never happened for us are not lost frames. A gap wider than TICK_JUMP_MIN is
+    # classified `jumped`; a small gap stays `missing` (the real-drop case, which is
+    # the bar's original purpose and must not be diluted).
+    from ui.server import TICK_JUMP_MIN
+    assert TICK_JUMP_MIN == 50, "the threshold moved; re-read the numbers in this test"
+    db = str(tmp_path / "t.db")
+    # observed ticks: 300..304, then a 195-tick leap to 500..503 with a REAL 1-tick
+    # hole at 502 (the clock ran 500->503 while our 502 frame never landed).
+    rows = [("vale", t, 1000.0 + i) for i, t in enumerate(
+        [300, 301, 302, 303, 304, 500, 501, 503])]
+    _seed(db, rows)
+    out = srv.api_tickbar(db, window=210)
+    assert 502 in out["missing"], out
+    assert 400 in out["jumped"] and 400 not in out["missing"], out
+    assert not (set(out["missing"]) & set(out["jumped"])), "a tick in both classes"
