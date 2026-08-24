@@ -55,6 +55,7 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
+| Investigate the mines forge (special/great forge?) | 0.80 | 0.85 | 0 | — | 0.510 | just added (tc=0) — ELIGIBLE |
 | Hints: rival-avoidance for wizards | 0.82 | 0.95 | 0 | — | 0.584 | just added (tc=0) — ELIGIBLE |
 | Hints: any-rival death-loot vulture | 0.80 | 0.92 | 0 | — | 0.552 | just added (tc=0) — ELIGIBLE |
 | Hints: map-wide danger early-warning | 0.80 | 0.95 | 0 | — | 0.570 | just added (tc=0) — ELIGIBLE |
@@ -159,6 +160,21 @@ technique when a metric is flat despite activity._
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
 
 ## Open
+
+- [ ] **Investigate the forge in the mines (operator, 2026-08-23)** — the mines forge tiles
+  (y105-117) may be a SPECIAL forge, not equivalent to the village forge we use. docs/08
+  explicitly flags the Embermines: "Forging (something big guards **the great forge at the
+  top**)." We have only ever forged at the VILLAGE forge, producing tier-0/1 items
+  (shield_iron t0, spear/dagger t0, pickaxe t1). A guarded deep forge is the classic
+  higher-tier / unique-recipe unlock — it could yield tier-2+ weapons or armour the shop
+  and village forge cannot, which bears directly on the arm rate (better weapons per
+  scarce ingot) AND the wizard program (a forged caster item?). INVESTIGATION first, not
+  engagement: (1) confirm the mines forge accepts our known recipes and compare the
+  product tier/`tells` to the village forge's; (2) map what "guards the great forge at the
+  top" is (a boss? a gate?) from the tile/entity data BEFORE risking a char; (3) only then
+  decide whether a forged-armament trek to the deep forge pays. Ties into the smith
+  pipeline (0.98.0) and the deferred slice-2 ingot-scarcity work.
+
 
 ### Hints-system ideas (2026-08-23, operator asked for 20; the good ones added below + to the table)
 
