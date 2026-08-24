@@ -5124,3 +5124,29 @@ local/reaper green. #202 scoreboard BEFORE this fix: 51 potions bought (heal pip
 WORKS — 1 brew, 1 smelt), 0 dancers, embarks 91/1k, 6 deaths (5 early, spire band),
 gold 20. NEXT: deploy; #203 must show not_in_village ~0, field populated, ghost either
 returns or stays quarantined; then STRATEGY (brew throughput, blue-potion probe).
+
+ITER 93 (2026-08-24, explorer/0.108.0): FEED THE FLYWHEEL WITHOUT GOLD (operator: "if
+you think we should implement it, implement it"). MEASURED FIRST (#203 census): the
+binding constraint on brewing is INPUTS, not logic — 30 chars collectively held ONE
+vigor herb, 3 bottles, gold 20 (below the 30 a potion needs); nothing to sell. But the
+vault holds real non-potion stock (14 clubs; lumber withdrawals have long worked) and
+the 202-entry potion list has only ever been probed ~8 deep PER RUN (VAULT_DEAD_LIMIT
+latch resets on restart -> every run re-treads the same phantom head). TWO LEVERS:
+(1) VAULT-CLUB ARMING — a bare non-fodder char withdraws a banked club (VAULT_ARM_KINDS)
+BEFORE the 15g shop buy is even considered; no gold floor (it spends none); same
+vault-dead/pending machinery. Every club withdrawn = 2/3 of a potion at our treasury.
+(2) PERSISTENT VAULT KNOWLEDGE — phantom ids persist via intel kind='vault_phantom'
+(cumulative list; learned-table is positive-facts-only by doctrine, intel is
+observational), hydrated once per process (_hydrate_vault, mirroring _hydrate_forge);
+the storm latch now counts FRESH probes this run (_vault_dead_new), so hydration cannot
+close the latch at startup and successive runs walk DEEPER into the 202 — if any are
+real, we find them. 7 tests: free-arm / armed-leaves-alone / dead-id-skipped /
+persist-across-restart (real error path + real Storage) / latch-counts-fresh on BOTH
+branches (the club-only first draft left the potion-side mutant alive — the
+one-test-per-branch lesson again) / storm-still-latches. 7 MUTANTS KILLED (branch
+removed, hydration dead, both latch reverts, club latch removed, persistence dead).
+Reachability ratchet caught the new reason string -> registered. BLUE-POTION note for
+the operator: a use-probe at full mana (10/10, we never cast) proves nothing — deferred
+until a caster can spend mana; the 2 held potion_blue are KEPT, not sold. 1142
+local/reaper green. NEXT: deploy; measure #204 — bare chars armed from vault (drops with
+club ids), vault probing depth grows across restarts, first real potion found?

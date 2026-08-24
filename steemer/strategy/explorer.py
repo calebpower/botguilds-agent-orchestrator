@@ -397,7 +397,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from .. import knowledge, nav
+from .. import intel, knowledge, nav
 from .base import FieldContext
 from ..reasoning import DecisionTrace
 
@@ -1055,6 +1055,7 @@ SCOUT_RESEND_TICKS = 40    # v0.106.1: after releasing a scout toward an empty w
                            # wait this long before releasing another to the same world —
                            # chars_by_world lags an embark by a few frames (the 0.43.0
                            # lagging-count lesson), and one sensor per world is the point.
+VAULT_ARM_KINDS = frozenset({"club"})   # v0.108.0: vault weapon kinds worth a free arm
 GHOST_REASONS = frozenset({"not_in_village", "unknown_character", "no_such_character"})
 GHOST_TTL = 600            # v0.107.1: how long a server-refused ("ghost") char is barred
                            # from village candidacy. Long on purpose — a real char
@@ -1239,7 +1240,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.107.1"
+    version = "explorer/0.108.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1284,6 +1285,11 @@ class Explorer:
         # is not a stale-frame repeat, it is dead forever, so it must be remembered, not
         # retried. Maps item_id -> True; guild-level because the vault is guild-level.
         self._vault_dead: set = set()
+        self._vault_dead_new = 0            # v0.108.0: phantoms discovered THIS run —
+                                            # the storm latch counts fresh probes, not
+                                            # the hydrated knowledge (else persistence
+                                            # would close the latch at startup forever)
+        self._vault_hydrated = False
         # v0.81.0: ingredient kinds we have SENT a taste for this run (or had refused).
         # Once per kind per run — taste is destructive, and a parser that missed the
         # result must not eat a second herb for nothing.
@@ -1409,8 +1415,21 @@ class Explorer:
         if (message.get("action") == "drop" and message.get("reason") == "no_such_item"
                 and uid is not None):
             dead = self._vault_pending.pop(uid, None)
-            if dead is not None:
+            if dead is not None and dead not in self._vault_dead:
                 self._vault_dead.add(dead)
+                self._vault_dead_new += 1
+                # v0.108.0: persist the cumulative phantom set (intel, observational —
+                # the learned table is positive-facts-only by doctrine) so every run
+                # probes DEEPER into the 202-entry vault list instead of re-treading
+                # the same dead head. If ANY entries are real, we eventually find them.
+                st = getattr(bot, "storage", None)
+                if st is not None:
+                    try:
+                        import time as _t
+                        intel.record(st.conn, "vault_phantom", bot.tick, _t.time(),
+                                     {"ids": sorted(self._vault_dead)})
+                    except Exception:
+                        pass            # persistence is best-effort, never load-bearing
         # v0.82.0: NO on_action_error handler for `list`, deliberately — the offer sets
         # _listed when it fires, so a refusal has nothing left to disable and a handler
         # here would be unobservable dead code (the 0.74.1/0.80.0 deletions, same rule).
@@ -1492,6 +1511,7 @@ class Explorer:
         gold = guild.get("gold", 0)
         self._learn_prices(frame)
         self._hydrate_forge(bot)
+        self._hydrate_vault(bot)
 
         for char in chars:
             uid = char["char_uid"]
@@ -1664,7 +1684,7 @@ class Explorer:
                 # phantoms is a vault we do not understand — stop withdrawing this run
                 # rather than walking 202 entries of an error storm, and let the shop buy
                 # below carry the heal.
-                if banked is not None and len(self._vault_dead) >= VAULT_DEAD_LIMIT:
+                if banked is not None and self._vault_dead_new >= VAULT_DEAD_LIMIT:
                     banked = None
                 if banked is not None:
                     self._vault_pending[uid] = banked["item_id"]
@@ -1689,6 +1709,28 @@ class Explorer:
             #    prices + stat reqs; a club at 15 lowers the bootstrap escape from
             #    45 gold to 15, so the guild can arm a char the moment it scrapes
             #    a little loot, and that char can then survive → loot → recover.
+            # v0.108.0 ARM FROM THE VAULT FIRST: the stash holds real clubs (14 on
+            # #203's census, and lumber withdrawals prove non-potion vault entries
+            # are live). A withdrawal costs ZERO gold against the shop's 15 — at the
+            # 20-gold treasury we actually run, every vault club is two-thirds of a
+            # potion the flywheel keeps not affording. No gold floor on this branch
+            # (it spends none); same vault-dead/pending machinery as the potion
+            # withdrawal, so phantoms latch instead of storming.
+            if (eqp.get("hand") is None and not is_fodder
+                    and uid not in self._vault_pending
+                    and self._vault_dead_new < VAULT_DEAD_LIMIT):
+                banked_club = next(
+                    (i for i in (frame.get("guild", {}).get("inventory") or [])
+                     if i.get("kind") in VAULT_ARM_KINDS
+                     and i.get("item_id") is not None
+                     and i.get("item_id") not in self._vault_dead), None)
+                if banked_club is not None:
+                    self._vault_pending[uid] = banked_club["item_id"]
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "drop",
+                                   "item_id": banked_club["item_id"]},
+                        f"withdrawing a banked {banked_club['kind']} (free, vs 15g at "
+                        f"the shop) — arming from the stash instead of the treasury")]
             if eqp.get("hand") is None and gold > WEAPON_BUY_FLOOR and not is_fodder:
                 buy = self._afford_weapon(char, frame, gold)
                 if buy is not None:
@@ -3643,6 +3685,26 @@ class Explorer:
             return parts[0], int(parts[1]), int(parts[2])
         except ValueError:
             return None
+
+    def _hydrate_vault(self, bot: "Any") -> None:
+        """Load the phantom vault ids proven in EARLIER runs, once per process — the
+        vault list is ~202 entries and the per-run storm latch allows only
+        VAULT_DEAD_LIMIT fresh probes, so without persistence every run re-probes the
+        same dead head and the real entries (if any) are never reached. Best-effort,
+        like the forge hydration it mirrors."""
+        if self._vault_hydrated:
+            return
+        self._vault_hydrated = True
+        st = getattr(bot, "storage", None)
+        if st is None:
+            return
+        try:
+            row = intel.latest(st.conn, "vault_phantom")
+            if row and isinstance(row.get("data"), dict):
+                self._vault_dead |= set(row["data"].get("ids") or [])
+        except Exception as e:
+            print(f"[vault] could not load phantom ids ({e}) — starting fresh",
+                  flush=True)
 
     def _hydrate_forge(self, bot: "Any") -> None:
         """Load recipes proven in EARLIER runs, once per process.
