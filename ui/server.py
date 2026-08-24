@@ -2283,10 +2283,19 @@ function renderOverview(s){
   const avoid = ec.avoidable_rate;
   const errCls = avoid==null ? "" : avoid>0.1 ? "crit" : avoid>0.05 ? "warn" : "good";
   const pct = x => x==null ? "—" : (100*x).toFixed(x<0.1?1:0)+"%";
+  // v0.108.2 FIELD TRUTH: prefer the frame-derived per-world counts (fielded_live,
+  // truth from our own frame stream) over the server's chars_by_world guild view,
+  // which lags by whole minutes and twice read "none fielded" while sentinels were
+  // demonstrably out. Falls back to the old view for snapshots that predate it.
+  const live = cur.fielded_live || null;
   const byWorld = cur.chars_by_world || {};
-  const fielded = Object.values(byWorld).reduce((a,b)=>a+b,0);
+  const fielded = live ? Object.values(live).reduce((a,b)=>a+(b.n||0),0)
+                       : Object.values(byWorld).reduce((a,b)=>a+b,0);
   const roster = (cur.chars_here||0) + fielded;
-  const worldStr = Object.entries(byWorld).map(([w,n])=>`${w}:${n}`).join("  ") || "none fielded";
+  const worldStr = (live
+      ? Object.entries(live).filter(([w,d])=>d.n>0).map(([w,d])=>`${w}:${d.n}`)
+      : Object.entries(byWorld).map(([w,n])=>`${w}:${n}`)
+    ).join("  ") || "none fielded";
 
   const stat = (k,v,sub,cls)=>{
     const d = el("div","stat");

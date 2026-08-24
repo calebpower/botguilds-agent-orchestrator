@@ -5185,3 +5185,19 @@ INT ladder its top); NEW item: dashboard FIELD TRUTH (chars_by_world lag misled 
 operator twice today). NEXT: finish the 3-clean-check watch on 0.108.1; then
 danger-as-cost or the income lever (armed shallow combat -> bones + gold), operator
 weather permitting.
+
+ITER 96 (2026-08-24, dash 0.108.2 + wishlist correction): SERVER STALLED (0 ticks/10min,
+frames still arriving — everything tick-driven frozen server-side; behavior levers
+unmeasurable until it recovers, so this pass ships the server-independent item). WISHLIST
+CORRECTION: danger-as-cost corridor was listed top-actionable in iter 95's table but IT
+ALREADY SHIPPED as 0.84.0's planned escape (8.2, weighted_step avoid=strike) — the sweep
+rule failed AGAIN on a shipped-by-arc item; moved to Done. LEVER: DASHBOARD FIELD TRUTH —
+metrics.snapshot now carries current.fielded_live (per-world char count + tick from OUR
+latest frames, the stream the bot acts on); the dash header prefers it over the server's
+chars_by_world guild view (which lags minutes and told the operator "none fielded" twice
+on 2026-08-24 while sentinels were out); falls back for old snapshots. 2 tests (frame
+truth beats lying guild view; an emptied world reports 0, not its last crowd) — mutation
+-checked (removal fails both). VAULT measurement: phantoms 20 persisted, no real entry
+found yet; gold 23. 1146 local/reaper green. NEXT: deploy dash (dash restart only — the
+BOT is untouched, but the post-deploy watch runs anyway per the standing rule), then next
+loop.

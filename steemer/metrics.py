@@ -163,6 +163,22 @@ def snapshot(db: Any = None) -> dict[str, Any]:
                 "market_listings": len(g.get("market_listings", [])),
                 "at_tick": village.get("tick"),
             }
+            # v0.108.2 FIELD TRUTH: `chars_by_world` above is the SERVER's guild view,
+            # which lags departures/arrivals by whole minutes — it read {} twice on
+            # 2026-08-24 while three sentinels were demonstrably fielded, and both
+            # times the operator concluded the field was empty. The truth source is
+            # our own frames: a char in a world appears in that world's latest frame.
+            # Frame `chars` are OURS only (rivals arrive as entities), so the count
+            # needs no guild filter.
+            fielded_live: dict[str, Any] = {}
+            for (w,) in conn.execute(
+                    "SELECT DISTINCT world FROM frames WHERE world<>'village'"):
+                f = _latest_frame(conn, w)
+                if not f:
+                    continue
+                ours = f.get("chars", []) or []
+                fielded_live[w] = {"n": len(ours), "at_tick": f.get("tick")}
+            out["current"]["fielded_live"] = fielded_live
 
         # Roster detail + swing range + aggregate inventory (dashboard panel).
         out["roster"] = _roster_inventory(conn)
