@@ -596,6 +596,16 @@ FORGE_WEAPON_FIRST = ("spear", "shortsword", "dagger", "shield_iron")
 # v0.98.0: hand items that are TOOLS, not combat weapons — a char holding one still needs
 # a real weapon forged (the #189 miner spammed shields because its pickaxe read as armed).
 FORGE_HAND_TOOLS = frozenset({"pickaxe", "sickle", "hook_chain"})
+
+# v0.99.0 ORE-HUNGRY FIELDING. Ingots are the arm-rate bottleneck (smelted only from
+# mines ORE, 2 ore -> 1 ingot); on #190 nobody mined (1 char in the mines, 4 smelts) so
+# the smith pipeline had ~0 ingots to forge. When the guild is ingot-poor, a GATHERER's
+# embark destination is biased toward the ore world so ore->ingot production scales. The
+# ore world is DERIVED from where we have seen vein tiles (not hardcoded), and the bias
+# stays inside the green-gate — a bare forager only goes to a CALM ore world; fodder (the
+# designed risk-taker) is exempt as always. Lumber is plentiful (surface), so we bias only
+# when actually short on ingots; as they accrue the bias releases (self-correcting).
+INGOT_HUNGRY = 3           # guild ingots (stash) at/below this = bias gatherers to ore
 # Recipe quantities are NOT documented. Rather than guess once and give up, try a small
 # ordered ladder of (ingots, lumber) and let the server's rejection teach us — an
 # action_error here is INFORMATION, the same stance the exploration matrix takes. Cheapest
@@ -1185,7 +1195,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.98.0"
+    version = "explorer/0.99.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1969,7 +1979,15 @@ class Explorer:
                     if not g_opts:
                         continue          # every open world is hot — the recruit waits
                     uid = cand
-                    target = min(g_opts, key=lambda m: (threat(m), by_world.get(m, 0)))
+                    # v0.99.0: ingot-hungry -> route this gatherer to the ORE world if it
+                    # is an option here (already gate-filtered above), else safest/least-
+                    # crowded as before. This is what actually feeds the smith pipeline.
+                    ore_w = self._ore_world(bot)
+                    if (ore_w is not None and ore_w in g_opts
+                            and self._ingot_hungry(guild)):
+                        target = ore_w
+                    else:
+                        target = min(g_opts, key=lambda m: (threat(m), by_world.get(m, 0)))
                     break
                 if uid is None:
                     return []
@@ -3409,6 +3427,28 @@ class Explorer:
             st.record_learned(self.FORGE_TOPIC, self._recipe_fact(recipe))
         except Exception as e:      # pragma: no cover
             print(f"[forge] could not persist a proven recipe ({e}) — continuing", flush=True)
+
+    def _ore_world(self, bot) -> str | None:
+        """The world where we have seen ORE VEINS — derived from accumulated tile memory,
+        cached, so the ore-hungry bias needs no hardcoded map name. None until a vein is
+        seen (then no bias, which is correct — we cannot route to ore we have never found)."""
+        cached = getattr(self, "_ore_world_cache", None)
+        if cached is not None:
+            return cached
+        for w, tiles in (getattr(bot, "known", {}) or {}).items():
+            if any(k == "vein" for k in tiles.values()):
+                self._ore_world_cache = w
+                return w
+        return None
+
+    @staticmethod
+    def _ingot_hungry(guild: dict) -> bool:
+        """Is the guild short on ingots? Counted from the shared stash (the surplus pool
+        the smith pipeline draws on). Ore is the scarce half; lumber is plentiful, so this
+        is the signal to route gatherers to the mines rather than more surface worlds."""
+        n = sum(1 for i in (guild.get("inventory") or [])
+                if str(i.get("kind", "")).startswith("ingot"))
+        return n <= INGOT_HUNGRY
 
     def _choose_forge(self, inv: list[dict[str, Any]], eqp: dict[str, Any],
                       stamina: int) -> tuple[tuple[str, int, int], list[Any], str] | None:

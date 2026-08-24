@@ -13,7 +13,14 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   (0.98.0) is the live thread; slice 2 = ingot scarcity. Return to ML only when a model
   is load-bearing (recruit-quality / XP-rate feeding leveling), not the ones we have.
 
-- **Live:** `explorer/0.98.0` on **run #190** (pushed; see git log).
+- **Live:** `explorer/0.99.0` on **run #191** (pushed; see git log).
+- **ORE-HUNGRY FIELDING (0.99.0)**: #190 measured the smith pipeline — thrash GONE (forge
+  418 shield/7 spear -> 2 spear/0 shield, wrong_materials 421->0) but armed still 2/30
+  because INGOTS are absent (4 smelts; nobody mines — 1 char in the mines, dispatcher
+  sends gatherers to the surface for lumber not the mines for ore). LEVER: ingot-poor
+  guild (<=3 stash ingots) biases forager/fodder embark to the ORE world (derived from
+  seen veins), inside the green-gate, self-correcting. WATCH #191: mines headcount up,
+  smelts/ingots up, Fix B (lumber withdrawal) starts firing, armed share climbs off 2/30.
 - **SMITH PIPELINE slice 1 (0.98.0)**: fixed the arm-rate bottleneck (0/28 forge-ready on
   #189). Root cause was material CONVERGENCE, not the deep forge (all forging is
   village-based — the mines forge tiles were a red herring). (A) a TOOL in hand

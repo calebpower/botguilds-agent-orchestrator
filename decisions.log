@@ -4819,3 +4819,21 @@ registrations (village behaviour goes under village_behaviours, not behaviours).
 is producing more ingots / staging them, and getting lumber+ingot onto the same smith
 reliably. NEXT: measure #190 — armed share climbing off 2/30? spear forges up, shield
 wrong_materials down? Then the leveling/magic goals this unblocks.
+
+ITER 79 (2026-08-23, explorer/0.99.0): ORE-HUNGRY FIELDING (arm/level direction). Measured
+the smith pipeline (0.98.0) on #190 (mature 33k): Fix A WORKED — forge attempts 418
+shield/7 spear -> 2 spear/0 shield, wrong_materials 421 -> 0 (thrash eliminated). But
+armed still 2/30: Fix B (lumber withdrawal) fired 0x because INGOTS are absent (4 smelts,
+2 ingot-holders, 0 in stash, 20 lumber in stash). ROOT: ingot production is a FIELDING
+problem — 24/30 benched in the village, only 1 char in the mines where the 65 vein tiles
+(ore) are; the dispatcher routes gatherers to the SAFEST world (surface vale = lumber),
+never the mines (ore). The lumber/ingot asymmetry IS a fielding asymmetry, closing the
+vicious cycle (bare -> benched -> don't mine -> no ore -> no ingot -> no weapon -> bare).
+LEVER: when the guild is INGOT_HUNGRY (<=3 ingots in the stash), a gatherer's embark
+target is biased to the ORE world (DERIVED from where veins were seen, cached, not
+hardcoded), inside the green-gate (bare only into a calm ore world; fodder exempt).
+Self-correcting: as ingots accrue past 3 the bias releases and gathering rebalances to
+the surface. 4 tests; 4/4 mutants killed after hardening the vein-derivation test (seed a
+non-vein mines tile so 'any tile=vein' diverges). NEXT: measure #191 — chars in the mines
+up? smelts/ingots up? armed share finally climbing? Then Fix B should start firing as
+ingots reach the stash, and the smith pipeline arms the roster.
