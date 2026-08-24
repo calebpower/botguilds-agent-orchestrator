@@ -856,7 +856,15 @@ TOME_PREFIX = "tome"
 # accord once the roster is healed, not a standing drain.
 # PREMISE(2026-08-22, an un-healed character cannot leave the spawn strip): compare the
 #   y-distribution of fielded char-frames with and without a potion_red -- see decisions.log
-POTION_RESERVE = 100       # never let the potion-buy pull the treasury below this
+POTION_RESERVE = 30        # v0.100.0: RECALIBRATED for the coin-dry reality. The old
+                           # 100/150/200 floors were set when we sat at ~600 gold; the
+                           # guild is now chronically at ~85, BELOW ALL THREE, so it
+                           # bought nothing — no weapons, barely any potions — and we
+                           # built the whole ore->forge chain to route around a frozen
+                           # reserve while clubs sat unbought in the shop. A hoard that
+                           # blocks its own use is worthless; gold is a FLOOR not the
+                           # goal (operator). Ordering preserved: potion < weapon <
+                           # armour. never let the potion-buy pull the treasury below this
 POTION_MIN_GOLD = 20       # buy a potion once we can afford one (its shop price is
 #   20g; v0.17.0 dropped the old arbitrary 25g buffer — a poison death loses the
 #   char's gear+loot, far more than 20g, so a heal is worth buying at cost).
@@ -901,7 +909,7 @@ ARMOR_KINDS = frozenset({"shield_wood", "shield_iron", "striders", "fickle_pearl
                          "smith_apron"})
 # Armor is bought only above this, ABOVE the weapon floor: a weapon is what makes a
 # character able to fight at all, so it must never lose a coin race to a shield.
-ARMOR_BUY_FLOOR = 200
+ARMOR_BUY_FLOOR = 70       # v0.100.0: recalibrated (armour is the luxury tier)
 
 # v0.28.0 PURE HOARD: freeze the weapon-buy entirely. Measurement of run #83
 # (0.27.0) proved the club-buy is the SOLE remaining drain on the treasury —
@@ -925,7 +933,7 @@ ARMOR_BUY_FLOOR = 200
 # UNFROZEN and re-gated on a gold floor: arm a bare char whenever the treasury is above
 # WEAPON_BUY_FLOOR (~15g/club; we sit at ~600). Gear is the prerequisite for combat/XP; the
 # combat-SEEK that earns the XP is the next lever (0.41). spend_xp already converts XP live.
-WEAPON_BUY_FLOOR = 150
+WEAPON_BUY_FLOOR = 45      # v0.100.0: recalibrated — arm a bare char down to this
 
 # v0.41.0 COMBAT-SEEK (the leveling lever): now that chars ARM (0.40), a DEVELOP-mode char
 # EARNS XP by fighting beatable mobs instead of always fleeing them — reversing the 0.24
@@ -1195,7 +1203,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.99.1"
+    version = "explorer/0.100.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been

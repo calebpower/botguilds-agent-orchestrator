@@ -75,19 +75,20 @@ _TOME_STOCK = ({"kind": "tome_veil", "buy_price": 120},
 
 
 def test_the_designate_buys_the_tome_above_the_reserve():
-    """220 = 120 tome + 100 potion reserve: the magic unlock must never eat the heal.
-    INT 4 here because 0.83.1 added the wait-for-the-grind gate (operator's
-    stranded-capital worry) — the INT-sequencing claim itself lives in
-    test_the_tome_buy_WAITS_for_the_INT_grind."""
+    """v0.100.0: 150 = 120 tome + 30 potion reserve (recalibrated from 220 = 120+100).
+    The magic unlock must never eat the heal reserve. INT 4 here because 0.83.1 added the
+    wait-for-the-grind gate (operator's stranded-capital worry) — the INT-sequencing claim
+    itself lives in test_the_tome_buy_WAITS_for_the_INT_grind."""
     char = _char(int_=4, inv=[{"kind": "potion_red", "item_id": "p", "uses": ["drink"]}])
-    acts = _bot().on_frame(_frame(char, gold=220, stock=_TOME_STOCK))
+    acts = _bot().on_frame(_frame(char, gold=150, stock=_TOME_STOCK))
     buy = _first(acts, "buy")
-    assert buy and buy["kind"] == "tome_veil", f"no tome at 220 gold: {acts}"
+    assert buy and buy["kind"] == "tome_veil", f"no tome at 150 gold: {acts}"
 
 
 def test_no_tome_below_the_line():
+    # v0.100.0: line is 150 (120 tome + 30 reserve); 149 must not buy.
     char = _char(int_=4, inv=[{"kind": "potion_red", "item_id": "p", "uses": ["drink"]}])
-    acts = _bot().on_frame(_frame(char, gold=219, stock=_TOME_STOCK))
+    acts = _bot().on_frame(_frame(char, gold=149, stock=_TOME_STOCK))
     buy = _first(acts, "buy")
     assert not (buy and buy["kind"] == "tome_veil"), f"ate into the heal reserve: {buy}"
 

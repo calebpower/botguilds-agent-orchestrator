@@ -4854,3 +4854,23 @@ mutants killed. NB the revolving door itself (bare chars churning) is the arm-ra
 — this refinement stops the ore dispatch FEEDING it, but the cure is still arming. NEXT:
 measure #192 — fodder/armed in the mines mining, smelts/ingots up, bare foragers no longer
 churning into the mines, wizards safe at home/escorted.
+
+ITER 81 (2026-08-23, explorer/0.100.0): THE ARM-RATE WAS A STALE GOLD FLOOR ALL ALONG.
+#192 measurement chain: smith pipeline thrash gone but 0 smelts/forges, armed 3/30, ONLY
+1 fodder on the roster (the mine-worthy ore-dispatch has ~no workforce), and the 1 ingot
+is stranded on a WIZARD in the field. Then the pivotal find: WEAPON_BUY_FLOOR=150 while
+gold sits chronically at ~85 — we NEVER buy weapons, and the shop STOCKS clubs (15g). The
+comment literally said "we sit at ~600" (the rich era); line 565 even recorded the
+"gold 139 < 150 floor, nothing armed" failure. We built the ENTIRE ore->ingot->forge
+chain to route around a frozen reserve while clubs sat unbought. All three treasury
+floors (POTION_RESERVE 100 / WEAPON_BUY_FLOOR 150 / ARMOR_BUY_FLOOR 200) were ABOVE our
+chronic gold, so the guild bought NOTHING. LEVER: recalibrate to the coin-dry reality —
+POTION_RESERVE 30 / WEAPON_BUY_FLOOR 45 / ARMOR_BUY_FLOOR 70 (ordering preserved). Verified
+a bare char now affords + buys a club at 85 gold (heals first if heal-less, then arms).
+BONUS: the tome-buy line (tome price + POTION_RESERVE) drops 220 -> 150, so the MAGIC
+unlock is reachable sooner too. 6 buy/bottle/tome floor tests updated (deliberate literal
+pins, updated consciously per the ratchet) + 1 new coin-dry-arming test; weapon-floor
+mutant killed. This is the highest-leverage arming lever of the whole session and it was
+a 3-constant change. NEXT: measure #193 — armed share should finally CLIMB (chars buying
+clubs), then chars can fight->level->the ore/forge chain becomes the tier-UP path not the
+bootstrap. The forge work (0.95-0.99.1) still matters for tier-2 gear the shop lacks.

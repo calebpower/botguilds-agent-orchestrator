@@ -104,9 +104,10 @@ def test_it_will_not_spend_below_the_POTION_floor():
     # Written out, not derived from POTION_RESERVE — a fixture sized from the constant
     # under test agrees with itself at any value (the ratchet caught this line twice).
     from steemer.strategy.explorer import POTION_RESERVE
-    assert POTION_RESERVE == 100, "the floor moved; re-read the numbers in this test"
-    assert _buys(gold=101) == []
-    assert _buys(gold=102)
+    assert POTION_RESERVE == 30, "the floor moved; re-read the numbers in this test"
+    # bottle price 2, floor 30 (>=): 31 leaves 29 (below -> no), 32 leaves 30 (>= -> yes)
+    assert _buys(gold=31) == []
+    assert _buys(gold=32)
 
 
 def test_arming_a_bare_character_still_outranks_the_bottle():
@@ -184,9 +185,11 @@ def test_the_heal_still_has_a_floor_of_its_own():
     # Written out, not derived from POTION_RESERVE. Sized from the constant, this test
     # agreed with itself for any value — the mutant that sets the reserve to ZERO, which is
     # precisely the 0.24.0 drain, left it green.
-    assert Explorer._afford_potion(shop, 119) is None, "spent below the 100 floor"
-    assert Explorer._afford_potion(shop, 120) == ("potion_red", 20)
-    assert POTION_RESERVE == 100, "the floor moved; re-read the numbers in this test"
+    # v0.100.0: reserve recalibrated 100 -> 30. Literal boundary at price 20 (>= floor):
+    # 49 leaves 29 (below the floor -> no), 50 leaves exactly 30 (>= floor -> yes).
+    assert Explorer._afford_potion(shop, 49) is None, "spent below the 30 floor"
+    assert Explorer._afford_potion(shop, 50) == ("potion_red", 20)
+    assert POTION_RESERVE == 30, "the floor moved; re-read the numbers in this test"
 
 
 def test_it_still_refuses_when_the_shop_has_no_heal():
@@ -199,6 +202,23 @@ def test_it_still_refuses_when_the_shop_has_no_heal():
 
 
 # ---- v0.76.0: the ORDER, which is where the bug actually lived ----------------
+
+def test_a_bare_char_ARMS_at_coin_dry_gold_below_the_old_floor():
+    """v0.100.0: THE arming unlock. The old WEAPON_BUY_FLOOR=150 was set for the ~600-gold
+    era; the guild runs chronically at ~85 (below it), so it bought NO weapons for runs
+    while clubs sat in the shop. At 85 gold — above the recalibrated floor (45) but below
+    the old one (150) — a bare non-fodder char must buy the cheapest weapon. This is what
+    a 'weapon floor back to 150' regression breaks."""
+    bot = _Bot()
+    # give it a potion so the (higher-priority, correct) heal-buy is satisfied and the
+    # WEAPON buy is what this isolates — a heal-less char correctly heals first.
+    f = _bare_frame(85)
+    f["chars"][0]["inventory"] = [{"kind": "potion_red", "item_id": "p", "uses": ["drink"]}]
+    acts = bot.on_frame(f)
+    buy = next((a for a in acts if a.get("action") == "buy"), None)
+    assert buy is not None and buy["kind"] == "club", f"did not arm at coin-dry 85 gold: {acts}"
+    assert WEAPON_BUY_FLOOR < 85 < 150, "the coin-dry arming window closed"
+
 
 def _bare_frame(gold):
     """A bare-handed, heal-less character in a shop stocking both. This is run #157's
@@ -368,9 +388,10 @@ def test_a_bottle_is_bought_at_the_gold_we_actually_run():
 
 
 def test_the_bottle_still_respects_the_potion_floor():
-    """102 fires (100 floor + 2g price); 101 must not — the floor is the drain-guard."""
-    assert not _buys(gold=101), "spent below the potion reserve on a bottle"
-    acts = _buys(gold=102)
+    """v0.100.0: floor 30 + 2g price -> 32 fires (leaves exactly 30, the >= floor); 31
+    must not (would leave 29, below it)."""
+    assert not _buys(gold=31), "spent below the potion reserve on a bottle"
+    acts = _buys(gold=32)
     assert acts and acts[0]["kind"] == "bottle_empty"
 
 

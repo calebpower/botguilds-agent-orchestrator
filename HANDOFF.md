@@ -13,7 +13,15 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   (0.98.0) is the live thread; slice 2 = ingot scarcity. Return to ML only when a model
   is load-bearing (recruit-quality / XP-rate feeding leveling), not the ones we have.
 
-- **Live:** `explorer/0.99.1` on **run #192** (pushed; see git log).
+- **Live:** `explorer/0.100.0` on **run #193** (pushed; see git log).
+- **THE ARM RATE WAS A STALE GOLD FLOOR (0.100.0)**: WEAPON_BUY_FLOOR was 150 while gold
+  sits chronically at ~85 — ALL THREE treasury floors (POTION 100/WEAPON 150/ARMOR 200)
+  were above our gold, so the guild bought NOTHING while 15g clubs sat in the shop. The
+  entire forge saga (0.95-0.99.1) was routing around a frozen reserve. FIX: recalibrate to
+  coin-dry reality (POTION_RESERVE 30/WEAPON 45/ARMOR 70). A bare char now arms with a club
+  at 85 gold. BONUS: tome-buy line 220->150 (magic reachable sooner). WATCH #193: armed
+  share FINALLY climbs off 2-3/30; then fight->level->the ceiling. Forge still matters for
+  tier-2 gear the shop lacks.
 - **ORE-DISPATCH MINE-WORTHY GATE (0.99.1)**: #191's "only one char deployed" = a
   revolving door (205 embarks/15 chars, one 58x, median 38-tick stints; 15 never field) —
   bare chars can't hold the field. v0.99.0's ore bias worsened it (sent BARE foragers to
