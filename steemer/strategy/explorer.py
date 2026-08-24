@@ -740,6 +740,13 @@ ESCORT_MAX_GAP = 20        # v0.85.1: a guardian escorts only inside this. The f
                            # (ESCORT_NEAR) and the embark gate fields it back alongside
                            # a guardian.
 WIZARD_FALLBACK_SCORE = 6.0  # above all income (<=5.0), below hurt-retreat (8.5)/dodge
+# v0.102.0 WIZARD RECALL HYSTERESIS. A wizard only KNOWS a world is dangerous while it
+# stands in it; back home that knowledge expires (THREAT_TTL), so the embark check reads
+# the world "safe" and re-dispatches it into the same bad band it just fled — the arch-
+# wizard oscillated home 222x on #194. After a band-danger fallback, hold the wizard home
+# for this long so the band actually cycles before it can re-embark (band windows are
+# ~120-240 ticks; band_refresh_deferred payloads carry in_ticks 120).
+WIZARD_RECALL_COOLDOWN = 200
 
 # v0.58.0 BOTTLES. The heal supply had a hole in it that nothing was watching.
 #
@@ -1203,7 +1210,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.101.0"
+    version = "explorer/0.102.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1275,6 +1282,7 @@ class Explorer:
                                 "laughed": False}
         self._will_eids: dict = {}     # Will's char eid -> tick last seen (attack blame)
         self._make_room: dict = {}     # world -> tick: a seat needs a slot there
+        self._wizard_recall: dict = {}   # v0.102.0: uid -> tick of last band-danger fallback
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -1937,6 +1945,12 @@ class Explorer:
                              and not ((cch.get("equipment") or {}).get("hand"))
                              and crole != "fodder")
                     if crole == "wizard":
+                        # v0.102.0: a wizard just recalled for a dangerous band WAITS out
+                        # the band at home — don't re-dispatch it into the danger its
+                        # (now-expired) memory no longer sees. The observation-staleness
+                        # loop is what made the arch-wizard bounce home 222x on #194.
+                        if tick - self._wizard_recall.get(cand, -10 ** 9) < WIZARD_RECALL_COOLDOWN:
+                            continue
                         # v0.87.0 PAIR-EMBARK (operator): a guardian standing HERE ships
                         # out WITH the wizard in one embark — the party forms at the
                         # gate, not by luck in the field. Failing that, join a world
@@ -2502,6 +2516,7 @@ class Explorer:
                                   "world")
             if my_role == "wizard":
                 if self._world_is_dangerous(ctx.world, bot.tick):
+                    self._wizard_recall[uid] = bot.tick   # v0.102.0: start the re-embark cooldown
                     self._retreat(uid, pos, ctx, blocked, offer, WIZARD_FALLBACK_SCORE,
                                   "band too dangerous for the wizard — the pipeline "
                                   "waits out the cycle at home")

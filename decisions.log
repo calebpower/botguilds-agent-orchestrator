@@ -4908,3 +4908,20 @@ no-saving-below-gate / releases-after-buy / pinned literal); 5/5 mutants killed.
 the payoff lever of the whole arming arc: arm -> fight -> level -> INT 6 -> and now SAVE
 -> the tome -> the first spell ever learned on this server. NEXT: measure #194 — does gold
 climb to 150? tome bought? the `learned` event FINALLY fires (glass ceiling broken)?
+
+ITER 84 (2026-08-24, explorer/0.102.0): WIZARD RECALL HYSTERESIS (operator: "ship the
+hysteresis fix" for the return-home loop). Diagnosed #194's return spam (2711 returns/17k
+ticks): the ARCH-WIZARD (INT 8, our magic hope) oscillated home 222x — the single biggest
+returner. Cause = OBSERVATION STALENESS: a wizard only knows a world is dangerous WHILE in
+it; back home that knowledge expires (THREAT_TTL), so the embark check reads the world
+"safe" and re-dispatches it into the same bad band the field just pulled it from. The
+band-gate (0.87.1, sit out dangerous bands) and pair-embark (0.87.0, send it out) are both
+intentional but UNCOORDINATED -> thrash. FIX: after a band-danger fallback, stamp
+self._wizard_recall[uid]=tick; the embark skips a wizard whose recall is younger than
+WIZARD_RECALL_COOLDOWN=200 ticks (~a band cycle; band_refresh_deferred carries in_ticks
+120) -> the wizard WAITS OUT the band at home instead of bouncing. 5 tests (waits /
+re-embarks-after / no-recall-embarks / pinned / end-to-end-stamp); 3/3 mutants killed
+after adding the end-to-end test (the unit tests stamped manually, masking the stamp
+mutant). Should sharply cut the 2711 returns AND stop wasting the arch-wizard's time so it
+can STAY OUT and level toward the tome. NEXT: measure #195 — returns/1k down? arch-wizard
+stint length up? (still the brewing/gold lever owed for the tome itself.)

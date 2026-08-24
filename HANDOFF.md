@@ -13,7 +13,16 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   (0.98.0) is the live thread; slice 2 = ingot scarcity. Return to ML only when a model
   is load-bearing (recruit-quality / XP-rate feeding leveling), not the ones we have.
 
-- **Live:** `explorer/0.101.0` on **run #194** (pushed).
+- **Live:** `explorer/0.102.0` on **run #195** (pushed).
+- **WIZARD RECALL HYSTERESIS (0.102.0)**: #194's return spam (2711 returns/17k ticks) was
+  the arch-wizard (INT 8) oscillating home 222x — an observation-staleness thrash (a
+  wizard only knows a world is dangerous while IN it; home it expires, the embark reads it
+  safe and re-dispatches into the same band). FIX: a band-danger fallback stamps a recall;
+  the embark holds the wizard home WIZARD_RECALL_COOLDOWN=200 ticks (~a band cycle) so it
+  waits the band out. WATCH #195: returns/1k down, arch-wizard stint length up.
+- **STILL OWED (the tome/magic)**: gold surplus lever — scale BREWING (safe) so cheap
+  brewed potions replace 20g shop potions and free 150g for the tome (2 wizards tome-ready,
+  arch INT 8). Do NOT ship the risky heal-throttle without operator go.
 - **TOME BLOCKED ON GOLD SURPLUS (measured #194)**: the tome fund's armour suppression
   works but armour was NOT the drain — 0 tome buys, 0 learned, gold pinned ~30. 2 wizards
   now tome-ready (arch INT 8). Real block: income ~590/run ~= spend, sink is 22 potions
