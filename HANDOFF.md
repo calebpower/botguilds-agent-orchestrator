@@ -6,7 +6,15 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
-- **Live:** `explorer/0.97.0` on **run #189** (pushed; see git log).
+- **Live:** `explorer/0.98.0` on **run #190** (pushed; see git log).
+- **SMITH PIPELINE slice 1 (0.98.0)**: fixed the arm-rate bottleneck (0/28 forge-ready on
+  #189). Root cause was material CONVERGENCE, not the deep forge (all forging is
+  village-based — the mines forge tiles were a red herring). (A) a TOOL in hand
+  (FORGE_HAND_TOOLS) no longer reads as armed, so the lone pickaxe-miner forges a spear
+  not shield_iron x418; (B) a village char with an ingot but no lumber withdraws a lumber
+  from the stash (19 sat unused; ingots are the scarce half), vault-dead-guarded. 6 tests,
+  6/6 mutants. WATCH #190: armed share off 2/30, spear forges up, shield wrong_materials
+  down. SLICE 2 deferred: ingot SCARCITY (only from mines ore) is the remaining limit.
 - **HINTS + SIDECAR HEARTBEAT (0.97.0, operator)**: the nuisance never fired because (a)
   the sidecar's track recorder was crash-looping on a dead DB connection (its any-intel
   heartbeat was masked by spectate/color on the healthy main conn — restart revived it)

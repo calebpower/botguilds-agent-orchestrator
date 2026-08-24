@@ -593,6 +593,9 @@ FORGE_PRODUCTS = ("shield_iron", "spear", "shortsword", "dagger")
 # the hand outranks armouring the offhand when a char can't fight. Same tuple contents so
 # every recipe/proven/failed key still applies; only the try-order changes.
 FORGE_WEAPON_FIRST = ("spear", "shortsword", "dagger", "shield_iron")
+# v0.98.0: hand items that are TOOLS, not combat weapons — a char holding one still needs
+# a real weapon forged (the #189 miner spammed shields because its pickaxe read as armed).
+FORGE_HAND_TOOLS = frozenset({"pickaxe", "sickle", "hook_chain"})
 # Recipe quantities are NOT documented. Rather than guess once and give up, try a small
 # ordered ladder of (ingots, lumber) and let the server's rejection teach us — an
 # action_error here is INFORMATION, the same stance the exploration matrix takes. Cheapest
@@ -1182,7 +1185,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.97.0"
+    version = "explorer/0.98.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1696,6 +1699,31 @@ class Explorer:
                 proven = self._forge_attempt.pop(uid, None)
                 if proven is not None:
                     self._prove_forge(bot, proven)
+            # v0.98.0 SMITH PIPELINE — material CONVERGENCE. A spear needs 1 lumber AND
+            # 1 ingot on the SAME char; on #189 0/28 bare chars held both, so nobody
+            # forged. Ingots are the scarce material (smelted from mines ore) and lumber
+            # is plentiful (19 sat in the guild stash while chars stayed bare). So a char
+            # holding an INGOT but no lumber WITHDRAWS a lumber from the stash — free
+            # (drop moves an item OUT of guild inventory onto the char) — to become
+            # forge-ready. Same vault-dead failsafe as the potion withdrawal: a stash
+            # whose first VAULT_DEAD_LIMIT lumber ids are phantoms stops withdrawing.
+            has_ingot = any(str(i.get("kind", "")).startswith("ingot") for i in inv)
+            has_lumber = any(str(i.get("kind", "")).startswith("lumber") for i in inv)
+            if (has_ingot and not has_lumber
+                    and uid not in self._vault_pending
+                    and len(self._vault_dead) < VAULT_DEAD_LIMIT):
+                banked_lum = next(
+                    (i for i in (guild.get("inventory") or [])
+                     if str(i.get("kind", "")).startswith("lumber")
+                     and i.get("item_id") is not None
+                     and i.get("item_id") not in self._vault_dead), None)
+                if banked_lum is not None:
+                    self._vault_pending[uid] = banked_lum["item_id"]
+                    return [self._village_act(
+                        bot, uid, {"char_uid": uid, "action": "drop",
+                                   "item_id": banked_lum["item_id"]},
+                        f"smith: withdrawing a lumber (item {banked_lum['item_id']}) to "
+                        f"pair with a held ingot and forge a weapon")]
             forge = self._choose_forge(inv, eqp, char.get("stamina", 0))
             if forge is not None:
                 recipe, item_ids, why = forge
@@ -3407,9 +3435,15 @@ class Explorer:
         # and passive-char reports). A character with an EMPTY HAND forges a WEAPON first
         # (spear's recipe is proven: 1 ingot + 1 lumber), so scarce materials arm the hand
         # before they armour the offhand; an already-armed char still makes a shield.
+        # v0.98.0 SMITH PIPELINE: a TOOL in the hand (pickaxe/sickle) is not a combat
+        # weapon — treat it as an empty hand for weapon-first. #189's whole forge queue
+        # was one pickaxe-wielding miner forging shield_iron 418x (hand full of a tool ->
+        # armour path) while its spear materials sat unused. A spear beats a pickaxe for
+        # fighting; the equip-upgrade pass swaps the dearer weapon in.
         hand = eqp.get("hand")
-        hand_empty = not (hand.get("kind") if isinstance(hand, dict) else hand)
-        order = FORGE_WEAPON_FIRST if hand_empty else FORGE_PRODUCTS
+        hand_kind = hand.get("kind") if isinstance(hand, dict) else hand
+        needs_weapon = (not hand_kind) or hand_kind in FORGE_HAND_TOOLS
+        order = FORGE_WEAPON_FIRST if needs_weapon else FORGE_PRODUCTS
         for product in order:
             if product in worn or self._wont_fit(product):
                 continue

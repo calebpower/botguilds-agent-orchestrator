@@ -4798,3 +4798,24 @@ alone goes stale — the masked failure. 12 new tests (hints 4, nuisance-hint 4,
 char heads home regardless of the nuisance) fixed by asserting the WINNING action's
 reasoning not its direction. NEXT: measure #189 (does the nuisance fire now Will's live +
 hints flowing?); then back to loop proper (forge-to-arm measurement, ML Pass 4).
+
+ITER 78 (2026-08-23, explorer/0.98.0): SMITH PIPELINE slice 1 (operator: "build the smith
+pipeline"). Root-caused the arm rate to material+location CONVERGENCE, then corrected my
+own location claim: all 30 forge attempts come from the VILLAGE (there IS a village
+forge; the mines forge tiles were a red herring), so the forge is reachable — the
+bottleneck is purely MATERIALS. On #189: 0/28 bare chars held both a lumber AND an ingot
+(a spear needs both on one char); 19 lumber sat in the guild stash while chars stayed
+bare; and the ONE char forging (c19350) held a PICKAXE, so the 0.95.0 weapon-first check
+read hand_empty=False and routed it to the armour path -> shield_iron x418, all
+wrong_materials. TWO FIXES: (A) a TOOL in hand (FORGE_HAND_TOOLS={pickaxe,sickle,
+hook_chain}) no longer counts as armed -> the miner forges a spear not a shield; (B)
+CONVERGENCE — a village char holding an ingot but no lumber withdraws a lumber from the
+stash (ingots are the scarce half, lumber is plentiful), same vault-dead failsafe as the
+potion withdrawal so a mirage can't storm. 6 tests (2 forge, 4 smith); 6/6 mutants killed
+after isolating the has_ingot mutant with an empty-inventory fixture. Ratchets caught: a
+derived-fixture (range(VAULT_DEAD_LIMIT) -> literal 8 + pin) and TWO reachability
+registrations (village behaviour goes under village_behaviours, not behaviours). SLICE 2
+(deferred): ingots are still scarce (only smelted from mines ore) — the deeper convergence
+is producing more ingots / staging them, and getting lumber+ingot onto the same smith
+reliably. NEXT: measure #190 — armed share climbing off 2/30? spear forges up, shield
+wrong_materials down? Then the leveling/magic goals this unblocks.

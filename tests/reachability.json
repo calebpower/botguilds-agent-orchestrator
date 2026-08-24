@@ -147,6 +147,9 @@
     },
     "withdrawing a banked potion_red (item": {
       "through_bot_test": "test_the_withdrawal_is_reachable_THROUGH_THE_BOT"
+    },
+    "smith: withdrawing a lumber (item": {
+      "through_bot_test": "test_an_ingot_holder_withdraws_lumber_from_the_stash"
     }
   },
   "village_exempt_budget": 9,

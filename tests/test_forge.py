@@ -257,3 +257,25 @@ def test_a_forged_event_for_ANOTHER_guild_proves_us_nothing():
                    "stamina": 9, "inventory": [], "equipment": {}}],
         "visible": {"tiles": [], "entities": [], "items": [], "gold": []}})
     assert bot.recently_forged("u1") is False
+
+
+# ---- v0.98.0 smith pipeline: a TOOL in hand still forges a weapon --------------------
+from steemer.strategy.explorer import FORGE_HAND_TOOLS
+
+
+def test_a_pickaxe_in_hand_still_forges_a_WEAPON():
+    """#189: one pickaxe-wielding miner forged shield_iron 418x because a tool filled its
+    hand and read as 'armed'. A tool is not a weapon — weapon-first must still fire."""
+    exp = Explorer()
+    assert "pickaxe" in FORGE_HAND_TOOLS
+    eqp = dict(EMPTY, hand={"kind": "pickaxe"})
+    (product, _, _), _, _ = exp._choose_forge(_ing(2) + _lum(2), eqp, stamina=40)
+    assert product == "spear", f"a pickaxe-holder forged {product}, not a weapon"
+
+
+def test_a_real_WEAPON_in_hand_still_forges_armour():
+    """A char already holding a real weapon (club) is armed — it forges the shield."""
+    exp = Explorer()
+    eqp = dict(EMPTY, hand={"kind": "club"})
+    (product, _, _), _, _ = exp._choose_forge(_ing(2) + _lum(2), eqp, stamina=40)
+    assert product == "shield_iron", f"an armed char forged {product}, not armour"
