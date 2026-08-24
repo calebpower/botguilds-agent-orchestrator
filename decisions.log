@@ -5165,3 +5165,23 @@ successes-never-consume / club-phantoms-do-latch) + the old shared-latch test up
 the new semantics with rationale; 3 mutants killed (shared-latch revert, issue-counting,
 failures-never-counted). Potion-side probing verified live on #204: 8 fresh ids probed,
 persisted, next run goes 8 deeper. 1144 local/reaper green.
+
+ITER 95 (2026-08-24, measurement + wishlist pass, no new lever — 0.108.1 post-deploy
+watch in progress per the NEW STANDING RULE: after every push, check live every 2 min;
+3 consecutive clean checks before the next loop timer; rule memorised). MEASURED:
+(1) VAULT VERDICT — #205: 8 club-reasoned withdrawals, ALL refused; the arm branch
+probed 4 unique club ids, latched at VAULT_ARM_PROBES, persisted (20 phantom ids now
+known cross-run). EMPIRICAL RESULT: the vault CLUBS are phantom too — the entire guild
+inventory listing (404 bottles, 202 potions, 14 clubs) is stale except possibly lumber;
+the 0.108 lever lands empty but BOUNDED (≤12 wasted commands/run, decaying as knowledge
+persists) -> server_bugs.md entry owed. Gold flat at 20. (2) BONES — 20 recent bone
+drops server-wide, several SHALLOW (spire y0-7): the gold-free vigor brew input exists
+in-cap and combat-seek already hunts wildlife; the constraint loosens with kills, which
+needs armed chars -> income remains the root. (3) WISHLIST rescored (table in
+wishlist.md): band-refresh + most of M3a SHIPPED-BY-ARC (0.106 clocks / 0.98 smith) and
+moved to Done; danger-as-cost corridor (0.54) tops actionable; shadow-eval qualifies but
+ML deprioritised (stated, not hidden); magic still BLOCKED (arch-wizard death cost the
+INT ladder its top); NEW item: dashboard FIELD TRUTH (chars_by_world lag misled the
+operator twice today). NEXT: finish the 3-clean-check watch on 0.108.1; then
+danger-as-cost or the income lever (armed shallow combat -> bones + gold), operator
+weather permitting.
