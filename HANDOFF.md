@@ -6,6 +6,13 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
 
 ## TL;DR — where things stand right now
 
+- **DIRECTION (operator, 2026-08-23): FOCUS ON ARMING + LEVELING; DEPRIORITISE ML.** The
+  ML pipeline is a spectator — 6 models deployed, ZERO modulate behaviour, and all predict
+  survival/economy while the real bottleneck is ARMING (logistics/mechanics, no model
+  touches it). Next levers target the arm rate + leveling, NOT ML Pass 4/5. Smith pipeline
+  (0.98.0) is the live thread; slice 2 = ingot scarcity. Return to ML only when a model
+  is load-bearing (recruit-quality / XP-rate feeding leveling), not the ones we have.
+
 - **Live:** `explorer/0.98.0` on **run #190** (pushed; see git log).
 - **SMITH PIPELINE slice 1 (0.98.0)**: fixed the arm-rate bottleneck (0/28 forge-ready on
   #189). Root cause was material CONVERGENCE, not the deep forge (all forging is
