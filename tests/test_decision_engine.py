@@ -172,6 +172,46 @@ def test_unhealed_char_ONE_BELOW_the_cap_wont_SCOUT_onto_it():
     assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts), acts
 
 
+def test_unhealed_char_TWO_below_the_cap_feels_no_pull_from_past_cap_loot():
+    # v0.105.0 — the goal filter (run #197, c19465 thrashing y10<->y11 while the village
+    # re-embarked it 1051 times). Step-gating alone relocated the dance: at cap-2 the
+    # first step toward a past-cap chest is LEGAL, at cap-1 it is not, so the offer
+    # flickered with position. A goal an un-healed char may not reach must generate no
+    # pull at ANY distance — then the world honestly reads looted-out and the char
+    # commits home. Bounded world (no frontier) so the gather pull is the only
+    # candidate the mutant could win with.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    top = POISON_SAFE_DEPTH + 4
+    char = _field_char(pos=[0, POISON_SAFE_DEPTH - 2], stamina=40, inventory=[])
+    frame = {"world": "vale", "tick": 10, "chars": [char],
+             "bounds": [1, top + 1],
+             "visible": {"tiles": _vert_corridor(top), "entities": [],
+                         "items": [{"pos": [0, POISON_SAFE_DEPTH + 1], "kind": "egg"}],
+                         "gold": []}}
+    acts = bot.on_frame(frame)
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts), acts
+    assert {"char_uid": "c1", "action": "move", "dir": "S"} in acts, \
+        f"should commit home (looted-out), got {acts}"
+
+
+def test_the_looted_out_retreat_STAMPS_returned_empty_end_to_end():
+    # v0.105.0 — the village half keys off this stamp; the wizard-recall lesson
+    # (a manually-stamped unit test masked the missing stamp) says drive it through
+    # on_frame and read the stamp back.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    top = POISON_SAFE_DEPTH + 4
+    char = _field_char(pos=[0, POISON_SAFE_DEPTH - 2], stamina=40, inventory=[])
+    frame = {"world": "vale", "tick": 10, "chars": [char],
+             "bounds": [1, top + 1],
+             "visible": {"tiles": _vert_corridor(top), "entities": [],
+                         "items": [], "gold": []}}
+    bot.on_frame(frame)
+    assert bot.strategy._returned_empty.get("c1") == 10, \
+        f"looted-out retreat did not stamp: {bot.strategy._returned_empty}"
+
+
 def test_unhealed_char_still_gathers_loot_within_the_safe_depth():
     # The guard must bite only PAST the cap. Loot the char can reach without crossing
     # POISON_SAFE_DEPTH is still pursued — otherwise we would starve shallow gathering

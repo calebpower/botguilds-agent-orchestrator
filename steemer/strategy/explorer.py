@@ -1034,6 +1034,14 @@ MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina be
 #   the server (moves failed not_enough_stamina at shown-sta up to ~29 for a cost-20
 #   move; the gap is staleness, not terrain). Rest/regen instead of a doomed step.
 
+RETURNED_EMPTY_COOLDOWN = 150  # v0.105.0: a char that came home because its world read
+                           # LOOTED-OUT waits this long before re-embarking — long enough
+                           # for a band refresh (~120-240 ticks, in_ticks carries 120) to
+                           # replenish the strip it just proved empty. Without it the
+                           # village re-fields the char the tick it arrives ("safest:
+                           # threat 0.0") and it commutes forever (run #197: 1051 embarks,
+                           # 3347 not_in_village errors). Full-carry sell-homers are NOT
+                           # stamped and re-embark freely — this keys on WHY it came home.
 EMBARK_COOLDOWN = 8   # v0.10.0: after commanding a char to embark, don't re-send
 #   that char's embark for this many ticks. The village frame we decide on is a few
 #   ticks stale, so a just-embarked char still shows in `chars_here` — without the
@@ -1210,7 +1218,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.104.0"
+    version = "explorer/0.105.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1283,6 +1291,7 @@ class Explorer:
         self._will_eids: dict = {}     # Will's char eid -> tick last seen (attack blame)
         self._make_room: dict = {}     # world -> tick: a seat needs a slot there
         self._wizard_recall: dict = {}   # v0.102.0: uid -> tick of last band-danger fallback
+        self._returned_empty: dict = {}  # v0.105.0: uid -> tick the looted-out retreat fired
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -1933,6 +1942,12 @@ class Explorer:
                 for cand in ordered:
                     cch = here_chars.get(cand)
                     crole = role_of(cch, seats) if cch is not None else None
+                    # v0.105.0: a char that walked home because its world read
+                    # looted-out sits out ~a band refresh before re-embarking (any
+                    # role — re-fielding fodder into a strip it just proved empty is
+                    # the same commute). Mirrors the 0.102.0 wizard-recall guard.
+                    if tick - self._returned_empty.get(cand, -10 ** 9) < RETURNED_EMPTY_COOLDOWN:
+                        continue
                     # v0.92.2: green = BARE HANDS, any level, any nominal role except
                     # fodder. #182 closed two loopholes at once: the level clause
                     # (victims were level 2-5 — cheap early spend_xp promotes past
@@ -2592,14 +2607,22 @@ class Explorer:
                 # treasury (death-proof), ~half our income, and only ~3% are tied to
                 # a kill (so they need no fighting). Then to chests (direct 1-21g +
                 # loot). Then ordinary loot.
-                gstep = self._step(pos, lambda p: p in ctx.gold, ctx, blocked)
+                # v0.105.0: deep_ok gates the GOAL, not just the step. Run #197: gating
+                # only steps relocated the line dance one tile shallower — at cap-2 the
+                # first step toward a past-cap chest is legal, at cap-1 it is not, so the
+                # offer flickered on/off with position and the char thrashed y10<->y11
+                # while the village kept re-embarking it (1051 embarks). A goal an
+                # un-healed char may not reach must generate NO pull at any distance;
+                # then "looted-out" is a true statement and the char goes home once.
+                gstep = self._step(pos, lambda p: p in ctx.gold and deep_ok(p), ctx, blocked)
                 if gstep and not deep_ok(gstep):
                     gstep = None
                 if gstep:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, gstep)},
                           5.0, "beeline to a gold coin (instant banked gold)")
                     productive = True
-                cstep = self._step(pos, lambda p: any(n in ctx.containers for n in nav.neighbors(p)),
+                cstep = self._step(pos, lambda p: deep_ok(p) and
+                                   any(n in ctx.containers for n in nav.neighbors(p)),
                                    ctx, blocked)
                 if cstep and not deep_ok(cstep):
                     cstep = None
@@ -2619,7 +2642,7 @@ class Explorer:
                     if toward:
                         loot_goal = toward
                         loot_why = "moving toward loot near an ally (forming up as we work)"
-                lstep = self._step(pos, lambda p: p in loot_goal, ctx, blocked)
+                lstep = self._step(pos, lambda p: p in loot_goal and deep_ok(p), ctx, blocked)
                 if lstep and not deep_ok(lstep):
                     lstep = None
                 if lstep:
@@ -2639,7 +2662,8 @@ class Explorer:
                         if en.get("kind") in WILDLIFE_SAFE
                         and abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= COMBAT_SEEK_RADIUS}
                 if wild:
-                    wstep = self._step(pos, lambda p: any(n in wild for n in nav.neighbors(p)),
+                    wstep = self._step(pos, lambda p: deep_ok(p) and
+                                       any(n in wild for n in nav.neighbors(p)),
                                        ctx, blocked)
                     if wstep and not deep_ok(wstep):
                         wstep = None
@@ -2767,14 +2791,16 @@ class Explorer:
                     else:
                         self._cohering.discard(uid)
 
-                north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known, ctx.bounds), ctx, blocked)
+                north = self._step(pos, lambda p: p[1] > pos[1] and deep_ok(p)
+                                   and nav.frontier(p, ctx.known, ctx.bounds), ctx, blocked)
                 if north and not deep_ok(north):
                     north = None
                 if north:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
                           FRONTIER_NORTH_SCORE, "pushing north into unexplored ground")
                     productive = True
-                any_frontier = self._step(pos, lambda p: nav.frontier(p, ctx.known, ctx.bounds), ctx, blocked)
+                any_frontier = self._step(pos, lambda p: deep_ok(p)
+                                          and nav.frontier(p, ctx.known, ctx.bounds), ctx, blocked)
                 if any_frontier and not deep_ok(any_frontier):
                     any_frontier = None
                 if any_frontier:
@@ -2824,6 +2850,13 @@ class Explorer:
                     in_ticks = nr.get("in_ticks")
                     refresh_soon = isinstance(in_ticks, int) and in_ticks <= REFRESH_STAY_TICKS
                     if not refresh_soon:
+                        # v0.105.0: stamp the reason the char is heading home, so the
+                        # village won't bounce it straight back into the same farmed
+                        # strip (run #197's revolving door: 1051 embarks, chars doing
+                        # vale->village->vale in 1-4 ticks). Stamped at OFFER time: if
+                        # something better wins and the char never reaches the village,
+                        # the stamp expires harmlessly in the field.
+                        self._returned_empty[uid] = bot.tick
                         self._retreat(uid, pos, ctx, blocked, offer, 1.5,
                                       "world looted-out, no refresh imminent — home to re-embark")
 

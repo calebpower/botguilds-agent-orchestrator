@@ -4972,3 +4972,35 @@ not observed dancing live). VERIFIED ON THE RECORDED DEFECT: replayed run #196's
 (c19468 gathers W toward in-cap loot). 1100 local + reaper green. NEXT: measure #197 —
 reversal-rate/1k for un-healed chars ~0; watch that shallow gather income holds and
 un-healed chars near the cap retreat home rather than idle-rest in place.
+
+ITER 87 (2026-08-24, explorer/0.105.0): THE REVOLVING DOOR — operator corroboration
+request ("of 5 players... 2 go 'not enough', 3 go 'with me it'll be enough', they swap
+places"). CONFIRMED, two nested loops on #197: (MICRO) 0.104.0's step-gate merely
+RELOCATED the line dance — at cap-2 the first step toward a past-cap chest is legal, at
+cap-1 it is not, so the offer flickered with position (c19465 thrashing y10<->y11);
+(MACRO) the char walks home "world looted-out", the village re-embarks it THE SAME TICK
+("safest: threat 0.0, N of us there") without fixing why it left — 1051 embarks/4300
+ticks, 3347 not_in_village errors (stale-roster re-issues), c19403 embarked 3x in 11
+ticks, vale->village->vale round trips in 1-4 ticks. ROOT of the un-healed state: the
+heal-first pipeline produced 4 potions at run start then went dry — the vault's ~202
+potion_red are largely PHANTOM (40 no_such_item errors; VAULT_DEAD_LIMIT=8 latch tripped,
+withdrawals disabled for the run) and gold=33 is below sustained 20g shop buys. FIX
+(0.105.0, one lever, two halves): (1) GOAL FILTER — deep_ok now gates the GOAL predicate
+(gold/chest/loot/wildlife/frontier), not just the first step: a goal an un-healed char
+may not reach generates NO pull at any distance, so "looted-out" becomes a true statement
+and the char commits home once; step-gates kept as belt-and-braces. (2) RETURNED-EMPTY
+EMBARK COOLDOWN — the looted-out retreat stamps _returned_empty[uid]; the village embark
+skips a stamped char for RETURNED_EMPTY_COOLDOWN=150 (~a band refresh, in_ticks carries
+120), so it benches until the strip it just proved empty has a chance to replenish. Keys
+on WHY it came home: full-carry sell-homers are never stamped and embark freely (tested).
+Mirrors the 0.102.0 wizard-recall guard. 5 new tests (goal-filter live repro at cap-2 w/
+bounded no-frontier fixture; end-to-end stamp through on_frame per the wizard-recall
+lesson; village waits/re-embarks-after/unstamped-embarks-freely; pinned literal). MUTANTS
+KILLED: loot goal-filter reverted to step-only (the 0.104.0 state), stamp removed, village
+skip removed. NAMED GAP: the gold/chest/wildlife/frontier goal-filter clones share the
+loot pattern without per-clone mutants. NOT SHIPPED HERE (next slice, operator-endorsed
+direction): the potion-drought cure — scale BREWING so cheap potions re-open the deep map;
+also owed: purge/refresh the phantom vault ids feeding VAULT_DEAD_LIMIT. NEXT: measure
+#198 — embarks/1k WAY down (was ~245/1k), not_in_village errors collapse, field-time
+share up; watch village doesn't over-bench (all-stamped worst case idles 150 ticks by
+design).

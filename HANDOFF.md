@@ -13,13 +13,19 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   (0.98.0) is the live thread; slice 2 = ingot scarcity. Return to ML only when a model
   is load-bearing (recruit-quality / XP-rate feeding leveling), not the ones we have.
 
-- **Live:** `explorer/0.103.0` (pending self-deploy; #195 is the last measured run).
-- **LINE DANCE FIX (0.103.0)**: un-healed chars oscillated N/S at the POISON_SAFE_DEPTH=12
-  boundary (run #195 c19457 at y12/13) — the gather block pulled them past the cap for loot
-  (4.0) while the retreat pushed them home (2.5), and the two alternated forever. FIX: a
-  `deep_ok(step)` guard suppresses a gather step that would carry an un-healed char past
-  POISON_SAFE_DEPTH (the same threshold the retreat uses), so the rules agree about the cap
-  instead of fighting. 2 tests, mutation-checked from both sides. NEXT: measure #196.
+- **Live:** `explorer/0.105.0` (self-deployed; #198 is the measurement run).
+- **THE LINE-DANCE ARC (0.103.0 -> 0.105.0)**, three passes on one root: un-healed chars
+  are capped at POISON_SAFE_DEPTH=12 while the map's remaining content sits deeper.
+  0.103.0 step-gated gather (off-by-one: `<=` let chars land ON the cap tile the retreat
+  fires from). 0.104.0 made it strict + gated every idle pull — which relocated the dance
+  one tile shallower (a step-gate flips offer-existence with position). 0.105.0 is the
+  real invariant: **deep_ok gates the GOAL predicate** (no pull at any distance from a
+  goal the char may not reach) + **RETURNED_EMPTY_COOLDOWN=150** (the looted-out retreat
+  stamps the char; the village benches it ~a band refresh instead of re-fielding it the
+  tick it arrives — #197's revolving door: 1051 embarks/4300 ticks, 3347 not_in_village).
+  ROOT still open: the potion drought (vault ~202 potion_red largely PHANTOM, 40
+  no_such_item tripped VAULT_DEAD_LIMIT=8; gold 33). NEXT LEVER (operator-endorsed
+  direction): scale BREWING + purge phantom vault ids; measure #198 embarks/1k.
 - **WIZARD RECALL HYSTERESIS (0.102.0)**: #194's return spam (2711 returns/17k ticks) was
   the arch-wizard (INT 8) oscillating home 222x — an observation-staleness thrash (a
   wizard only knows a world is dangerous while IN it; home it expires, the embark reads it
