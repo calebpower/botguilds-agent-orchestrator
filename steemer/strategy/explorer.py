@@ -1056,6 +1056,13 @@ SCOUT_RESEND_TICKS = 40    # v0.106.1: after releasing a scout toward an empty w
                            # chars_by_world lags an embark by a few frames (the 0.43.0
                            # lagging-count lesson), and one sensor per world is the point.
 VAULT_ARM_KINDS = frozenset({"club"})   # v0.108.0: vault weapon kinds worth a free arm
+VAULT_ARM_PROBES = 4       # v0.108.1: the ARM branch's own storm budget, counting
+                           # FAILED probes only (successful withdrawals never latch — 14
+                           # real clubs should arm 14 chars). #204 proved the shared
+                           # latch a design flaw within minutes: heal-first runs earlier,
+                           # burned all 8 probes on potion phantoms, and the clubs were
+                           # never tried at all. Separate budgets — a potion storm must
+                           # not starve the club probe (and vice versa).
 GHOST_REASONS = frozenset({"not_in_village", "unknown_character", "no_such_character"})
 GHOST_TTL = 600            # v0.107.1: how long a server-refused ("ghost") char is barred
                            # from village candidacy. Long on purpose — a real char
@@ -1240,7 +1247,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.108.0"
+    version = "explorer/0.108.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1286,6 +1293,8 @@ class Explorer:
         # retried. Maps item_id -> True; guild-level because the vault is guild-level.
         self._vault_dead: set = set()
         self._vault_dead_new = 0            # v0.108.0: phantoms discovered THIS run —
+        self._vault_arm_failures = 0        # v0.108.1: FAILED club probes THIS run
+        self._vault_pending_arm: set = set()  # item_ids issued by the ARM branch
                                             # the storm latch counts fresh probes, not
                                             # the hydrated knowledge (else persistence
                                             # would close the latch at startup forever)
@@ -1417,7 +1426,11 @@ class Explorer:
             dead = self._vault_pending.pop(uid, None)
             if dead is not None and dead not in self._vault_dead:
                 self._vault_dead.add(dead)
-                self._vault_dead_new += 1
+                if dead in self._vault_pending_arm:
+                    self._vault_pending_arm.discard(dead)
+                    self._vault_arm_failures += 1   # v0.108.1: the ARM branch's budget
+                else:
+                    self._vault_dead_new += 1       # the potion branch's budget
                 # v0.108.0: persist the cumulative phantom set (intel, observational —
                 # the learned table is positive-facts-only by doctrine) so every run
                 # probes DEEPER into the 202-entry vault list instead of re-treading
@@ -1718,13 +1731,14 @@ class Explorer:
             # withdrawal, so phantoms latch instead of storming.
             if (eqp.get("hand") is None and not is_fodder
                     and uid not in self._vault_pending
-                    and self._vault_dead_new < VAULT_DEAD_LIMIT):
+                    and self._vault_arm_failures < VAULT_ARM_PROBES):
                 banked_club = next(
                     (i for i in (frame.get("guild", {}).get("inventory") or [])
                      if i.get("kind") in VAULT_ARM_KINDS
                      and i.get("item_id") is not None
                      and i.get("item_id") not in self._vault_dead), None)
                 if banked_club is not None:
+                    self._vault_pending_arm.add(banked_club["item_id"])
                     self._vault_pending[uid] = banked_club["item_id"]
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "drop",

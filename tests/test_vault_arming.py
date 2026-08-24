@@ -127,17 +127,66 @@ def test_the_POTION_withdrawal_latch_also_counts_fresh_probes(tmp_path):
         f"hydrated knowledge closed the potion withdrawal: {acts}"
 
 
-def test_a_probe_storm_this_run_DOES_close_the_vault():
-    # The latch still latches: after VAULT_DEAD_LIMIT fresh phantoms THIS run, no
-    # further vault ids are probed (club or potion) — the anti-storm half of the
-    # counts-fresh design, so neither side is an unbounded error hose.
+def test_a_potion_storm_closes_the_POTION_withdrawal_only():
+    # v0.108.1 semantics change, deliberate: the potion latch closes the potion
+    # withdrawal but must NOT close the club probe (that shared-latch coupling is the
+    # #204 starvation bug). An ARMED char after a full potion storm gets no drop at
+    # all; the club side is asserted in the starvation test below.
     bot = _bot()
     for n in range(8):                                       # 8 fresh phantoms via the
         bot.strategy._vault_pending["c1"] = 9600 + n         # REAL error path
         bot.on_action_error({"char_uid": "c1", "action": "drop",
                              "reason": "no_such_item", "tick": 500 + n})
-    vault = [{"kind": "club", "item_id": 9700},
-             {"kind": "potion_red", "item_id": 9701}]
-    acts = bot.on_frame(_village([_char("c1")], vault=vault, gold=20))
+    vault = [{"kind": "potion_red", "item_id": 9701}]
+    acts = bot.on_frame(_village([_char("c1", hand="club")], vault=vault, gold=20))
     assert all(a.get("action") != "drop" for a in acts), \
-        f"the vault kept being probed after a full storm: {acts}"
+        f"the potion withdrawal kept probing after a full storm: {acts}"
+
+
+def test_a_potion_phantom_storm_does_NOT_starve_the_club_probe():
+    # v0.108.1 — the live #204 failure, minutes after 0.108.0 shipped: heal-first runs
+    # before arming, burned the full shared latch on potion phantoms, and the 14 clubs
+    # were never probed at all. The arm branch has its own failure budget.
+    bot = _bot()
+    for n in range(8):                                       # a full potion storm,
+        bot.strategy._vault_pending["c1"] = 9600 + n         # through the real path
+        bot.on_action_error({"char_uid": "c1", "action": "drop",
+                             "reason": "no_such_item", "tick": 500 + n})
+    acts = bot.on_frame(_village([_char("c1", hand="club"), _char("c2")],
+                                 vault=[CLUB], gold=20))
+    assert {"char_uid": "c2", "action": "drop", "item_id": 9001} in acts, \
+        f"the potion storm starved the club probe: {acts}"
+
+
+def test_successful_club_withdrawals_never_consume_the_arm_budget():
+    # 14 real clubs must arm 14 chars: only FAILURES latch. Issue five arm
+    # withdrawals with no errors between them — the fifth must still fire
+    # (an issue-counting mutant latches after four).
+    from steemer.strategy.explorer import VAULT_ARM_PROBES
+    assert VAULT_ARM_PROBES == 4, "the budget moved; re-read the numbers in this test"
+    bot = _bot()
+    for n in range(5):
+        vault = [{"kind": "club", "item_id": 9800 + n}]
+        acts = bot.on_frame(_village([_char(f"b{n}")], vault=vault, gold=20,
+                                     tick=500 + n))
+        assert {"char_uid": f"b{n}", "action": "drop", "item_id": 9800 + n} in acts, \
+            f"withdrawal {n} did not fire (successes are latching): {acts}"
+        bot.strategy._vault_pending.pop(f"b{n}", None)   # the withdrawal landed
+
+
+def test_club_phantoms_DO_latch_the_arm_branch():
+    # the anti-storm half: four failed club probes close the arm branch for the run.
+    bot = _bot()
+    for n in range(4):
+        t = 500 + 10 * n                # spaced past VILLAGE_ACTION_COOLDOWN (6)
+        acts = bot.on_frame(_village([_char("c1")],
+                                     vault=[{"kind": "club", "item_id": 9900 + n}],
+                                     gold=20, tick=t))
+        assert any(a.get("action") == "drop" for a in acts), f"probe {n} missing"
+        bot.on_action_error({"char_uid": "c1", "action": "drop",
+                             "reason": "no_such_item", "tick": t})
+    acts = bot.on_frame(_village([_char("c1")],
+                                 vault=[{"kind": "club", "item_id": 9950}],
+                                 gold=20, tick=600))
+    assert all(a.get("action") != "drop" for a in acts), \
+        f"the arm branch kept probing after a full storm: {acts}"

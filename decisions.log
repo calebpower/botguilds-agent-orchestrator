@@ -5150,3 +5150,18 @@ the operator: a use-probe at full mana (10/10, we never cast) proves nothing —
 until a caster can spend mana; the 2 held potion_blue are KEPT, not sold. 1142
 local/reaper green. NEXT: deploy; measure #204 — bare chars armed from vault (drops with
 club ids), vault probing depth grows across restarts, first real potion found?
+
+ITER 94 (2026-08-24, explorer/0.108.1): THE SHARED LATCH STARVED THE CLUBS — caught by
+measuring #204 minutes after 0.108.0 deployed (operator asked "are there supposed to be
+0 people in the worlds?" — answer: no, 3 sentinels were out, the dash's chars_by_world
+lags; but the check surfaced the real bug). All 16 refused drops were POTION probes:
+heal-first runs before arming in the per-char routine, burned the full VAULT_DEAD_LIMIT=8
+on potion phantoms, and the arm branch shared that latch — the 14 clubs were NEVER
+probed. FIX: the arm branch gets its own budget (VAULT_ARM_PROBES=4) counting FAILURES
+only (successes never latch — 14 real clubs must arm 14 chars; issue-counting was the
+first draft's bug, caught in test design). Error hook attributes each phantom to the
+branch that issued it (_vault_pending_arm). 3 new tests (storm-does-not-starve /
+successes-never-consume / club-phantoms-do-latch) + the old shared-latch test updated to
+the new semantics with rationale; 3 mutants killed (shared-latch revert, issue-counting,
+failures-never-counted). Potion-side probing verified live on #204: 8 fresh ids probed,
+persisted, next run goes 8 deeper. 1144 local/reaper green.
