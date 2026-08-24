@@ -1046,6 +1046,10 @@ MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina be
 # returner goes back only into a world that has replenished since its stamp (observed
 # band refresh, or past the last-known refresh ETA) — or the moment it holds a heal,
 # which moots the stamp entirely. See _replenished_since and the village embark gate.
+SCOUT_RESEND_TICKS = 40    # v0.106.1: after releasing a scout toward an empty world,
+                           # wait this long before releasing another to the same world —
+                           # chars_by_world lags an embark by a few frames (the 0.43.0
+                           # lagging-count lesson), and one sensor per world is the point.
 EMBARK_COOLDOWN = 8   # v0.10.0: after commanding a char to embark, don't re-send
 #   that char's embark for this many ticks. The village frame we decide on is a few
 #   ticks stale, so a just-embarked char still shows in `chars_here` — without the
@@ -1222,7 +1226,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.106.0"
+    version = "explorer/0.106.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1296,6 +1300,7 @@ class Explorer:
         self._make_room: dict = {}     # world -> tick: a seat needs a slot there
         self._wizard_recall: dict = {}   # v0.102.0: uid -> tick of last band-danger fallback
         self._returned_empty: dict = {}  # v0.105.0: uid -> tick the looted-out retreat fired
+        self._scout_sent: dict = {}      # v0.106.1: world -> tick a scout was released to it
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -1969,7 +1974,21 @@ class Explorer:
                             c_maps = [m for m in open_maps
                                       if self._replenished_since(bot, m, _stamp)]
                             if not c_maps:
-                                continue      # nothing has changed anywhere it could go
+                                # v0.106.1 NEVER STARVE THE FIELD. Run #200, 1300
+                                # ticks in: all 30 chars benched (everyone stamped,
+                                # ETAs far out) — and with nobody fielded, NO frames
+                                # arrive, so no refresh can ever be OBSERVED: the
+                                # gate had removed its own eyes. A fielded char is a
+                                # sensor; an empty world may always be scouted by a
+                                # stamped char (one at a time — the resend guard
+                                # covers the frames chars_by_world lags behind an
+                                # embark, the 0.43.0 lagging-count lesson).
+                                c_maps = [m for m in open_maps
+                                          if not by_world.get(m, 0)
+                                          and tick - self._scout_sent.get(m, -10 ** 9)
+                                          >= SCOUT_RESEND_TICKS]
+                                if not c_maps:
+                                    continue  # every world watched or freshly scouted
                     # v0.92.2: green = BARE HANDS, any level, any nominal role except
                     # fodder. #182 closed two loopholes at once: the level clause
                     # (victims were level 2-5 — cheap early spend_xp promotes past
@@ -2077,6 +2096,7 @@ class Explorer:
                 if uid is None:
                     return []
                 self._embark_at[uid] = tick
+                self._scout_sent[target] = tick   # v0.106.1: this world has eyes en route
                 if pair_with is not None:
                     self._embark_at[pair_with] = tick
                     return [self._village_act(

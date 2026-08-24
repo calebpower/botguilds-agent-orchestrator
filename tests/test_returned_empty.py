@@ -125,3 +125,64 @@ def test_the_replenishment_clocks_are_stamped_END_TO_END_by_field_frames():
     assert bot.refreshed_at.get("vale") == 502, \
         f"refresh not stamped: {bot.refreshed_at}"
     assert bot.refresh_eta.get("vale") == 502 + 200
+
+
+def test_an_ALL_BENCHED_roster_still_scouts_an_empty_world():
+    """v0.106.1 — run #200's live failure: every char stamped, ETAs far out, and with
+    NOBODY fielded no frames arrive, so no refresh can ever be observed — the gate had
+    benched the roster AND removed its own eyes. A world with none of our chars may
+    always be scouted by a stamped char: a fielded char is a sensor."""
+    bot = _bot()
+    bot.strategy._returned_empty["r1"] = 600
+    bot.refresh_eta = {"vale": 10 ** 9, "mines": 10 ** 9}
+    # vale is EMPTY of our chars (the pad puts nobody there) -> scout release
+    acts = bot.on_frame(_village([_char("r1")], {"mines": [f"v{i}" for i in range(4)],
+                                                 "spare": ["g1"]}, tick=700))
+    emb = _embarks(acts)
+    assert emb and emb[0]["map"] == "vale", \
+        f"the roster starves with the field empty: {acts}"
+
+
+def test_the_scout_release_holds_OFF_while_the_world_is_watched():
+    """The release is for EYES, not a bypass: a world that already holds our chars and
+    has not replenished stays gated — the bench is only overridden when it would leave
+    a world unobserved."""
+    bot = _bot()
+    bot.strategy._returned_empty["r1"] = 600
+    bot.refresh_eta = {"vale": 10 ** 9, "mines": 10 ** 9}
+    # both open worlds hold our chars (vale 1, mines 4): no release, r1 waits
+    acts = bot.on_frame(_village([_char("r1")], _pad(), tick=700))
+    assert not _embarks(acts), f"scout release fired at a watched world: {acts}"
+
+
+def test_the_scout_resend_guard_covers_the_by_world_lag():
+    """chars_by_world lags an embark by a few frames (the 0.43.0 lagging-count lesson):
+    a second stamped char must not chase the first scout out while the count still
+    reads zero — but the guard expires, so a scout that died en route is replaced."""
+    bot = _bot()
+    bot.strategy._returned_empty["r1"] = 600
+    bot.strategy._scout_sent["vale"] = 690                  # scout released 10 ticks ago
+    bot.refresh_eta = {"vale": 10 ** 9, "mines": 10 ** 9}
+    pad = {"mines": [f"v{i}" for i in range(4)], "spare": ["g1"]}
+    acts = bot.on_frame(_village([_char("r1")], pad, tick=700))
+    assert not _embarks(acts), "double-released into the lag window"
+    acts = bot.on_frame(_village([_char("r1")], pad, tick=690 + 40))
+    assert _embarks(acts), "the resend guard never expires — a dead scout is never replaced"
+
+
+def test_the_scout_stamp_is_set_BY_THE_EMBARK_end_to_end():
+    """The wizard-recall lesson, third occurrence: a guard whose stamp is only set by
+    hand in tests masks the missing stamp. Release a scout through a REAL embark, then
+    replay the lag window (chars_by_world still empty, the scout still listed here):
+    a second release must not fire — only the embark-time stamp can prevent it."""
+    bot = _bot()
+    bot.strategy._returned_empty["r1"] = 600
+    bot.strategy._returned_empty["r2"] = 600
+    bot.refresh_eta = {"vale": 10 ** 9, "mines": 10 ** 9}
+    pad = {"mines": [f"v{i}" for i in range(4)]}
+    both = [_char("r1"), _char("r2")]
+    first = _embarks(bot.on_frame(_village(both, pad, tick=700)))
+    assert first and first[0]["map"] == "vale", f"no scout released at all: {first}"
+    # the lag window: the server still shows vale empty and both chars "here"
+    second = _embarks(bot.on_frame(_village(both, pad, tick=705)))
+    assert not second, f"double-released during the lag window: {second}"

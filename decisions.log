@@ -5056,3 +5056,20 @@ regressions vs the oracle. 1120 local + reaper green. NEXT: deploy, measure #200
 potions bought > 0, brews > 0 (first since #194), embarks/1k down from 150, dance
 windows 0; then the blue-potion mana probe (chars expose mana/max_mana; c19460 carries a
 potion_blue — one `use` + mana diff answers the operator's red=health/blue=mana question).
+
+ITER 90 (2026-08-24, explorer/0.106.1): FIELD STARVATION (operator: "why the fuck aren't
+my characters on the field") — 0.106.0's causal gate benched ALL 30 chars ~1300 ticks
+into #200: everyone stamped looted-out, ETAs far out, and with NOBODY fielded no frames
+arrive, so no refresh can ever be OBSERVED — the gate removed its own eyes. DESIGN HOLE:
+a fielded char is a SENSOR; an empty field is informationally dead and must never be a
+stable state. FIX: NEVER-STARVE release — a stamped char may always scout a world with
+NONE of our chars in it (one per world per SCOUT_RESEND_TICKS=40, covering the
+chars_by_world embark lag, the 0.43.0 lesson); the embark itself stamps _scout_sent.
+4 tests: the live all-benched repro (must embark), release holds OFF for watched worlds
+(not a bypass), resend guard + expiry (dead scout replaced), and the stamp proven
+END-TO-END through a real embark + lag-window replay (the manual-stamp mutant survived
+the unit test — THIRD occurrence of the wizard-recall lesson; the end-to-end test killed
+it). Mutants: release-removed / by_world-dropped / guard-dropped / stamp-removed all
+killed. 1125 local + reaper green. NOTE: gold hit 22 (a potion WAS bought at 42 — the
+0.106.0 heal unblock works; next buy needs 30). NEXT: measure #200+ — field never empty,
+scouts observe refreshes, benched release on refresh, potions/brews accumulate.
