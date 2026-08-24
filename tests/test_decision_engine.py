@@ -1530,15 +1530,16 @@ def test_village_heals_a_potionless_char_only_above_the_reserve():
     assert acts == [{"char_uid": "c1", "action": "buy", "kind": "potion_red"}]
 
 
-def test_village_holds_the_reserve_floor_and_skips_the_heal_below_it():
-    # reserve floor, boundary: one gold short of surplus (reserve+19 - 20 < reserve) the
-    # buy is skipped so the stockpile never dips below POTION_RESERVE. Mutation-guards the
-    # off-by-one. v0.35.0: at the *live* 600 reserve the treasury (pinned ~100 by the old
-    # 100 reserve) is now far below it, so the potion-buy stops consuming income and gold
-    # can climb past the 529 cap-test.
-    from steemer.strategy.explorer import POTION_RESERVE
+def test_village_holds_the_operating_buffer_and_skips_the_heal_below_it():
+    # v0.106.0: the potion buy's own floor is POTION_MIN_BUFFER (10) — the RESERVE
+    # protects heal-gold from weapons/armor, and its old use as a veto on the heal
+    # itself froze every buy at #197-199's gold 33-42. Boundary, literal: price 20,
+    # gold 29 leaves 9 (below the buffer -> skip). Mutation-guards the off-by-one and
+    # the zero-buffer drain alike.
+    from steemer.strategy.explorer import POTION_MIN_BUFFER
+    assert POTION_MIN_BUFFER == 10, "the buffer moved; re-read the numbers in this test"
     bot = _bot()
-    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(POTION_RESERVE + 19, armed=True)))
+    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(29, armed=True)))
 
 
 def test_village_does_not_stockpile_a_second_potion():
@@ -1548,13 +1549,14 @@ def test_village_does_not_stockpile_a_second_potion():
     assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(500, potions=1, armed=True)))
 
 
-def test_afford_potion_respects_the_reserve():
+def test_afford_potion_respects_the_operating_buffer():
     # Unit-test the gate directly: the potion is offered only when the buy leaves the
-    # treasury at or above POTION_RESERVE (100), and the price is read from the shop.
-    from steemer.strategy.explorer import Explorer, POTION_RESERVE
+    # OPERATING BUFFER (v0.106.0 — the reserve no longer vetoes the heal it protects),
+    # and the price is read from the shop. Literal boundary: price 20, buffer 10.
+    from steemer.strategy.explorer import Explorer
     frame = _barehand_frame(0)  # carries _SHOP with potion_red @ 20
-    assert Explorer._afford_potion(frame, POTION_RESERVE + 20) == ("potion_red", 20)
-    assert Explorer._afford_potion(frame, POTION_RESERVE + 19) is None
+    assert Explorer._afford_potion(frame, 30) == ("potion_red", 20)
+    assert Explorer._afford_potion(frame, 29) is None
 
 
 def test_afford_weapon_respects_the_stat_requirement():

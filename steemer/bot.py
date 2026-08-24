@@ -76,6 +76,14 @@ class GuildBot:
         # collapsed ground loot 18x and a starving band was indistinguishable from a broken
         # bot. Per world: the last (band, in_ticks) we saw.
         self._band: dict[str, tuple[Any, Any]] = {}
+        # v0.106.0: per-world replenishment clock, for the honest re-embark condition
+        # ("the world actually changed since this char proved it empty"). refreshed_at
+        # is stamped when _band_refreshed observes a refresh; refresh_eta is the tick
+        # the NEXT refresh is due per the last frame we saw (tick + in_ticks) — the
+        # fallback that keeps a world we lost eyes on from benching its returners
+        # forever (no frames arrive from a world nobody is in).
+        self.refreshed_at: dict[str, int] = {}
+        self.refresh_eta: dict[str, int] = {}
         # v0.62.0: characters the SERVER has told us are overburdened, and the tick it last
         # said so. Found by the v0.61.0 expectation detector: `pickup` confirmed 90 times
         # against 811 violations, and every one of the 1,164 `overburdened` events was the
@@ -500,6 +508,10 @@ class GuildBot:
         if refreshed:
             recheck |= {p for p in seen_now if known.get(p) == "chest_open"}
             self._shadow_band(world)
+            self.refreshed_at[world] = self.tick          # v0.106.0: replenishment clock
+        _nr_ticks = (frame.get("next_refresh") or {}).get("in_ticks")
+        if isinstance(_nr_ticks, int):
+            self.refresh_eta[world] = self.tick + _nr_ticks
 
         enemies = {tuple(e["pos"]): e for e in visible.get("entities", [])
                    if e.get("faction") == "monster"}

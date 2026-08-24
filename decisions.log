@@ -5021,3 +5021,38 @@ both such tiles past cap). LESSON RECORDED: a "named gap" for a same-pattern clo
 prediction, not a dispensation — it fired in production within the hour; close clones in
 the same pass when the fixture cost is this low. 1108 local/reaper green. NEXT: unchanged
 (#198 measurement at the wakeup: embarks/1k, not_in_village/1k; then the brewing lever).
+
+ITER 89 (2026-08-24, explorer/0.106.0): THE RECKONING (operator: "sit and think about why
+you've absolutely failed... you WILL implement a proper fix. And you WILL implement
+brewing, and you WILL properly test"). THE HONEST ANALYSIS: five loop shapes shipped
+across #195-199 (line dance y12/13 -> relocated y11/12 -> flicker y10/11 -> chorus line ->
+world-rotating commute at 419 embarks/2797t) because I kept fixing INSTANCES of one
+defect class: an optimizer with no reachable work cycles among least-bad options, and any
+locally-expressed gate just relocates the cycle. Every fix was instance-tested; none was
+class-tested; and the SUPPLY side (why there was no reachable work) went unfixed: the
+un-healed roster is capped at y<12, the strip is farmed, and the heal pipeline was DEAD by
+inversion — _afford_potion required gold-20 >= POTION_RESERVE(30) (the reserve meant to
+PROTECT heal spending vetoing the heal; 0 potions at the 33-42 gold we ran), the bottle
+buy same, vigor herb singletons sold as 1.4g junk (0 brews across 5 runs). SHIPPED
+(0.106.0, three parts, all mutation-checked): (1) THE CLASS ORACLE
+tests/test_no_oscillation.py — a simulator driving the REAL GuildBot ~120 ticks over
+every historical dance world, asserting trajectory invariants (no 16t window with >=8
+moves over <=3 tiles — catches period-2 AND period-4; un-healed chars with no reachable
+work END home; healed control still reaches deep loot = anti-starvation). SELF-TESTED:
+detector fires on the recorded #195/#199 shapes, and reverting the 0.104 goal filters or
+the 0.105.1 rail filter fails it — it would have caught the whole arc pre-deploy. (2)
+CAUSAL RE-EMBARK replacing the 150-tick nap: bot.refreshed_at (_band_refreshed stamp,
+end-to-end tested through on_frame) + bot.refresh_eta (tick+in_ticks fallback so a world
+we lost eyes on can't bench chars forever); stamped returners are ROUTED into replenished
+worlds only (skip-only mutant killed via a fixture where the refreshed world is the less
+attractive one); a returner holding potion_red is released instantly (stamp moot). (3)
+BREWING/HEAL UNBLOCKED: POTION_MIN_BUFFER=10 floors potion+bottle buys (reserve keeps
+flooring weapons/armor/tome; 4 old pins updated deliberately with rationale, incl. the
+new gold-42 THE-GOLD-WE-RAN-THIS-WEEK regression test); vigor singletons KEPT
+(vigor-specific — lone venom still drops, asymmetry tested). MUTANTS KILLED this pass:
+gate-removed / eta-removed(2 forms) / heal-clear-removed / skip-only-routing /
+refreshed_at-never-stamped / vigor-keep-removed / reserve-gate-reverted / both historical
+regressions vs the oracle. 1120 local + reaper green. NEXT: deploy, measure #200:
+potions bought > 0, brews > 0 (first since #194), embarks/1k down from 150, dance
+windows 0; then the blue-potion mana probe (chars expose mana/max_mana; c19460 carries a
+potion_blue — one `use` + mana diff answers the operator's red=health/blue=mana question).

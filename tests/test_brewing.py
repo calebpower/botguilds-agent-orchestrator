@@ -108,6 +108,17 @@ def test_brew_keep_ids_keeps_batchable_drops_singletons():
     assert keep == {"bone-1", "embercap-2", "frostmoss-3", "frostmoss-4"}
 
 
+def test_a_VIGOR_singleton_is_kept_but_other_singletons_still_drop():
+    """v0.106.0: a lone vigor herb is half a heal — it pairs with the next one foraged
+    and becomes the potion_red the whole depth economy hangs on; selling it for ~1.4g
+    was the leak that kept brewing at zero across #195-199. The keep is vigor-SPECIFIC:
+    a lone venom herb still drops (asymmetry is the proof this isn't keep-everything,
+    which would re-open the 0.8.0 carry-clog)."""
+    keep = Explorer._brew_keep_ids([_herb("bone", 1), _herb("moonbell", 2)])
+    assert "bone-1" in keep, "the half-heal was sold"
+    assert "moonbell-2" not in keep, "a non-vigor singleton was hoarded"
+
+
 def test_should_sell_sells_stranded_brewable_keeps_batchable():
     exp = Explorer()
     lone = _herb("moonbell", 1)

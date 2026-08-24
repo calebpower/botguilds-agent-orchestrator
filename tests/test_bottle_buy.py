@@ -101,13 +101,16 @@ def test_it_will_not_spend_below_the_POTION_floor():
     provided 99.6% of heals died silently. The bottle is a heal at a tenth the shop price;
     it now clears the same floor the potion-buy clears, and the drain-guard it keeps is
     the POTION reserve."""
-    # Written out, not derived from POTION_RESERVE — a fixture sized from the constant
-    # under test agrees with itself at any value (the ratchet caught this line twice).
-    from steemer.strategy.explorer import POTION_RESERVE
-    assert POTION_RESERVE == 30, "the floor moved; re-read the numbers in this test"
-    # bottle price 2, floor 30 (>=): 31 leaves 29 (below -> no), 32 leaves 30 (>= -> yes)
-    assert _buys(gold=31) == []
-    assert _buys(gold=32)
+    # v0.106.0: the bottle now clears POTION_MIN_BUFFER (10), not POTION_RESERVE (30).
+    # #197-199 ran at gold 33-42 with zero potions AND zero bottles bought: the reserve
+    # meant to protect heal-spending was vetoing the heal supply itself. The buffer is
+    # the drain-guard that remains — a mutant that zeroes it buys at gold 11 and fails.
+    # Written out, not derived from the constant (the ratchet caught this line twice).
+    from steemer.strategy.explorer import POTION_MIN_BUFFER
+    assert POTION_MIN_BUFFER == 10, "the buffer moved; re-read the numbers in this test"
+    # bottle price 2, buffer 10 (>=): 11 leaves 9 (below -> no), 12 leaves 10 (>= -> yes)
+    assert _buys(gold=11) == []
+    assert _buys(gold=12)
 
 
 def test_arming_a_bare_character_still_outranks_the_bottle():
@@ -134,7 +137,7 @@ def test_bottles_are_still_the_cheap_route_even_now_the_potion_buy_is_reachable(
     shop = {"shop": {"stock": [{"kind": "potion_red", "buy_price": 20},
                                {"kind": "bottle_empty", "buy_price": 2}]}}
     assert Explorer._afford_potion(shop, 183) is not None, "reachable at the gold we run"
-    assert Explorer._afford_potion(shop, POTION_RESERVE) is None, "never below the floor"
+    assert Explorer._afford_potion(shop, 29) is None, "never below the operating buffer"
     assert Explorer._shop_price(shop, "bottle_empty") * 10 <= \
         Explorer._afford_potion(shop, 183)[1], "a bottle is far cheaper than a potion"
 
@@ -154,6 +157,14 @@ def test_the_shop_price_is_read_from_the_frame_not_hardcoded():
 
 
 # ---- v0.76.0: the heal ranks ABOVE arming, and below the arm FLOOR ------------
+
+def test_a_heal_is_bought_at_THE_GOLD_WE_RAN_THIS_WEEK():
+    """42 is run #199's treasury while thirty chars commuted through a map they could
+    not work for want of a 20-gold potion — the exact state the old reserve-as-veto
+    froze. This is what a 'potion gate back to the reserve' regression breaks."""
+    shop = {"shop": {"stock": [{"kind": "potion_red", "buy_price": 20}]}}
+    assert Explorer._afford_potion(shop, 42) == ("potion_red", 20)
+
 
 def test_the_potion_reserve_sits_BELOW_the_arm_floor():
     """v0.69.0 pinned these EQUAL, reasoning that a heal ranks with arming. The arithmetic
@@ -185,11 +196,15 @@ def test_the_heal_still_has_a_floor_of_its_own():
     # Written out, not derived from POTION_RESERVE. Sized from the constant, this test
     # agreed with itself for any value — the mutant that sets the reserve to ZERO, which is
     # precisely the 0.24.0 drain, left it green.
-    # v0.100.0: reserve recalibrated 100 -> 30. Literal boundary at price 20 (>= floor):
-    # 49 leaves 29 (below the floor -> no), 50 leaves exactly 30 (>= floor -> yes).
-    assert Explorer._afford_potion(shop, 49) is None, "spent below the 30 floor"
-    assert Explorer._afford_potion(shop, 50) == ("potion_red", 20)
-    assert POTION_RESERVE == 30, "the floor moved; re-read the numbers in this test"
+    # v0.106.0: the potion's own floor is POTION_MIN_BUFFER (10) — the RESERVE (30)
+    # protects heal-gold from weapons/armor and must not veto the heal itself (that
+    # inversion held every buy hostage at the 33-42 gold of #197-199). Literal boundary
+    # at price 20 (>= buffer): 29 leaves 9 (below -> no), 30 leaves exactly 10 (yes).
+    # The zero-buffer mutant (the 0.24.0 drain) buys at 29 and fails here.
+    assert Explorer._afford_potion(shop, 29) is None, "spent below the 10 buffer"
+    assert Explorer._afford_potion(shop, 30) == ("potion_red", 20)
+    from steemer.strategy.explorer import POTION_MIN_BUFFER
+    assert POTION_MIN_BUFFER == 10, "the buffer moved; re-read the numbers in this test"
 
 
 def test_it_still_refuses_when_the_shop_has_no_heal():
@@ -387,11 +402,12 @@ def test_a_bottle_is_bought_at_the_gold_we_actually_run():
         f"no bottle at 109 gold with herbs in the pack: {acts}"
 
 
-def test_the_bottle_still_respects_the_potion_floor():
-    """v0.100.0: floor 30 + 2g price -> 32 fires (leaves exactly 30, the >= floor); 31
-    must not (would leave 29, below it)."""
-    assert not _buys(gold=31), "spent below the potion reserve on a bottle"
-    acts = _buys(gold=32)
+def test_the_bottle_still_respects_the_operating_buffer():
+    """v0.106.0: buffer 10 + 2g price -> 12 fires (leaves exactly 10, the >= buffer);
+    11 must not (would leave 9, below it). The RESERVE no longer gates the bottle —
+    see test_it_will_not_spend_below_the_POTION_floor for why that inversion died."""
+    assert not _buys(gold=11), "spent below the operating buffer on a bottle"
+    acts = _buys(gold=12)
     assert acts and acts[0]["kind"] == "bottle_empty"
 
 

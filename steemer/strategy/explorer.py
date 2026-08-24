@@ -863,6 +863,12 @@ TOME_PREFIX = "tome"
 # accord once the roster is healed, not a standing drain.
 # PREMISE(2026-08-22, an un-healed character cannot leave the spawn strip): compare the
 #   y-distribution of fielded char-frames with and without a potion_red -- see decisions.log
+POTION_MIN_BUFFER = 10     # v0.106.0: what a POTION (or bottle) buy must leave behind —
+                           # a minimal operating float, NOT the full POTION_RESERVE.
+                           # The reserve protects heal-spending from weapons/armor; it
+                           # must never veto the heal itself (that inversion held every
+                           # potion buy hostage at gold 33-42 across #197-199 while the
+                           # un-healed roster was depth-capped into the revolving door).
 POTION_RESERVE = 30        # v0.100.0: RECALIBRATED for the coin-dry reality. The old
                            # 100/150/200 floors were set when we sat at ~600 gold; the
                            # guild is now chronically at ~85, BELOW ALL THREE, so it
@@ -1034,14 +1040,12 @@ MOVE_STAMINA_SAFETY = 1.5   # v0.9.0: require this ×raw move cost of stamina be
 #   the server (moves failed not_enough_stamina at shown-sta up to ~29 for a cost-20
 #   move; the gap is staleness, not terrain). Rest/regen instead of a doomed step.
 
-RETURNED_EMPTY_COOLDOWN = 150  # v0.105.0: a char that came home because its world read
-                           # LOOTED-OUT waits this long before re-embarking — long enough
-                           # for a band refresh (~120-240 ticks, in_ticks carries 120) to
-                           # replenish the strip it just proved empty. Without it the
-                           # village re-fields the char the tick it arrives ("safest:
-                           # threat 0.0") and it commutes forever (run #197: 1051 embarks,
-                           # 3347 not_in_village errors). Full-carry sell-homers are NOT
-                           # stamped and re-embark freely — this keys on WHY it came home.
+# v0.106.0: RETURNED_EMPTY_COOLDOWN (a fixed 150-tick nap) is GONE. #199 measured it
+# merely pacing the commute (419 embarks/2797 ticks; chars rotating through worlds that
+# were all still empty for them). The re-embark condition is now CAUSAL: a looted-out
+# returner goes back only into a world that has replenished since its stamp (observed
+# band refresh, or past the last-known refresh ETA) — or the moment it holds a heal,
+# which moots the stamp entirely. See _replenished_since and the village embark gate.
 EMBARK_COOLDOWN = 8   # v0.10.0: after commanding a char to embark, don't re-send
 #   that char's embark for this many ticks. The village frame we decide on is a few
 #   ticks stale, so a just-embarked char still shows in `chars_here` — without the
@@ -1218,7 +1222,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.105.1"
+    version = "explorer/0.106.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1714,8 +1718,13 @@ class Explorer:
             # (see server_bugs.md), so the shop is the only real source.
             # PREMISE(2026-08-23, brewing is our cheap heal supply and the shop its only
             #   bottle source): brew products by kind; vault withdrawal rejections
-            if picks and bottles < BOTTLE_KEEP and gold - 2 >= POTION_RESERVE and not is_fodder:
+            # v0.106.0: floored at POTION_MIN_BUFFER like the potion buy — a 2g bottle
+            # that turns held herbs into a heal is the heal supply, and the reserve
+            # must not veto the very spending it exists to protect.
+            if picks and bottles < BOTTLE_KEEP and not is_fodder:
                 price = self._shop_price(frame, "bottle_empty")
+                if price is not None and gold - price < POTION_MIN_BUFFER:
+                    price = None
                 if price is not None:
                     return [self._village_act(
                         bot, uid, {"char_uid": uid, "action": "buy", "kind": "bottle_empty"},
@@ -1942,12 +1951,25 @@ class Explorer:
                 for cand in ordered:
                     cch = here_chars.get(cand)
                     crole = role_of(cch, seats) if cch is not None else None
-                    # v0.105.0: a char that walked home because its world read
-                    # looted-out sits out ~a band refresh before re-embarking (any
-                    # role — re-fielding fodder into a strip it just proved empty is
-                    # the same commute). Mirrors the 0.102.0 wizard-recall guard.
-                    if tick - self._returned_empty.get(cand, -10 ** 9) < RETURNED_EMPTY_COOLDOWN:
-                        continue
+                    # v0.106.0: the HONEST re-embark condition, replacing 0.105.0's
+                    # blind 150-tick nap (which merely PACED the commute — #199:
+                    # 419 embarks/2797 ticks, chars rotating mines->vale->spire
+                    # through worlds that were all still empty for them). A char
+                    # that walked home looted-out re-embarks only into a world
+                    # that has REPLENISHED since its stamp — unless it has since
+                    # acquired a heal, which explodes its reachable set and moots
+                    # the stamp (this is what makes potions the cure, not a nap).
+                    c_maps = open_maps
+                    _stamp = self._returned_empty.get(cand)
+                    if _stamp is not None:
+                        if any(i.get("kind") == "potion_red"
+                               for i in (cch or {}).get("inventory") or []):
+                            self._returned_empty.pop(cand, None)
+                        else:
+                            c_maps = [m for m in open_maps
+                                      if self._replenished_since(bot, m, _stamp)]
+                            if not c_maps:
+                                continue      # nothing has changed anywhere it could go
                     # v0.92.2: green = BARE HANDS, any level, any nominal role except
                     # fodder. #182 closed two loopholes at once: the level clause
                     # (victims were level 2-5 — cheap early spend_xp promotes past
@@ -1976,7 +1998,7 @@ class Explorer:
                         # v0.88.0: two seats per world, and never into danger. When
                         # every safe under-seated world is party-full, flag it so its
                         # lowest-stat non-seat walks home and makes the slot.
-                        safe_maps = [m for m in open_maps
+                        safe_maps = [m for m in c_maps
                                      if not self._world_is_dangerous(m, tick)
                                      and seat_count.get(m, 0) < WIZARD_SEATS_PER_WORLD]
                         full_safe = [m for m in maps
@@ -1997,7 +2019,7 @@ class Explorer:
                         # stood. In a hostile band a wizard has nothing to gain (xp was
                         # 2.0/10k) and a pipeline to lose; guardians and fodder work the
                         # band, wizards wait it out.
-                        w_opts = [m for m in open_maps if m in guardian_worlds
+                        w_opts = [m for m in c_maps if m in guardian_worlds
                                   and not self._world_is_dangerous(m, tick)
                                   and seat_count.get(m, 0) < WIZARD_SEATS_PER_WORLD]
                         if not w_opts:
@@ -2010,7 +2032,7 @@ class Explorer:
                         # guardian reinforces the open world with the FEWEST guardians
                         # (worlds under 2 first, then threat, then headcount).
                         uid = cand
-                        target = min(open_maps,
+                        target = min(c_maps,
                                      key=lambda m: (min(guardian_count.get(m, 0), 2),
                                                     threat(m), by_world.get(m, 0)))
                         break
@@ -2027,9 +2049,9 @@ class Explorer:
                     # (sacrifice doctrine, operator-directed) and so is anyone armed or
                     # level 2+ — this gate is about newborn legs vs chaser speed, not
                     # about avoiding fights.
-                    g_opts = ([m for m in open_maps
+                    g_opts = ([m for m in c_maps
                                if not self._world_is_dangerous(m, tick)]
-                              if green else open_maps)
+                              if green else c_maps)
                     if not g_opts:
                         continue          # every open world is hot — the recruit waits
                     uid = cand
@@ -3405,17 +3427,40 @@ class Explorer:
                 return s["buy_price"]
         return None
 
+    def _replenished_since(self, bot: "Any", world: str, stamp: int) -> bool:
+        """Has ``world`` plausibly replenished since ``stamp``? True on an OBSERVED band
+        refresh after the stamp (bot.refreshed_at), or when the clock has passed the
+        last-known refresh ETA (bot.refresh_eta = frame tick + next_refresh.in_ticks —
+        the fallback for worlds we lost eyes on, since an empty world sends no frames).
+        A world we have never seen either signal for is allowed: benching a char on
+        zero information would deadlock the roster, and one scouting trip re-arms the
+        clocks."""
+        ra = getattr(bot, "refreshed_at", {}).get(world)
+        if ra is not None and ra > stamp:
+            return True
+        eta = getattr(bot, "refresh_eta", {}).get(world)
+        if eta is not None and bot.tick >= eta:
+            return True
+        return ra is None and eta is None
+
     @staticmethod
     def _afford_potion(frame: dict[str, Any], gold: int) -> tuple[str, int] | None:
-        """The field heal (``potion_red``) from live shop stock, but ONLY if buying
-        it leaves the treasury at or above POTION_RESERVE (v0.29.0 heal-from-surplus).
-        Prices read from the frame, never hardcoded. ``None`` if out of stock or the
-        buy would dip the hoard below the reserve — so the stockpile floor holds."""
+        """The field heal (``potion_red``) from live shop stock, if buying it leaves a
+        minimal operating buffer (POTION_MIN_BUFFER). Prices read from the frame,
+        never hardcoded.
+
+        v0.106.0: the old gate demanded ``gold - price >= POTION_RESERVE`` — the
+        reserve whose whole purpose is to protect potion buys from weapon/armor
+        spending was VETOING the potion buy itself (gold ran 33-42 across #197-199
+        and needed 50; zero potions bought while the roster stood depth-capped and
+        the whole map read looted-out). The reserve still floors the OTHER buys
+        (weapons 45, armor 70, bottles/tome via POTION_RESERVE); the potion has
+        first claim on it by design."""
         stock = (frame.get("shop", {}) or {}).get("stock", []) or []
         for s in stock:
             if s.get("kind") == "potion_red" and isinstance(s.get("buy_price"), int):
                 price = s["buy_price"]
-                if gold - price >= POTION_RESERVE:
+                if gold - price >= POTION_MIN_BUFFER:
                     return "potion_red", price
                 return None
         return None
@@ -3471,6 +3516,14 @@ class Explorer:
         for g in list(by_ess.values()) + list(by_unknown_kind.values()):
             if len(g) >= BREW_MIN:
                 keep.update(it["item_id"] for it in g[:BREW_MAX])
+        # v0.106.0: a VIGOR singleton is half a heal — it pairs with the next vigor
+        # herb foraged and becomes a potion_red, the supply the whole depth economy
+        # hangs on. Selling it for ~1.4g was the leak that kept brewing at zero
+        # (runs #195-199: 0 brews). A "singleton" group is at most ONE item (BREW_MIN
+        # is 2), so this cannot re-open the 0.8.0 carry-clog.
+        vig = by_ess.get("vigor") or []
+        if len(vig) < BREW_MIN:
+            keep.update(it["item_id"] for it in vig)
         return keep
 
     @staticmethod
