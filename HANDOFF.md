@@ -13,7 +13,16 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   (0.98.0) is the live thread; slice 2 = ingot scarcity. Return to ML only when a model
   is load-bearing (recruit-quality / XP-rate feeding leveling), not the ones we have.
 
-- **Live:** `explorer/0.101.0` on **run #194** (pushed; see git log).
+- **Live:** `explorer/0.101.0` on **run #194** (pushed).
+- **TOME BLOCKED ON GOLD SURPLUS (measured #194)**: the tome fund's armour suppression
+  works but armour was NOT the drain — 0 tome buys, 0 learned, gold pinned ~30. 2 wizards
+  now tome-ready (arch INT 8). Real block: income ~590/run ~= spend, sink is 22 potions
+  (~440g); POTION_KEEP=1 (no stockpile to cut), vault potions HALF-PHANTOM (16/31 fail).
+  THE KNOT: we SELL brewable herbs as junk (sales 1.4g each) instead of brewing them into
+  2g potions — herbs-as-junk -> forced 20g potions -> no surplus -> no tome. NEXT LEVER
+  (operator tradeoff, recommend A): (A) SAFE scale BREWING; (B) RISKY throttle shop
+  potions while saving (death risk); (C) income. Tome fund stays (harmless; helps once
+  arming hits 30/30). Do NOT ship (B) without operator go.
 - **THE TOME FUND (0.101.0)**: #193 arming fully compounded (2/30 -> 27/30) and the
   arch-wizard hit INT 6 (past the INT-4 tome gate) — ONE tome (150g) from the first spell
   ever learned on this server (0 `learned` in 340k+ obs). Gold was pinned at ~30 because
