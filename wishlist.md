@@ -55,6 +55,7 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
+| War-band doctrine (armed unit-move + chop-through) | 0.85 | 0.80 | 0 | — | 0.510 | just added (tc=0) — ELIGIBLE, but GATED on the armed share (dep: smith pipeline) |
 | Investigate the mines forge (special/great forge?) | 0.80 | 0.85 | 0 | — | 0.510 | just added (tc=0) — ELIGIBLE |
 | Hints: rival-avoidance for wizards | 0.82 | 0.95 | 0 | — | 0.584 | just added (tc=0) — ELIGIBLE |
 | Hints: any-rival death-loot vulture | 0.80 | 0.92 | 0 | — | 0.552 | just added (tc=0) — ELIGIBLE |
@@ -160,6 +161,28 @@ technique when a metric is flat despite activity._
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
 
 ## Open
+
+- [ ] **War-band doctrine (operator, 2026-08-23)** — adopt WillMorr's winning tactic: an
+  ARMED group that moves as a UNIT and mows through obstacles (fights mobs together,
+  chops through terrain) instead of our avoidance doctrine (flee/dodge/gate/latch). The
+  operator observed Will's group does exactly this and "absolutely mows down obstacles."
+  **The virtuous cycle:** armed -> fight as a unit -> level AND survive (our measured
+  grouping mechanic HALVES per-member damage intake) -> more armed. We are in the vicious
+  inverse: unarmed -> can't fight -> avoid -> don't level -> stay weak. This doctrine is
+  the escape, but its ENTRANCE is arming — **a unit of bare-handed chars is a huddle of
+  victims, not a war-band** (zero DPS can't clear a swarm; clustering just kills them in a
+  pile). So this is **GATED on the armed share** crossing a threshold (e.g. a fielded
+  group is >=50% armed) — the smith pipeline (0.98.0 + slice 2) is the hard dependency.
+  **Accepted trade:** grouping SPLITS XP (~1/participant), so a war-band levels each
+  member slower per kill but kills far more and dies far less — net a leveling WIN once
+  armed, and it directly serves the "master the game + level" direction. Slices: (1) an
+  armed-group cohesion mode (tighter formation, fight-through not flee-through, reusing
+  chop-through nav + the party-as-unit machinery we already built for wizards); (2) target
+  selection as a unit (focus-fire the mob the group can kill this tick); (3) the defensive
+  half (tighter cohesion to cover a hurt member) is adoptable EARLIER as a stopgap against
+  the band deaths, at some XP cost. NB this INVERTS the survival doctrine, so it ships
+  behind the arm gate and default-off until measured — mistimed, it raises deaths.
+
 
 - [ ] **Investigate the forge in the mines (operator, 2026-08-23)** — the mines forge tiles
   (y105-117) may be a SPECIAL forge, not equivalent to the village forge we use. docs/08
