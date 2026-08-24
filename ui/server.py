@@ -1001,6 +1001,46 @@ def api_story() -> list[dict]:
             for v in sorted(by_ver, key=vkey, reverse=True)]
 
 
+def api_tickbar(db_path: str, window: int = 500) -> dict:
+    """Tick participation, block-explorer style (wishlist item, operator 2026-08-23):
+    for the last ``window`` server ticks, which ones did we receive at least one frame
+    for? A missing tick is a dropped frame (run #120 silently lost 3.7% of its stream)
+    — and the RATE line makes a stalled server clock (2026-08-24: ~180 ticks/hour for
+    an afternoon) visible at a glance instead of needing a DB session to diagnose.
+
+    One seq-indexed tail query only. `received_at` is UNINDEXED on this table and a
+    range scan measured 63 SECONDS on the live DB — the rate is therefore computed
+    from the same tail rows in Python, never from a received_at WHERE clause."""
+    if not _db_ready(db_path):
+        return {"ok": False, "max_tick": None, "missing": [], "rate_per_min": None}
+    conn = _ro(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT tick, received_at FROM frames ORDER BY seq DESC LIMIT 2000"
+        ).fetchall()
+        if not rows:
+            return {"ok": True, "max_tick": None, "window": window,
+                    "missing": [], "rate_per_min": None, "frames_seen": 0}
+        ticks = [r["tick"] for r in rows if r["tick"] is not None]
+        mx = max(ticks)
+        lo = mx - window + 1
+        present = {t for t in ticks if t >= lo}
+        missing = sorted(set(range(max(0, lo), mx + 1)) - present)
+        recvs = [r["received_at"] for r in rows if r["received_at"] is not None]
+        rate = None
+        if len(recvs) >= 2:
+            wall = max(recvs) - min(recvs)
+            span = mx - min(ticks)
+            if wall > 1:
+                rate = round(60.0 * span / wall, 1)
+        return {"ok": True, "max_tick": mx, "window": window, "missing": missing,
+                "rate_per_min": rate, "frames_seen": len(rows)}
+    except _db.Error:
+        return {"ok": False, "max_tick": None, "missing": [], "rate_per_min": None}
+    finally:
+        conn.close()
+
+
 def api_observed(db_path: str) -> dict:
     """Auto-derived "observed in play" signals from the read-only guild_log.db.
 
@@ -1649,6 +1689,8 @@ class Handler(BaseHTTPRequestHandler):
                 except OSError:
                     mtime = 0
                 self._json({"rows": api_findings(), "mtime": mtime})
+            elif path == "/api/tickbar":
+                self._json(api_tickbar(self.db_config))
             elif path == "/api/observed":
                 self._json(api_observed(self.db_config))
             elif path == "/api/roster":
@@ -1729,6 +1771,14 @@ main{padding:16px;max-width:1200px;margin:0 auto}
   color:var(--ink2);margin:0 0 12px}
 /* stat tiles */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.tickbar{margin-top:10px;background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:10px 12px}
+.tickstrip{display:flex;flex-wrap:nowrap;overflow:hidden;gap:0;height:14px}
+.tickstrip .tk{flex:1 1 auto;min-width:1px;background:var(--good,#2ea043)}
+.tickstrip .tk.miss{background:#d1242f}
+.tickstrip .tk.ok{background:#2ea043}
+.tickcap{font-size:12px;color:var(--muted);margin-top:6px}
+.tickrate.good{color:#2ea043}.tickrate.warn{color:#d29922}.tickrate.crit{color:#d1242f;font-weight:700}
 .stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;
   padding:14px 16px}
 .stat .k{font-size:12px;color:var(--muted);text-transform:uppercase;
@@ -1995,6 +2045,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
   <!-- OVERVIEW -->
   <section class="tab active" id="tab-overview">
     <div class="tiles" id="ov-tiles"></div>
+    <div id="tickbar" class="tickbar"></div>
     <div class="card roster" id="ov-roster-card" style="display:none;margin-top:16px">
       <h2>Roster (server partial view)</h2><div id="ov-roster"></div></div>
     <div class="grid2" style="margin-top:16px">
@@ -2256,8 +2307,35 @@ function bars(container, obj){
 async function loadOverview(){
   const s = await getJSON("/api/snapshot");
   renderOverview(s);
+  loadTickbar();   // independent fetch: the bar must work even while the snapshot cache computes
   if(s && s.ok && s.version!=null) snapVersion = s.version;
   subscribe();
+}
+
+/* v0.108.3 tick-participation bar: one block per server tick (last 500), green =
+   a frame landed for that tick, red = dropped. The rate line makes a stalled
+   server clock (or a dead bot) visible at a glance. */
+async function loadTickbar(){
+  const host = document.getElementById("tickbar"); if(!host) return;
+  const t = await getJSON("/api/tickbar");
+  host.innerHTML = "";
+  if(!t || !t.ok || t.max_tick==null){ host.textContent = "tick data unavailable"; return; }
+  const miss = new Set(t.missing||[]);
+  const lo = t.max_tick - (t.window||500) + 1;
+  const strip = el("div","tickstrip");
+  for(let k=lo;k<=t.max_tick;k++){
+    const b = el("span", miss.has(k) ? "tk miss" : "tk ok");
+    if(miss.has(k)) b.title = "tick "+k+" dropped";
+    strip.appendChild(b);
+  }
+  const rate = t.rate_per_min;
+  const rateCls = rate==null ? "" : rate<20 ? "crit" : rate<45 ? "warn" : "good";
+  const cap = el("div","tickcap");
+  cap.appendChild(el("span","", `ticks ${lo}–${t.max_tick} · ${miss.size} dropped`));
+  const r = el("span","tickrate "+rateCls,
+               rate==null ? " · rate n/a" : ` · ${rate} ticks/min` + (rate<45 ? " (server slow/stalled)" : ""));
+  cap.appendChild(r);
+  host.appendChild(strip); host.appendChild(cap);
 }
 function renderOverview(s){
   const tiles = $("#ov-tiles");

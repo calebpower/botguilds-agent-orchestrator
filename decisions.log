@@ -5201,3 +5201,16 @@ truth beats lying guild view; an emptied world reports 0, not its last crowd) �
 found yet; gold 23. 1146 local/reaper green. NEXT: deploy dash (dash restart only — the
 BOT is untouched, but the post-deploy watch runs anyway per the standing rule), then next
 loop.
+
+ITER 97 (2026-08-24, ui 0.108.3): TICK-PARTICIPATION BAR (wishlist item, operator
+2026-08-23 — shipped while its use case runs live: the server clock crawled at ~180
+ticks/hour all afternoon with nothing on the dash to show it; partial recovery observed
+14:3x, 130 ticks/10min then stalls again). /api/tickbar renders 500 blocks (green =
+frame landed for that tick, red = dropped) + a ticks/min rate with slow/stalled
+color-coding. PERF LESSON RE-PAID: the obvious received_at range scan measured 63
+SECONDS on the live DB (unindexed) — the endpoint uses ONE seq-indexed tail query
+(13ms) and computes rate in Python from the same rows. 3 tests (gap detection incl.
+multi-world dedup / stalled-clock shape reads <1 tick/min / empty-db ok) — 2 mutants
+killed (missing-always-empty, rate-ignores-wall-clock). 1149 local/reaper green.
+Server-independent by design; bot untouched. NEXT: dash restart + 3-check watch; then
+next loop (income/shallow-combat when the server clock recovers).
