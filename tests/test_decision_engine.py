@@ -124,6 +124,54 @@ def test_unhealed_char_at_the_cap_wont_chase_loot_deeper_the_line_dance():
     assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts)
 
 
+def test_unhealed_char_ONE_BELOW_the_cap_wont_step_onto_it_for_loot():
+    # v0.104.0 — the off-by-one 0.103.0 missed (run #196, c19457/c19468 still dancing):
+    # the guard's `<=` allowed a gather step ONTO exactly y == POISON_SAFE_DEPTH, the
+    # very tile the retreat fires from (`>=`), so the dance survived one tile shallower:
+    # pulled y11 -> y12 for loot, retreated y12 -> y11, forever. The guard must be
+    # STRICT: no outward step may land on ground the retreat immediately vacates.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    tiles = _vert_corridor(POISON_SAFE_DEPTH + 4)
+    char = _field_char(pos=[0, POISON_SAFE_DEPTH - 1], stamina=40, inventory=[])
+    acts = bot.on_frame(_field_frame(
+        char, tiles, items=[{"pos": [0, POISON_SAFE_DEPTH], "kind": "egg"}]))
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts), acts
+
+
+def test_unhealed_char_ONE_BELOW_the_cap_wont_scout_or_frontier_onto_it():
+    # The second live dance flavour (run #196, c19455 in spire): with NO loot at all,
+    # the un-gated scout/frontier steps walked the char onto the cap tile and the
+    # retreat threw it back — N,N,S,S forever. Every idle pull (frontier, scout,
+    # rally, seeks) now respects the same strict cap.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    tiles = _vert_corridor(POISON_SAFE_DEPTH + 4)
+    char = _field_char(pos=[0, POISON_SAFE_DEPTH - 1], stamina=40, inventory=[])
+    acts = bot.on_frame(_field_frame(char, tiles))
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts), acts
+
+
+def test_unhealed_char_ONE_BELOW_the_cap_wont_SCOUT_onto_it():
+    # Aimed specifically at the scout step (the frontier tests above never reach it —
+    # a frontier offer preempts). Fully-explored bounded corridor -> no frontier;
+    # imminent refresh -> no looted-out retreat (1.5, would out-score scout and mask
+    # the gate). Scout's first candidate dir is N (nav.DIRS order) onto the cap tile:
+    # the strict depth gate must refuse it, leaving rest — never a step onto ground
+    # the poison retreat immediately vacates.
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    bot = _bot()
+    top = POISON_SAFE_DEPTH + 4
+    char = _field_char(pos=[0, POISON_SAFE_DEPTH - 1], stamina=40, inventory=[])
+    frame = {"world": "vale", "tick": 10, "chars": [char],
+             "bounds": [1, top + 1],                      # corridor IS the world: no frontier
+             "next_refresh": {"in_ticks": 1},             # suppress the looted-out retreat
+             "visible": {"tiles": _vert_corridor(top), "entities": [],
+                         "items": [], "gold": []}}
+    acts = bot.on_frame(frame)
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in acts), acts
+
+
 def test_unhealed_char_still_gathers_loot_within_the_safe_depth():
     # The guard must bite only PAST the cap. Loot the char can reach without crossing
     # POISON_SAFE_DEPTH is still pursued — otherwise we would starve shallow gathering

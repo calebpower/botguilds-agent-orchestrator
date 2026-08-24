@@ -4946,3 +4946,29 @@ won't gather in-cap loot E). Together they pin `has_heal or step[1] <= POISON_SA
 exactly. 1096 local/reaper green. NEXT: measure #196 — un-healed-char oscillation (rapid
 dir reversals at a fixed pos) down? no loss of shallow gather income? (still the
 brewing/gold lever owed for the tome, and #195's wizard-recall returns/1k measurement.)
+
+ITER 86 (2026-08-24, explorer/0.104.0): STILL LINE DANCING — 0.103.0's guard had an
+OFF-BY-ONE and covered only one of the pulls. Run #196 (on 0.103.0): FIVE chars still
+oscillating (4 vale incl. c19457 again, 1 spire c19455). Traces show two flavours: (a)
+c19457/c19468 at y11 — the 0.103.0 guard used `<=`, allowing a gather step ONTO exactly
+y==POISON_SAFE_DEPTH, the very tile the retreat fires from (`>=`), so the dance survived
+one tile shallower (pulled y11->y12 for loot 4.0, retreated y12->y11 at 2.5, forever);
+(b) c19455 with NO loot — the un-gated SCOUT/FRONTIER steps walked it onto the cap and
+back (N,N,S,S). FIX: deep_ok is now STRICT (`step[1] < POISON_SAFE_DEPTH`) — no outward
+step may land on ground the retreat immediately vacates — and applied to EVERY idle/seek
+pull: gather (gold/chest/loot), combat-seek, ride-probe, vein-seek, rally (2.8, was live
+in c19468's trace), north-frontier, any-frontier, scout. NOT gated: survival moves
+(dodge/spacing/escape/safe-gold-evade step wherever safety is), the nuisance (mission
+scores 3.6-6.1 outrank the 2.5 retreat, cannot dance), escort (4.2 outranks, follows
+through). 4 new tests: cap-1 loot / cap-1 frontier / cap-1 scout (purpose-built
+no-frontier bounded fixture + imminent refresh to unmask scout under the looted-out
+retreat) in test_decision_engine.py, rally variant in test_cohesion_range.py (literal
+geometry + POISON_SAFE_DEPTH==12 pin per the hygiene ratchet, which caught the derived
+fixture at budget 13>12). MUTANTS KILLED: `<` back to `<=` (the shipped defect — killed
+by 2 tests), scout gate removed, frontier gates removed, rally gate removed. NAMED GAP:
+the combat-seek/ride/vein gates ship without per-gate mutants (same 3-line pattern,
+not observed dancing live). VERIFIED ON THE RECORDED DEFECT: replayed run #196's frame
+@tick 2363390 through the new engine — all four vale dancers at y11 no longer choose N
+(c19468 gathers W toward in-cap loot). 1100 local + reaper green. NEXT: measure #197 —
+reversal-rate/1k for un-healed chars ~0; watch that shallow gather income holds and
+un-healed chars near the cap retreat home rather than idle-rest in place.

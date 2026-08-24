@@ -1210,7 +1210,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.103.0"
+    version = "explorer/0.104.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2111,9 +2111,16 @@ class Explorer:
                        for i in char.get("inventory", []) or [])
 
         def deep_ok(step, _has_heal=has_heal):
-            """A gather STEP is allowed unless it would carry an un-healed char past
-            POISON_SAFE_DEPTH (deeper than it may safely retreat from)."""
-            return _has_heal or step[1] <= POISON_SAFE_DEPTH
+            """An outward STEP is allowed unless it would land an un-healed char ON or
+            past POISON_SAFE_DEPTH. STRICT `<` (v0.104.0): the retreat fires AT
+            `y >= POISON_SAFE_DEPTH`, so a step onto exactly the cap tile is a step
+            onto ground the retreat immediately vacates — 0.103.0's `<=` allowed it
+            and the dance survived one tile shallower (run #196: pulled y11 -> y12,
+            retreated y12 -> y11, forever). Gates EVERY idle/seek pull (gather,
+            combat-seek, ride/vein seek, rally, frontier, scout), never survival
+            moves (dodge/spacing/escape step wherever safety is) and never the
+            nuisance (its mission scores outrank the retreat, so it cannot dance)."""
+            return _has_heal or step[1] < POISON_SAFE_DEPTH
 
         # v0.96.0: nuisance upkeep — learn Will's positions, (re)designate a volunteer,
         # stand down when he leaves the vale. Cheap; runs for every vale char.
@@ -2634,6 +2641,8 @@ class Explorer:
                 if wild:
                     wstep = self._step(pos, lambda p: any(n in wild for n in nav.neighbors(p)),
                                        ctx, blocked)
+                    if wstep and not deep_ok(wstep):
+                        wstep = None
                     if wstep:
                         offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, wstep)},
                               3.5, "develop: closing on wildlife to farm XP")
@@ -2688,7 +2697,7 @@ class Explorer:
             if (self._ride_prober_ready(char, pos, hp, max_hp, stamina, ctx)
                     and not self._is_rideable_rail(ctx, pos)):
                 rstep = self._rail_step(pos, ctx, blocked)
-                if rstep is not None:
+                if rstep is not None and deep_ok(rstep):
                     offer({"char_uid": uid, "action": "move",
                            "dir": nav.step_dir(pos, rstep)}, RIDE_SEEK_SCORE,
                           "walking to a known rail to run the once-per-run ride probe")
@@ -2711,6 +2720,8 @@ class Explorer:
                 step = self._ore_step(
                     pos, ctx, blocked,
                     VEIN_SEEK_RANGE_HEALED if healed else VEIN_SEEK_RANGE)
+                if step is not None and not deep_ok(step):
+                    step = None
                 if step is not None:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
                           VEIN_SEEK_SCORE,
@@ -2743,6 +2754,8 @@ class Explorer:
                 # walking to the village); so is a world we have not scouted. ---
                 if rally:
                     step = self._cohesion_step(pos, allies, ctx, blocked)
+                    if step is not None and not deep_ok(step):
+                        step = None
                     if step is not None:
                         self._cohering.add(uid)
                         offer({"char_uid": uid, "action": "move",
@@ -2755,11 +2768,15 @@ class Explorer:
                         self._cohering.discard(uid)
 
                 north = self._step(pos, lambda p: p[1] > pos[1] and nav.frontier(p, ctx.known, ctx.bounds), ctx, blocked)
+                if north and not deep_ok(north):
+                    north = None
                 if north:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, north)},
                           FRONTIER_NORTH_SCORE, "pushing north into unexplored ground")
                     productive = True
                 any_frontier = self._step(pos, lambda p: nav.frontier(p, ctx.known, ctx.bounds), ctx, blocked)
+                if any_frontier and not deep_ok(any_frontier):
+                    any_frontier = None
                 if any_frontier:
                     offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, any_frontier)},
                           FRONTIER_SCORE, "heading to the nearest frontier")
@@ -2812,7 +2829,7 @@ class Explorer:
 
                 for d, (dx, dy) in nav.DIRS.items():
                     nxt = (pos[0] + dx, pos[1] + dy)
-                    if nav.is_walkable(nxt, ctx.known, blocked):
+                    if nav.is_walkable(nxt, ctx.known, blocked) and deep_ok(nxt):
                         offer({"char_uid": uid, "action": "move", "dir": d}, SCOUT_SCORE,
                               "no goal reachable — stepping to scout")
                         break

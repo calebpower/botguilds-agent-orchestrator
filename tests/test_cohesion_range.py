@@ -119,3 +119,27 @@ def test_the_bounded_rally_is_reachable_THROUGH_THE_BOT():
     assert mine, "the bot produced no action for the out-of-position character"
     assert mine[0].get("action") == "move" and mine[0].get("dir") == "W", \
         f"should step toward the group centre at (10,10): {mine[0]}"
+
+
+def test_an_unhealed_rally_wont_step_onto_the_poison_cap():
+    """v0.104.0 — the rally is one of the idle pulls that can line-dance an un-healed
+    char at the POISON_SAFE_DEPTH boundary (it scores 2.8 vs the 2.5 poison retreat,
+    so at cap-1 it pulls N onto the cap tile and the retreat throws the char back).
+    Same geometry as the through-bot rally test, rotated so the group centre is NORTH
+    and the char stands one tile below the cap: the strict depth gate must refuse the
+    N step (any other direction, or none, is fine)."""
+    from steemer.strategy.explorer import POISON_SAFE_DEPTH
+    assert POISON_SAFE_DEPTH == 12, "cap moved — update this test's literal geometry"
+    bot = GuildBot("explorer")
+    bot.tick = 500
+    _dangerous(bot.strategy)
+    yc = 11                                    # one tile below the cap (pinned above)
+    tiles = [[x, y, "floor", 0, 0] for x in range(20) for y in range(max(0, yc - 5), yc + 10)]
+    chars = [_char((10, yc)),
+             _char((8, yc + 6), "a0"), _char((12, yc + 6), "a1")]   # centroid (10, yc+6): N
+    actions = bot.on_frame({"type": "frame", "world": "mines", "tick": 500, "events": [],
+                            "bounds": [64, 176], "chars": chars,
+                            "visible": {"tiles": tiles, "entities": [], "items": [],
+                                        "gold": []}})
+    mine = [a for a in actions if a.get("char_uid") == "u1"]
+    assert all(not (a.get("action") == "move" and a.get("dir") == "N") for a in mine), mine
