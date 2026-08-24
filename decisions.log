@@ -4874,3 +4874,20 @@ mutant killed. This is the highest-leverage arming lever of the whole session an
 a 3-constant change. NEXT: measure #193 — armed share should finally CLIMB (chars buying
 clubs), then chars can fight->level->the ore/forge chain becomes the tier-UP path not the
 bootstrap. The forge work (0.95-0.99.1) still matters for tier-2 gear the shop lacks.
+
+ITER 82 (2026-08-23, MEASUREMENT PASS — no new lever): the 0.100.0 treasury recalibration
+is a CLEAN WIN. #193 (mature 31k frames): armed share 2-3/30 -> 9/30 (8 clubs + 1
+pickaxe), 11 club-buy EVENTS (vs 0 weapon buys for entire prior runs at the 150 floor),
+1 death, and chars are LEVELING (35 xp events, 9 stat_ups; levels spread 2-8). The
+arm->fight->level cycle is turning. Claim recorded (club-buy event_count). EMERGING
+STATE / next constraints, NOT yet ship-worthy (let the win compound): (1) gold is pinned
+at ~35 — the new floors (potion 30/weapon 45) mean arming spends gold down aggressively,
+so it never accumulates toward the tome (now 150, lowered this session) — this is the
+RIGHT trade (arm first; the armed roster then earns XP+gold), but it means the MAGIC
+unlock waits on income growth; (2) top INT still 3 (the int-gifted wizard is 1 point from
+the INT-4 tome gate) — it needs XP from fighting, which arming now enables. DELIBERATELY
+shipping no lever: the recalibration needs runway to compound (armed share should keep
+climbing, chars keep leveling, gold/INT accrue). Forcing a lever now would be premature.
+NEXT PASS: measure #194+ — armed share past ~15/30? int-gifted wizard reaching INT 4?
+gold trending up as the armed roster earns? THEN the next lever (likely income, or the
+combat-seek/leveling refinement, or finally the tome when INT 4 + gold 150 converge).

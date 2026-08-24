@@ -13,7 +13,15 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   (0.98.0) is the live thread; slice 2 = ingot scarcity. Return to ML only when a model
   is load-bearing (recruit-quality / XP-rate feeding leveling), not the ones we have.
 
-- **Live:** `explorer/0.100.0` on **run #193** (pushed; see git log).
+- **Live:** `explorer/0.100.0` on **run #193** (pushed; see git log) — MEASURED A CLEAN WIN.
+- **ARMING UNBLOCKED (0.100.0 measured on #193)**: armed share 2-3/30 -> 9/30 (11 clubs
+  bought vs 0 weapon-buys for entire prior runs), 1 death, chars LEVELING (35 xp, 9
+  stat_ups, levels 2-8). The arm->fight->level cycle is finally turning. NO new lever this
+  pass on purpose — the recalibration needs runway to compound. EMERGING constraints for
+  next pass: gold pinned at ~35 (arming spends to the floor, so the tome@150 waits on
+  income); top INT still 3 (int-gifted wizard 1 from the INT-4 tome gate, needs fight-XP
+  which arming now enables). NEXT: measure #194+ — armed past ~15/30? wizard reaching INT
+  4? gold trending up? then the next lever (income / combat-leveling / the tome itself).
 - **THE ARM RATE WAS A STALE GOLD FLOOR (0.100.0)**: WEAPON_BUY_FLOOR was 150 while gold
   sits chronically at ~85 — ALL THREE treasury floors (POTION 100/WEAPON 150/ARMOR 200)
   were above our gold, so the guild bought NOTHING while 15g clubs sat in the shop. The
