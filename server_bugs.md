@@ -202,3 +202,44 @@ Consequence: with k characters fielded/adventuring, the total roster can be grow
 roughly 30 + k by recruiting to refill the emptied village barracks. Whether this is
 intended (a barracks-occupancy cap) or a bug (the cap was meant to bound total roster)
 is undetermined. Observed, not exploited.
+
+## Guild inventory listing is (almost) entirely phantom (2026-08-24, runs #197-#205)
+
+The village frame's `guild.inventory` lists 404 `bottle_empty`, 202 `potion_red`, 14
+`club`, ~30 `lumber`. Withdrawing (`drop {item_id}` in the village) is refused
+`no_such_item` for every potion and club id probed — 20 distinct ids across runs
+#197-#205, spanning the HEAD of the potion list and 4/4 club probes — while the listing
+itself never shrinks. The 404 bottles were already documented phantom (see the earlier
+entry). Lumber withdrawals have succeeded historically (0.98.0's smith pipeline), so the
+staleness is item-kind- or age-correlated, not universal. Working hypothesis: consumed/
+expired stack entries are never garbage-collected from the listing. Cost to a client
+that trusts the listing: it budgets around ~600 items of wealth that do not exist (our
+heal economy planned around "202 banked potions" for a week). Client-side mitigation
+shipped: phantom ids persist across runs (intel `vault_phantom`) with a bounded per-run
+probe budget; each run walks deeper into the list. If any tail entries are real, that
+will eventually surface — none found in the first 20.
+
+## Character in server limbo: alive to the roster, refused by every handler (2026-08-24, run #202)
+
+`g_cd0e2a_c19532`: NO death event ever, listed in the village frame's
+`guild.chars_here` continuously, but EVERY command for it — village moves, buys, embark
+— is refused (`not_in_village` x23,109 + `unknown_character` x5,565 over ~50k ticks in
+one run). Distinct from the frame-ghost entry above (2026-08-23): that ghost RENDERED in
+world frames after vanishing from the roster; this one is the inverse — the roster
+lists it, no world frame renders it, and the handlers refuse both village-context and
+world-context actions. It never recovered. Client mitigation shipped: quarantine on
+refusal (GHOST_TTL). Repro unknown; began near a run boundary/redeploy window.
+
+## The world tick clock stalls for hours while frames keep flowing (2026-08-24, 08:10-15:20+ EDT)
+
+Measured from our frame stream (frame `received_at` vs `tick`): normal service
+(~130-230 ticks/10min) until ~08:10 EDT, then a step change: a 2h10m DEAD STOP
+(08:40-10:50, zero tick advancement), one 1,527-tick burst at ~10:50 (2-3x normal rate
+— catch-up shaped), sputtering dribbles 11:30-12:50, and near-total freeze from 13:00
+onward (two small bursts; still frozen at 15:20). Cumulative real game-time in 7 hours:
+~45 minutes. Throughout, frames CONTINUE to arrive every few seconds carrying the same
+tick — so the connection, frame pump, and handlers are up; only the simulation clock is
+stopped. The pause-then-sprint shape suggests the server process being suspended and
+resumed (host sleep? VM migration?) rather than load, which degrades gradually. Effect
+on clients: every tick-driven mechanic (band refreshes, cooldowns, regen) is frozen —
+a bot can look "idle/broken" while behaving correctly against a stopped world.
