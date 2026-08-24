@@ -13,7 +13,14 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   (0.98.0) is the live thread; slice 2 = ingot scarcity. Return to ML only when a model
   is load-bearing (recruit-quality / XP-rate feeding leveling), not the ones we have.
 
-- **Live:** `explorer/0.100.0` on **run #193** (pushed; see git log) — MEASURED A CLEAN WIN.
+- **Live:** `explorer/0.101.0` on **run #194** (pushed; see git log).
+- **THE TOME FUND (0.101.0)**: #193 arming fully compounded (2/30 -> 27/30) and the
+  arch-wizard hit INT 6 (past the INT-4 tome gate) — ONE tome (150g) from the first spell
+  ever learned on this server (0 `learned` in 340k+ obs). Gold was pinned at ~30 because
+  armour buys (40-70g) drained it below the tome line. FIX: while a tome-ready seat exists
+  and no tome bought, SUPPRESS the armour buy so gold climbs to 150; releases on purchase.
+  (Caught a note-first bug: seats were read before the frame's chars were ledgered.) WATCH
+  #194: gold -> 150, tome bought, the FIRST `learned` event = GLASS CEILING BROKEN.
 - **ARMING UNBLOCKED (0.100.0 measured on #193)**: armed share 2-3/30 -> 9/30 (11 clubs
   bought vs 0 weapon-buys for entire prior runs), 1 death, chars LEVELING (35 xp, 9
   stat_ups, levels 2-8). The arm->fight->level cycle is finally turning. NO new lever this

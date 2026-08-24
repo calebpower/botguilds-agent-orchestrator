@@ -4891,3 +4891,20 @@ climbing, chars keep leveling, gold/INT accrue). Forcing a lever now would be pr
 NEXT PASS: measure #194+ — armed share past ~15/30? int-gifted wizard reaching INT 4?
 gold trending up as the armed roster earns? THEN the next lever (likely income, or the
 combat-seek/leveling refinement, or finally the tome when INT 4 + gold 150 converge).
+
+ITER 83 (2026-08-24, explorer/0.101.0): THE TOME FUND — save gold for the magic unlock.
+#193 (mature 73k): the arming win FULLY compounded — armed 2/30 -> 27/30, and the
+arch-wizard c19403 hit INT 6 (level 7), well past the INT-4 tome gate. So for the FIRST
+time we're one tome (150g) from breaking the magic ceiling nobody on the server has
+touched (0 learned events in ~340k+ obs). But gold sat pinned at ~30 because
+DISCRETIONARY armour buys (40-70g) drained it below the 150 tome line before it could
+accumulate. LEVER: while a tome-ready seat exists (some int-gifted seat with INT>=4) and
+no tome is bought, SUPPRESS the armour buy so gold climbs to the tome; releases the
+instant the tome is bought. Bottles (2g, the heal supply) left alone — a 2g drain isn't
+worth starving brewing. BUILD BUG CAUGHT BY TEST: saving_for_tome was computed BEFORE the
+frame's chars were noted into the seat ledger, so the current wizard wasn't a seat yet and
+saving never engaged -> note-first fix. 5 tests (armour-suppressed / tome-still-buys /
+no-saving-below-gate / releases-after-buy / pinned literal); 5/5 mutants killed. This is
+the payoff lever of the whole arming arc: arm -> fight -> level -> INT 6 -> and now SAVE
+-> the tome -> the first spell ever learned on this server. NEXT: measure #194 — does gold
+climb to 150? tome bought? the `learned` event FINALLY fires (glass ceiling broken)?

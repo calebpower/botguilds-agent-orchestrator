@@ -1203,7 +1203,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.100.0"
+    version = "explorer/0.101.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1413,6 +1413,22 @@ class Explorer:
         guild = frame.get("guild", {})
         cfg = bot.config
         chars = frame.get("chars", [])
+        # v0.101.0 TOME FUND. The magic ceiling nobody on the server has touched is ONE
+        # tome (150g) away — the arch-wizard is INT 6, well past the gate — but on #193
+        # gold sat pinned at ~30 because DISCRETIONARY buys (armour @70, bottles @32) kept
+        # draining it below the 150 tome line before it could accumulate. While a
+        # tome-ready seat exists and no tome has been bought this run, SAVE: the ARMOUR
+        # buy (40-70g, the real drain) is suppressed so gold climbs to the tome. Bottles
+        # (2g, the heal supply) and essentials (heal, arming a bare char) are untouched;
+        # the fund releases the instant the tome is bought.
+        # note THIS frame's chars into the seat ledger before the seat check, or a
+        # just-arrived wizard is invisible to it (the ledger is what wizard_seats reads).
+        for _c in chars:
+            self.note_char(_c)
+        _seats_now = self.wizard_seats()
+        saving_for_tome = (not self._tome_bought and any(
+            (c.get("stats") or {}).get("int", 0) >= TOME_BUY_MIN_INT
+            for c in chars if c.get("char_uid") in _seats_now))
         # v0.96.0: a nuisance that reached home carrying WillMorr's spoils has finished
         # its tour. The loot is now in the village — the sell/equip economy banks it
         # (and selling it even funds the arm rate). Stand the tour down so a relief is
@@ -1650,7 +1666,8 @@ class Explorer:
             # 3b) ARMORED, not just armed (v0.47.0). Only once the hand is filled, and
             #     only above ARMOR_BUY_FLOOR (> the weapon floor), so arming a bare char
             #     always outranks armoring an equipped one.
-            if eqp.get("hand") is not None and gold > ARMOR_BUY_FLOOR and not is_fodder:
+            if (eqp.get("hand") is not None and gold > ARMOR_BUY_FLOOR
+                    and not is_fodder and not saving_for_tome):
                 buy = self._afford_armor(char, eqp, frame, gold)
                 if buy is not None:
                     kind, price = buy
