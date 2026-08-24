@@ -13,7 +13,14 @@ files under `~/.claude/projects/.../memory/` (loaded each session as `MEMORY.md`
   (0.98.0) is the live thread; slice 2 = ingot scarcity. Return to ML only when a model
   is load-bearing (recruit-quality / XP-rate feeding leveling), not the ones we have.
 
-- **Live:** `explorer/0.99.0` on **run #191** (pushed; see git log).
+- **Live:** `explorer/0.99.1` on **run #192** (pushed; see git log).
+- **ORE-DISPATCH MINE-WORTHY GATE (0.99.1)**: #191's "only one char deployed" = a
+  revolving door (205 embarks/15 chars, one 58x, median 38-tick stints; 15 never field) —
+  bare chars can't hold the field. v0.99.0's ore bias worsened it (sent BARE foragers to
+  the mines to churn). Now the ore dispatch only routes MINE-WORTHY chars (fodder or
+  armed) to the mines; bare foragers stay on the surface. WIZARDS double-protected (own
+  escort/band gate runs first — never ore-dispatched; explicit test). WATCH #192:
+  fodder/armed mining, smelts/ingots up, no bare-forager churn into the mines.
 - **ORE-HUNGRY FIELDING (0.99.0)**: #190 measured the smith pipeline — thrash GONE (forge
   418 shield/7 spear -> 2 spear/0 shield, wrong_materials 421->0) but armed still 2/30
   because INGOTS are absent (4 smelts; nobody mines — 1 char in the mines, dispatcher

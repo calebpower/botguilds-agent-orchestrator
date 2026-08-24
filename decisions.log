@@ -4837,3 +4837,20 @@ the surface. 4 tests; 4/4 mutants killed after hardening the vein-derivation tes
 non-vein mines tile so 'any tile=vein' diverges). NEXT: measure #191 — chars in the mines
 up? smelts/ingots up? armed share finally climbing? Then Fix B should start firing as
 ingots reach the stash, and the smith pipeline arms the roster.
+
+ITER 80 (2026-08-23, explorer/0.99.1): ORE-DISPATCH MINE-WORTHY GATE (operator: "yes
+please but try not to kill my wizards"). #191 diagnosis of "why only one char deployed":
+a REVOLVING DOOR — 205 embarks by only 15 distinct chars (one embarked 58x), median
+38-tick stints, the other 15 never field; at any snapshot only ~3 are out. Bare chars
+can't hold the field (embark -> hurt -> flee -> re-embark). And v0.99.0's ore bias made
+it worse by sending BARE foragers to the more-dangerous mines where they churn faster.
+FIX: the ore dispatch now only routes MINE-WORTHY chars to the mines — FODDER (expendable,
+gate-exempt, bold — the designed risk-taker) or an ARMED char. A bare forager stays on the
+safer surface. WIZARDS are protected TWICE: they hit their own escort/band-gated branch
+before the generic ore dispatch (an explicit test proves an unescorted wizard WAITS, is
+never mine-routed), so the ore work can never send one into the mines. 4 new tests (bare
+stays / fodder mines / armed mines / wizard never) + the existing 4; 3/3 mine-worthy
+mutants killed. NB the revolving door itself (bare chars churning) is the arm-rate problem
+— this refinement stops the ore dispatch FEEDING it, but the cure is still arming. NEXT:
+measure #192 — fodder/armed in the mines mining, smelts/ingots up, bare foragers no longer
+churning into the mines, wizards safe at home/escorted.

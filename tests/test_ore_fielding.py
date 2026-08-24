@@ -33,6 +33,21 @@ def _forager(uid="f1"):
             "equipment": {"hand": {"kind": "club"}}}
 
 
+def _bare_forager(uid="b1"):
+    c = _forager(uid); c["equipment"] = {"hand": None, "offhand": None, "outfit": None,
+                                         "trinket": None, "boots": None}
+    return c
+
+
+def _fodder(uid="fd"):
+    # stats sum 6 (all ones) with no int gift -> fodder; bare-handed
+    c = _forager(uid)
+    c["stats"] = {"str": 1, "dex": 1, "int": 1, "vit": 1, "end": 1, "agi": 1}
+    c["equipment"] = {"hand": None, "offhand": None, "outfit": None, "trinket": None,
+                      "boots": None}
+    return c
+
+
 def _village(char, stash_ingots=0, by_world=None):
     inv = [{"kind": "ingot_copper", "item_id": 1000 + i} for i in range(stash_ingots)]
     return {"world": "village", "tick": 500, "events": [],
@@ -76,3 +91,45 @@ def test_no_bias_when_the_ore_world_is_unknown():
     bot.strategy._ore_world_cache = None
     acts = bot.on_frame(_village(_forager(), stash_ingots=0, by_world=PAD))
     assert _embark_map(acts) == "vale", f"biased to a vein-less world: {acts}"
+
+
+# --- v0.99.1: only MINE-WORTHY chars are ore-dispatched (protect wizards + stop churn) --
+
+def test_a_BARE_forager_is_NOT_sent_to_the_mines():
+    """v0.99.1: a bare forager can't hold the mines (it churns), so ingot-hungry or not it
+    stays on the safer surface — the ore dispatch is for chars that can survive to mine."""
+    bot = _bot()
+    acts = bot.on_frame(_village(_bare_forager(), stash_ingots=0, by_world=PAD))
+    assert _embark_map(acts) == "vale", f"a bare forager was sent to mine: {acts}"
+
+
+def test_FODDER_is_sent_to_the_mines_to_mine():
+    """Fodder is the designed risk-taker (expendable, gate-exempt) — the right ore
+    workforce."""
+    bot = _bot()
+    acts = bot.on_frame(_village(_fodder(), stash_ingots=0, by_world=PAD))
+    assert _embark_map(acts) == "mines", f"fodder not routed to the ore world: {acts}"
+
+
+def test_an_ARMED_forager_is_still_sent_to_the_mines():
+    """An armed char can hold the mines — it still gets the ore dispatch (regression of
+    the original routing test, now under the mine-worthy gate)."""
+    bot = _bot()
+    acts = bot.on_frame(_village(_forager(), stash_ingots=0, by_world=PAD))  # _forager is armed
+    assert _embark_map(acts) == "mines", f"armed forager not routed to ore: {acts}"
+
+
+def test_a_WIZARD_is_never_ore_dispatched_to_the_mines():
+    """Operator: 'try not to kill my wizards.' A wizard reaches its OWN escort/band-gated
+    branch before the generic ore dispatch — so even ingot-hungry, an unescorted wizard
+    WAITS in the village rather than being sent to mine the dangerous mines. Proves the ore
+    dispatch can never grab a wizard."""
+    bot = _bot()
+    wiz = _forager("wiz")
+    wiz["gifts"] = ["int"]
+    wiz["stats"] = {"str": 2, "dex": 2, "int": 9, "vit": 2, "end": 2, "agi": 2}  # top seat
+    wiz["equipment"] = {"hand": None, "offhand": None, "outfit": None, "trinket": None,
+                        "boots": None}
+    # no guardian fielded anywhere -> the escort gate holds the wizard home
+    acts = bot.on_frame(_village(wiz, stash_ingots=0, by_world=PAD))
+    assert _embark_map(acts) != "mines", f"a wizard was ore-dispatched to the mines: {acts}"

@@ -1195,7 +1195,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.99.0"
+    version = "explorer/0.99.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1979,12 +1979,21 @@ class Explorer:
                     if not g_opts:
                         continue          # every open world is hot — the recruit waits
                     uid = cand
-                    # v0.99.0: ingot-hungry -> route this gatherer to the ORE world if it
-                    # is an option here (already gate-filtered above), else safest/least-
-                    # crowded as before. This is what actually feeds the smith pipeline.
+                    # v0.99.1: ingot-hungry -> route a MINE-WORTHY gatherer to the ORE
+                    # world, else safest/least-crowded. #191 showed the flaw in v0.99.0:
+                    # sending BARE foragers to the more-dangerous mines just churned them
+                    # (embark -> hurt -> flee home; median 38-tick stints, one char
+                    # embarked 58x) — they cannot hold the field to actually mine. So only
+                    # a char that can SURVIVE the mines mines it: FODDER (expendable,
+                    # gate-exempt, bold — exactly this class's job) or an ARMED char. A
+                    # bare forager stays on the safer surface. Wizards never reach this
+                    # branch (their own escort/band-gated branch runs first), so the ore
+                    # dispatch can never send one into the mines.
                     ore_w = self._ore_world(bot)
+                    mine_worthy = (crole == "fodder"
+                                   or bool((cch or {}).get("equipment", {}).get("hand")))
                     if (ore_w is not None and ore_w in g_opts
-                            and self._ingot_hungry(guild)):
+                            and self._ingot_hungry(guild) and mine_worthy):
                         target = ore_w
                     else:
                         target = min(g_opts, key=lambda m: (threat(m), by_world.get(m, 0)))
