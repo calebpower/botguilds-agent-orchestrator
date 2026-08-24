@@ -5102,3 +5102,25 @@ escorted-wizard fixture given in-cap work (wizards no longer work deep BY DESIGN
 3 potions bought, 0 dancers. NEXT: deploy; measure #202 (embark errors ~0, wizard max-y
 <= 12, healed miners peak y <= 27); then STRATEGY per operator (brew throughput, blue-
 potion mana probe).
+
+ITER 92 (2026-08-24, explorer/0.107.1): THE GHOST THAT PARKED THE ROSTER (operator:
+"where are we at" -> field empty AGAIN on #202). c19532: NO death event, chars_here
+listed it home, yet the server refused its every command (not_in_village 23k +
+unknown_character 5.5k over ~50k ticks) — and the village re-commanded it every
+EMBARK_ISSUED_TTL for HOURS, each failed embark refreshing _scout_sent and thereby
+CHOKING the scout release for the 29 real benched chars. One phantom char locked the
+whole roster in the village while the anomaly monitor shouted into the log. FIX
+(0.107.1): GHOST QUARANTINE — the 0.62.0 rule (trust the refusal over the roster) as a
+mechanism: on_action_error with reason in GHOST_REASONS {not_in_village,
+unknown_character, no_such_character} stamps _ghosted[uid] (TTL 600) + clears its
+_embark_at; a ghosted char is skipped by BOTH the embark candidate loop AND the per-char
+village economy loop (the 23k errors were largely village moves/buys for the corpse). 4
+tests, all driving the REAL error path bot.on_action_error -> hook (the manual-stamp
+mutant has survived twice this week; never again): next-char-goes, TTL expiry
+(mistakenly-ghosted char returns), no-economy-actions, and the compounding regression
+(ghost + stamped bench + empty world -> the RELEASE goes to the real char). 3 mutants
+killed (hook-never-stamps / candidate-skip-removed / economy-skip-removed). 1135
+local/reaper green. #202 scoreboard BEFORE this fix: 51 potions bought (heal pipeline
+WORKS — 1 brew, 1 smelt), 0 dancers, embarks 91/1k, 6 deaths (5 early, spire band),
+gold 20. NEXT: deploy; #203 must show not_in_village ~0, field populated, ghost either
+returns or stays quarantined; then STRATEGY (brew throughput, blue-potion probe).

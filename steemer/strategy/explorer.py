@@ -1055,6 +1055,11 @@ SCOUT_RESEND_TICKS = 40    # v0.106.1: after releasing a scout toward an empty w
                            # wait this long before releasing another to the same world —
                            # chars_by_world lags an embark by a few frames (the 0.43.0
                            # lagging-count lesson), and one sensor per world is the point.
+GHOST_REASONS = frozenset({"not_in_village", "unknown_character", "no_such_character"})
+GHOST_TTL = 600            # v0.107.1: how long a server-refused ("ghost") char is barred
+                           # from village candidacy. Long on purpose — a real char
+                           # mistakenly ghosted returns in ~10 min, while a phantom that
+                           # re-errors re-arms the clock and never wastes another command.
 EMBARK_ISSUED_TTL = 30     # v0.107.0: how long an issued embark blocks re-issuing for
                            # that char, ROSTER-INDEPENDENT (chars_here flaps stale for
                            # frames after a departure; presence-based dropping caused the
@@ -1234,7 +1239,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.107.0"
+    version = "explorer/0.107.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1309,6 +1314,7 @@ class Explorer:
         self._wizard_recall: dict = {}   # v0.102.0: uid -> tick of last band-danger fallback
         self._returned_empty: dict = {}  # v0.105.0: uid -> tick the looted-out retreat fired
         self._scout_sent: dict = {}      # v0.106.1: world -> tick a scout was released to it
+        self._ghosted: dict = {}         # v0.107.1: uid -> tick the server refused its command
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -1380,6 +1386,17 @@ class Explorer:
         uid = message.get("char_uid")
         if uid is not None and message.get("reason") in INTENT_RETRY_DIFFERS:
             self._village_intent.pop(uid, None)
+        # v0.107.1 GHOST QUARANTINE — trust the refusal over the roster (the 0.62.0
+        # rule). Run #202: c19532 had no death event and chars_here listed it home,
+        # but the server refused its every command (not_in_village x23k,
+        # unknown_character x5.5k) — and the village re-commanded it every TTL for
+        # HOURS, each failed embark refreshing _scout_sent and thereby choking the
+        # scout release for the other 29 benched chars. One ghost char parked the
+        # whole roster. A char whose commands the server says make no sense is
+        # quarantined from candidacy for GHOST_TTL; if it is real, it returns.
+        if uid is not None and message.get("reason") in GHOST_REASONS:
+            self._ghosted[uid] = message.get("tick", bot.tick)
+            self._embark_at.pop(uid, None)      # stop the re-command loop at once
         # v0.52.0: a REJECTED forge teaches us its recipe was wrong. Record the exact
         # (product, ingots, lumber) so it is attempted once and never again — the recipe
         # quantities are undocumented, so the server's rejection IS the documentation.
@@ -1478,6 +1495,11 @@ class Explorer:
 
         for char in chars:
             uid = char["char_uid"]
+            # v0.107.1: a ghost (server-refused) char gets NO village economy actions
+            # either — the 23k not_in_village errors on #202 were largely village
+            # moves/buys re-commanded for a char the server said was not there.
+            if bot.tick - self._ghosted.get(uid, -10 ** 9) < GHOST_TTL:
+                continue
             self.note_char(char)            # v0.88.0: ledger BEFORE any seat check —
                                             # the spend/tome branches below ask
                                             # wizard_seats() and a char absent from the
@@ -1967,6 +1989,9 @@ class Explorer:
                                  key=lambda u: 0 if role_of(here_chars.get(u) or {},
                                                             seats) == "wizard" else 1)
                 for cand in ordered:
+                    # v0.107.1: a ghost (server-refused) char is no candidate at all.
+                    if tick - self._ghosted.get(cand, -10 ** 9) < GHOST_TTL:
+                        continue
                     cch = here_chars.get(cand)
                     crole = role_of(cch, seats) if cch is not None else None
                     # v0.106.0: the HONEST re-embark condition, replacing 0.105.0's

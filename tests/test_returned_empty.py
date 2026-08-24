@@ -186,3 +186,68 @@ def test_the_scout_stamp_is_set_BY_THE_EMBARK_end_to_end():
     # the lag window: the server still shows vale empty and both chars "here"
     second = _embarks(bot.on_frame(_village(both, pad, tick=705)))
     assert not second, f"double-released during the lag window: {second}"
+
+
+# ---- v0.107.1: the ghost quarantine ------------------------------------------
+
+
+def _ghost(bot, uid, tick=600, reason="not_in_village"):
+    """Through the REAL error path (bot.on_action_error -> strategy hook), never a
+    manual stamp — the manual-stamp mutant has now survived twice in this project."""
+    bot.on_action_error({"char_uid": uid, "reason": reason, "tick": tick,
+                         "action": "embark"})
+
+
+def test_a_server_refused_char_stops_being_recommanded_and_the_NEXT_char_goes():
+    # #202: the village re-commanded one ghost char every TTL for hours while 29 real
+    # chars sat benched. After the refusal, the ghost is no candidate and the embark
+    # goes to someone real.
+    bot = _bot()
+    bot.tick = 600
+    _ghost(bot, "ghost")
+    acts = bot.on_frame(_village([_char("ghost"), _char("real")], _pad(), tick=610))
+    emb = _embarks(acts)
+    assert emb and emb[0]["char_uids"] == ["real"], \
+        f"the ghost is still being commanded (or blocks the queue): {acts}"
+
+
+def test_the_quarantine_EXPIRES_so_a_real_char_is_not_lost_forever():
+    from steemer.strategy.explorer import GHOST_TTL
+    assert GHOST_TTL == 600, "the TTL moved; re-read the numbers in this test"
+    bot = _bot()
+    bot.tick = 600
+    _ghost(bot, "r1", tick=600)
+    acts = bot.on_frame(_village([_char("r1")], _pad(), tick=600 + 601))
+    emb = _embarks(acts)
+    assert emb and "r1" in (emb[0].get("char_uids") or []), \
+        f"a mistakenly-ghosted char never came back: {acts}"
+
+
+def test_a_ghost_gets_no_village_economy_actions_either():
+    # The 23k not_in_village errors were largely village moves/buys for the ghost.
+    # A ghosted char alone in the village must generate NO per-char actions at all
+    # (embark is separately blocked above; here we assert the economy loop skips it).
+    bot = _bot()
+    bot.tick = 600
+    _ghost(bot, "ghost")
+    frame = _village([_char("ghost", inventory=[{"kind": "egg", "item_id": "junk1"}])],
+                     _pad(), tick=610)
+    acts = bot.on_frame(frame)
+    per_char = [a for a in acts if a.get("char_uid") == "ghost"]
+    assert not per_char, f"still commanding the corpse: {per_char}"
+
+
+def test_one_ghost_does_not_choke_the_scout_release_for_the_benched():
+    # The compounding half of #202: the ghost's failed embarks kept refreshing
+    # _scout_sent, so the 29 stamped chars' scout release never fired. With the ghost
+    # quarantined, a stamped char must get the (empty) world.
+    bot = _bot()
+    bot.tick = 600
+    _ghost(bot, "ghost")
+    bot.strategy._returned_empty["r1"] = 600
+    bot.refresh_eta = {"vale": 10 ** 9, "mines": 10 ** 9}
+    pad = {"mines": [f"v{i}" for i in range(4)]}     # vale empty -> scoutable
+    acts = bot.on_frame(_village([_char("ghost"), _char("r1")], pad, tick=700))
+    emb = _embarks(acts)
+    assert emb and emb[0]["char_uids"] == ["r1"] and emb[0]["map"] == "vale", \
+        f"the bench stayed locked behind the ghost: {acts}"
