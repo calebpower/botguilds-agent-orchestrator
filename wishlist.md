@@ -159,6 +159,34 @@ technique when a metric is flat despite activity._
 **Seven items qualify.** Exploration matrix (A) shipped this pass, one deploy after it crossed at tc=5 exactly as projected when it was split out of the campaign layer. `ceiling = good_idea x risk_to_bot x 0.75`; anything with a
 ceiling under 0.5 is INELIGIBLE at any age and is reported that way, never as "almost".
 
+**Scored 2026-08-24 (iter 94, deploy 0.108.1).** ~45 deploys since the 08-22 scoring, ~10
+today alone (the 0.103-0.108 bug arc), so every pre-existing item's age factor sits near its
+0.75 saturation: score ~= ceiling. Sweep notes: two items SHIPPED-BY-ARC without being named
+— **band-refresh** (the 0.106.0 replenishment clocks + refresh-gated re-embark ARE the
+band-refresh-aware routing this item described) and most of **M3a forging** (the 0.98.0
+smith pipeline forges spears from ingot+lumber; the un-shipped remainder is only the
+exotic-product discovery). Both moved to Done rather than kept as zombie line items.
+
+| item | good | risk | ceiling | tc | score | verdict |
+|---|---|---|---|---|---|---|
+| shadow-eval (ML Pass 4 acceptance) | 0.75 | 1.00 | 0.563 | ~45 | **0.56** | qualifies — but ML is DEPRIORITISED by operator direction; parked, stated openly |
+| danger-as-cost corridor (desperation branch) | 0.88 | 0.90 | 0.594 | ~15 | **0.54** | QUALIFIES — top *actionable* item |
+| rival-recon dashboard (track feed) | 0.73 | 1.00 | 0.548 | ~45 | **0.54** | qualifies; WillMorr active, other rivals field ~0 |
+| magic / cast | 0.75 | 0.98 | 0.551 | ~45 | 0.55 | **BLOCKED** (0 spells learned ever; arch-wizard INT 8 died on #201 — the INT ladder lost its top; tome 150g vs gold 20) |
+| adaptive-cohesion remainder | 0.72 | 1.00 | 0.540 | ~34 | 0.52 | qualifies, thin remainder (cohesion+escort shipped) |
+| tick-participation bar | 0.72 | 1.00 | 0.540 | ~15 | 0.49 | eligible, crosses in ~2 deploys |
+| dashboard FIELD TRUTH (chars_by_world lag) — NEW | 0.75 | 1.00 | 0.563 | 0 | — | added 2026-08-24: the lagging counter told the operator "0 in worlds" twice TODAY while sentinels were out; frames are the truth source the dash should read |
+| player market | 0.68 | 0.99 | 0.505 | ~45 | 0.50 | marginal; market dead server-wide (one listing ever) |
+| forge-in-mines investigation (operator) | 0.70 | 1.00 | 0.525 | ~12 | 0.46 | crosses in ~3 deploys; cheap investigation slice |
+| hints: wizard rival-avoidance | 0.70 | 1.00 | 0.525 | ~10 | 0.46 | crosses in ~4 deploys |
+| hints: vulture / early-warning / routing / overlay | 0.55-0.65 | 1.0 | <0.49 | — | — | INELIGIBLE (ceilings under 0.5) |
+| ML model ideas (11 parked) | — | — | <0.5 | — | — | INELIGIBLE or data-starved; unchanged |
+
+**This pass's bot change was 0.108.1** (arm-budget fix), so the implement-top-alongside rule
+is satisfied by the active brewing/economy thread; **danger-as-cost corridor is the queued
+next lever** once the post-deploy watch (new standing rule) is clean and the heal-economy
+thread reaches a stable point.
+
 ## Open
 
 
