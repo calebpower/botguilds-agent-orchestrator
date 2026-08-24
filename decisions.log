@@ -5236,3 +5236,15 @@ clock-skips; the real-drop signal (run #120's 3.7% loss class) is no longer dilu
 restart + 3-check watch; income lever when the clock genuinely resumes (all guilds
 parked today — nobody has moved all day, so the leveling race is ALSO frozen; no
 relative ground lost).
+
+ITER 99 (2026-08-24, measurement-only pass, no deploy): the server produced a ~570-tick
+CONTIGUOUS burst (~15:45-16:20; tickbar: 0 dropped, 0 skipped in-window — the first
+clean stretch since 08:10), then paused again (0 ticks in a 60s probe at 16:26). BURST
+MEASUREMENT of the 0.106-0.108 machinery: errors COLLAPSED (1 not_in_village vs 23k/run
+at the storm's peak; 1 party_cap; nothing else), 193 moves / 31 embarks / 5 attacks
+(sentinel rotation), 0 deaths, gold 23->26. Vault probing idle at 20 phantoms — the
+per-RUN budgets latched at run start and this run is stall-stretched (~3.5h so far);
+refinement candidate noted: probe budgets per N ticks instead of per run. No lever
+shipped (clock still bursty; the income lever needs a sustained world — own rule: do
+not ship what cannot be validated). All guilds remain villaged server-wide. NEXT: clock
+check; income lever + full battery on sustained resume.
