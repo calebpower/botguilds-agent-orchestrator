@@ -340,3 +340,25 @@ club: the vanish bug converted the guild's entire run income (~585g) into equipm
 for bodies that then evaporated. Same entity-lifecycle family as the limbo/frozen-
 render entries; this is its economic cost. Client mitigation shipped: recruit
 throttling (chronic shortfall <= 3 refills at most once per 2,000 ticks).
+
+## Batch silent disappearances while FIELDED (2026-08-25, run #224) — the strongest characterization yet
+
+**13 of 27 roster chars vanished in ~20k ticks, 12 of them batch-clustered in a ~3k-tick
+window (t≈2,761,000–2,764,000), with exactly ONE death event among them.** Evidence chain:
+
+- Roster (village `chars_here` + `chars_by_world`, deduped uids): 27 at t2750566 → 17 at
+  t2771227. Gone: c19749, c19762, c19774, c19781, c19782, c19789–c19795 (seven
+  CONSECUTIVE uids), c19798. Only c19798 has a death event (cultist, mines).
+- **All 12 silent ones were last seen FIELDED** (not benched) — refutes an idle/bench
+  garbage-collection hypothesis we explicitly tested.
+- No client-side cause window: zero village-frame gaps >30t in the window, no reconnects
+  (last hello t2748246, well before), no error storms.
+- Death attribution is NOT the issue: the same window carries 9 fully-attributed rival
+  deaths (g_001df9 Scholars, spire vampire_bat band) plus our one attributed death —
+  the server emits proper char death events; these chars simply never got one.
+- Cost this run is contained by 0.115.0 (recruit toward field demand 18): the deep bench
+  absorbed 9 vanishes for free; the drip refilled 4 at exactly 2000-tick spacing only
+  once the roster fell below 18. Pre-0.115 this window would have burned ~200g of clubs.
+- STRATEGIC exposure: the vanished include earlier top-INT wizard candidates (c19781,
+  c19793) — the INT/tome pipeline can be silently decapitated. Likely the same class as
+  the c19532 roster-limbo entry above, now observed as a fielded BATCH.
