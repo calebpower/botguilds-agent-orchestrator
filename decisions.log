@@ -5521,3 +5521,21 @@ comfort margin; the old pin deliberately preserved), new HUNT_HP=0.6 gates the
 wildlife-seek only. 151 targeted tests green on FRESH bytecode; full suite+gate
 re-running with the deploy conditioned on the result. RULE ADOPTED: purge __pycache__
 before gate runs; mutants via tools/mutate.py.
+
+ITER 115 (2026-08-25, measurement + falsification, no deploy): THE LEVER'S VERDICT IS
+"UNMEASURED", NOT "FAILED". Live xp read flat (0.8/1k vs 0.9 baseline) — but the kill
+ledger shows the mechanism working (chicken/sheep/rat/frog/turtle kills), and the
+CURRENT shallow world is 100% UNDEAD (103 sightings y0-11, THREAT_KINDS, doctrine-
+forbidden) with ZERO wildlife anywhere: slice 1 had no targets for its entire
+measurement window. HYPOTHESIS FALSIFIED BY THE TEST BED before it shipped: the
+planned hunting-release (more fielded hunters) was expressed in the sim first — and
+even 1 hunter/world SATURATES respawning supply (xp 135, every spawn killed; the sim
+gained wildlife-per-refresh respawn fidelity to show it). Fielded-count is NOT the
+binder; TARGET SUPPLY is, and supply is band-cycle weather. DECISIONS: hunting-release
+SHELVED (falsified); slice-1 verdict DEFERRED to a wildlife band cycle; no deploy (no
+bot change — the sim respawn addition is test infra). The 14-vs-27 armed read was a
+measurement artifact (village-frame lag unions), noted. Deep density is UNOBSERVED
+(no deep eyes), not absent — the masterwork-expedition / deep-hunting thread stays
+gated on the heal economy. NEXT: normal cadence; re-measure xp when wildlife bands
+return; undead engagement remains operator-gated (the risky slice, not taken
+unilaterally).

@@ -70,6 +70,7 @@ class SimServer:
         self.vault: list[dict] = []
         self._phantoms: set[int] = set()
         self.phantom_share = phantom_share
+        self.wildlife_per_refresh = 0      # pass 2b: band refreshes respawn this many
         # the lagged view: a queue of (apply_at_tick, uid, world) transitions plus the
         # view state they eventually update; village-frame chars render from a SNAPSHOT
         # taken when the char was last truly in the village.
@@ -225,6 +226,15 @@ class SimServer:
                     else:
                         st["items"][p] = {"kind": self.rng.choice(
                             ["egg", "embercap", "bone"]), "item_id": self._nid()}
+                # pass 2b (2026-08-25): refreshes RESPAWN wildlife — the live bands
+                # do, and without it the sim reaches a dead steady state where
+                # hunting-rate levers are unmeasurable (everything dies in the
+                # opening sweep and nothing ever returns).
+                for _ in range(self.wildlife_per_refresh):
+                    p = (self.rng.randrange(self.width),
+                         self.rng.randrange(0, min(10, self.height)))
+                    self.add_mob(w, "chicken", p, behavior="wanderer",
+                                 hp=8, xp=3)
 
     def _die(self, uid: str) -> None:
         c = self.chars.pop(uid)
