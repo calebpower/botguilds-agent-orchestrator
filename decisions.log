@@ -5556,3 +5556,19 @@ survival ladder at 7+ still evacuates a hurt nuisance). The first fix pass cover
 only the depth retreat and the test caught the looted-out vacuum — recorded. 2 mutants
 via tools/mutate.py (first use per the new rule — both KILLED with bytecode-safe
 restores). Suite+gate in flight, deploy conditioned on GREEN.
+
+ITER 117 (2026-08-25, diagnosis pass, no deploy): THE XP GAP RESISTS THREE MECHANISM
+HYPOTHESES IN THE BED. Live: zero armed-char/wildlife co-locations in 360 frames while
+windows open and close (68 sightings -> 0 within the hour). Sim expressions built and
+measured: (1) bench-starvation — falsified again (release and window coincide on
+refresh clocks; 186 vs 207); (2) x-coverage/entry-clustering (entry_width param added,
+40-wide world) — falsified (loot-chasing drags chars across x; radius-8 harvests en
+route; xp 153 pre-lever); (3) window-timing with despawn-on-band-roll (fidelity added:
+wanderers despawn at refresh, matching the live vanish) — conversion stays high in-bed.
+REMAINING UNMEASURED SUSPECT: the live window's wildlife DEPTH — if it roams y>=12,
+un-healed hunters legally cannot reach it (the depth budget), and only potion-holders
+(several spotted in packs) could. The window closed before its y-distribution was
+captured. DECISION: no lever without the mechanism (three near-misses this pass is the
+test bed doing its job — each would have shipped inert); next pass CAPTURES the next
+live window in the moment (wildlife y-distribution + hunter positions + budgets).
+Sim gains kept: despawn-on-roll, entry clustering. No bot change, no deploy.

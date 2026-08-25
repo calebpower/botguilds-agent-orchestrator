@@ -71,6 +71,9 @@ class SimServer:
         self._phantoms: set[int] = set()
         self.phantom_share = phantom_share
         self.wildlife_per_refresh = 0      # pass 2b: band refreshes respawn this many
+        self.entry_width = None            # pass 2c: chars enter within x<this (live
+                                           # chars cluster at entries; wildlife roams
+                                           # the whole 72-wide world — the coverage gap)
         # the lagged view: a queue of (apply_at_tick, uid, world) transitions plus the
         # view state they eventually update; village-frame chars render from a SNAPSHOT
         # taken when the char was last truly in the village.
@@ -226,10 +229,14 @@ class SimServer:
                     else:
                         st["items"][p] = {"kind": self.rng.choice(
                             ["egg", "embercap", "bone"]), "item_id": self._nid()}
-                # pass 2b (2026-08-25): refreshes RESPAWN wildlife — the live bands
-                # do, and without it the sim reaches a dead steady state where
-                # hunting-rate levers are unmeasurable (everything dies in the
-                # opening sweep and nothing ever returns).
+                # pass 2b/2c (2026-08-25): refreshes are BAND ROLLS — the old
+                # band's wanderers DESPAWN (live: 68 wildlife sightings -> 0 within
+                # the hour when the band rolled) and the new band spawns its own.
+                # Without despawn, a lone sentinel eventually clears everything and
+                # window-timing levers are unmeasurable.
+                for eid in [e for e, m in self.mobs.items()
+                            if m["world"] == w and m["behavior"] == "wanderer"]:
+                    self.mobs.pop(eid)
                 for _ in range(self.wildlife_per_refresh):
                     p = (self.rng.randrange(self.width),
                          self.rng.randrange(0, min(10, self.height)))
@@ -348,7 +355,7 @@ class SimServer:
                        if x["world"] == world) >= self.config["party_cap"]:
                     return self._reject(u, act, "party_cap")
                 c["world"] = world
-                c["pos"] = [self.rng.randrange(self.width), 0]
+                c["pos"] = [self.rng.randrange(self.entry_width or self.width), 0]
                 self._view_queue.append((self.tick + self.lag, u, world))
             return None
         if act == "recruit":
