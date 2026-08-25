@@ -1129,6 +1129,18 @@ RECRUIT_MIN_INTERVAL = 2000  # v0.113.0 (the gold-leak fix, operator-ordered): r
                              # A chronic 1-2 shortfall now refills at ~8/run instead of
                              # 39; four tomes' worth of gold stays in the treasury.
 RECRUIT_CHRONIC_MAX = 3      # a shortfall this small is the vanish drip (or ordinary
+RECRUIT_TARGET_FIELDABLE = 18  # v0.115.0: recruit toward FIELD DEMAND, not capacity.
+                               # Run 223 exposed the 0.113.0 throttle as an oscillator:
+                               # silent vanishes (~1.1/1k) outpace the 2000-tick drip, so
+                               # the shortfall crosses RECRUIT_CHRONIC_MAX, the "wipe"
+                               # fast path bursts the roster back, and steady-state spend
+                               # returned to 0.89 recruits/1k — the leak the throttle was
+                               # meant to close. The target was the real bug: roster_cap
+                               # (30) refills a bench nobody fields (3-6 fielded all run;
+                               # measured fieldable ceiling ~17 — stamina and errand
+                               # pacing bound fielding, not roster). Recruiting now stops
+                               # entirely while the roster exceeds field demand and the
+                               # bench absorbs vanishes for free.
                              # deaths), not a wipe — shortfall-relative so the rule
                              # holds under any roster_cap, unlike an absolute floor
 RECRUIT_COOLDOWN = 8  # v0.10.0: same staleness for recruit — a just-recruited char
@@ -1301,7 +1313,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.114.1"
+    version = "explorer/0.115.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2051,7 +2063,7 @@ class Explorer:
         # is unfilled wizard candidates. The old min() kept the roster near the fieldable
         # count out of recruit-burst trauma (0.43.0), but that bug was lagging COUNTS,
         # not bench size, and the settled-count gate already fixed it.
-        recruit_target = roster_cap
+        recruit_target = min(roster_cap, RECRUIT_TARGET_FIELDABLE)
         # v0.43.0: count recruits WE'VE just issued that may not show in either count yet, so a
         # startup burst can't overshoot before the counts catch up. Without this, at t+0 both
         # counts read the not-yet-checked-in roster (9) and the gate fires every RECRUIT_COOLDOWN

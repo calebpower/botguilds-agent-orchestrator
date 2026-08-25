@@ -5690,3 +5690,13 @@ every tick + burns. Damage-sunk across 8 runs: wolf<=15/crab_green<=15 (2 swings
 lava_ant 21-27/spider_brown 18 OUT. Entry rule: BOTH measured dph AND hp, <=2 swings.
 Mutant (lava_ant re-added) KILLED. The dph-only pricing was the rates-not-durations trap
 (finding #205) in new clothes.
+
+ITER 125 (2026-08-25) — explorer/0.115.0: recruit TARGET fix (field demand, not capacity).
+Run 223 exposed 0.113.0 as an oscillator: drip 3x at exactly 2000t, then vanishes pushed
+shortfall past CHRONIC_MAX and the wipe fast-path refilled at ~400-700t spacing — 0.89
+recruits/1k, the pre-throttle leak rate. Class fix: recruit_target = min(roster_cap,
+RECRUIT_TARGET_FIELDABLE=18) — a 20+ bench nobody fields (3-6 fielded all run) absorbs
+vanishes for free; recruiting goes fully quiet above field demand. 2 tests (deep-bench
+silence + below-demand liveness), mutant killed. ALSO this pass: first engage-kill
+CONFIRMED net-positive (wolf, +8xp for 4 dmg, findings db17470); our club dph measured 4
+not 8 (sim correction queued); 1 death = cultist stamina footrace (known class #290).

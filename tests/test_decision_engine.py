@@ -2139,3 +2139,37 @@ def test_a_real_wipe_recruits_at_the_fast_cadence():
     soon = bot.on_frame(_deploy_frame(uids, {}, here, tick=110))
     assert any(a.get("action") == "recruit" for a in soon), \
         f"wipe recovery throttled: {soon}"
+
+
+def test_a_deep_bench_above_field_demand_recruits_NOBODY():
+    """v0.115.0: run 223 proved the 0.113.0 throttle oscillates — vanishes outpace the
+    drip (~1.1/1k vs 0.5/1k), the shortfall crosses the wipe line, and the fast path
+    re-opens the gold leak (0.89 recruits/1k, same as before the throttle). The TARGET
+    was the bug: roster_cap refills a BENCH (3-6 fielded off 27 all run; measured
+    fieldable ceiling ~17). Above RECRUIT_TARGET_FIELDABLE the gate must not recruit at
+    ANY cadence, even a shortfall the old code called a wipe."""
+    from steemer.strategy.explorer import RECRUIT_TARGET_FIELDABLE
+    assert RECRUIT_TARGET_FIELDABLE == 18   # pinned literal (derivation at the constant)
+    bot = _bot()
+    bot.config["roster_cap"] = 30
+    # roster 25 = 20 home + 5 fielded: shortfall-vs-cap 5 (the OLD wipe-fast path);
+    # vs field demand 18, a surplus of 7 — silence expected at ANY tick.
+    here = [_idle_village_char(f"h{i}") for i in range(20)]
+    uids = [c["char_uid"] for c in here]
+    by_world = {"vale": [f"v{i}" for i in range(5)]}
+    acts = bot.on_frame(_deploy_frame(uids, by_world, here, tick=50_000))
+    assert not [a for a in acts if a.get("action") == "recruit"], \
+        f"recruited into a 25-deep roster with only 5 fielded: {acts}"
+
+
+def test_below_field_demand_recruiting_still_happens():
+    """Two-oracle partner: the same gate still recruits when the roster is genuinely
+    under demand (9 < min(roster_cap 10, FIELDABLE 18)) — the ceiling didn't silently
+    kill recruiting outright."""
+    bot = _bot()
+    here = [_idle_village_char(f"h{i}") for i in range(4)]
+    uids = [c["char_uid"] for c in here]
+    by_world = {"vale": [f"v{i}" for i in range(5)]}
+    acts = bot.on_frame(_deploy_frame(uids, by_world, here, tick=50_000))
+    assert [a for a in acts if a.get("action") == "recruit"], \
+        f"a 9/10 roster below field demand stopped recruiting entirely: {acts}"
