@@ -5586,3 +5586,19 @@ in-bed and absent live. EXPRESSION: parked-chars config (no loot anywhere, wildl
 radius 8 -> 15 (vision-bounded chase, wildlife-only, deep_ok-gated). Expression
 converts post-lever; radius mutant KILLED via tools/mutate.py. Suite+gate in flight;
 gate-conditioned deploy + watch.
+
+ITER 119 (2026-08-25, verdict + tooling, no deploy): THE RADIUS LEVER'S LIVE VERDICT —
+CONVERSION PROVEN. Watched a window convert in real time (chicken at the exact
+11-tile pre-lever geometry -> killed, xp landed, second chase began); run #220 closed
+with 11 wildlife kills (chicken x4, sheep x2, turtle x2, rat/mole/frog) and xp back to
+the 0.9/1k baseline from the 0.2 trough. The ceiling is now WINDOW FREQUENCY (band
+weather), not conversion. Error-verdict tooling fixed: deploy_check now counts
+DISTINCT (reason, char, 30-tick) command-groups — the raw counts are ~20x
+echo-inflated (1528 raw = 131 real ≈ 8/1k, the designed probe cadence) and the check
+was flagging Will's amplifier, not our behavior. OPERATOR PROPOSAL (not shipped —
+both cross the risk line): the leveling arc's next slice is either (A) POTION-CARRY
+HUNTING — hunters carry a potion_red so their depth budget reaches y<28 where mob
+density lives; costs ~20g/hunter-trip from a 9-gold treasury unless brewing scales
+first, or (B) BEATABLE-PREDATOR engagement — bestiary-priced fights (wolf dph 4.1 vs
+our 30hp+club): real xp, real deaths risk. Recommendation: (A) after a brew-throughput
+push (bones now droppable via kills feed vigor), (B) only with explicit go.
