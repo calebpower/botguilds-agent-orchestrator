@@ -5617,3 +5617,21 @@ the prerequisite and is PRE-APPROVED direction. Proposal B (beatable predators: 
 xp, no loot) remains operator-gated. Sim annotated (kill-drop stays a what-if knob;
 soaks must not price economy levers on it). xp holding at 0.9/1k; deaths 2; invariants
 clean (deduped). Wishlist unchanged materially (tc +2).
+
+ITER 121 (2026-08-25, brew-throughput investigation, no deploy): THE VIGOR CEILING IS
+THE WORLD'S. Census (74k ticks): zero embercap/bone encountered anywhere; the four
+circulating herb kinds (frostmoss/sungrass/glimmerweed/bitterroot) are ALL DECODED
+NON-VIGOR (ember/frost/clarity/aether — the taste arc's learned facts, and hydration
+was VERIFIED WORKING in bot.py v0.81.0 after a storage-less probe false-alarmed it;
+recorded to spare the next reader). Consequence: brew throughput cannot manufacture
+potion_red at scale — vigor supply is world-scarce by design or by band weather, and
+the 20g shop is the only elastic heal source. LIVE BREWS STILL LAND: #220 produced a
+fresh potion_red (watch its vault id — if banked it sits ABOVE the phantom frontier
+and the withdrawal auto-resume proves out) AND a potion_blue from a blue+blue learning
+batch (single-essence confirmed for blue's base; tells logged: acrid_smoke vs red's
+dark_sheen — breadcrumbs for the operator's mana question). PROPOSAL UPDATE to the
+operator: (A) potion-carry hunting PARKED on world economics (no brew scale possible,
+20g/trip vs 9g treasury); (B) beatable-predator engagement RISES to primary leveling
+candidate — the only heal-free xp scale-up (shallow wolves/delvers, bestiary-priced,
+deaths-risk explicit) — AWAITING OPERATOR GO. Meanwhile the shallow-window machine
+works (xp 0.9/1k, conversion proven).
