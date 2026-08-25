@@ -5331,3 +5331,32 @@ true end). 4 mutants killed (latch-never-set, beelines-not-suppressed, refresh-c
 removed, village-clear-removed — the last two survived round 1 as unobserved behavior;
 tests added). Oracle permanently extended with the mirage config. 1162 local/reaper
 green. Watch count restarts on deploy.
+
+ITER 105 (2026-08-25, explorer/0.109.5 + THE SIM-SERVER TEST BED): operator directive
+("if you're... redoing your work because you found a bug after 2 minutes, then your
+tests are shit. Consider reverse-engineering the server") — DONE, and it PAID within
+the hour. BUILT: tests/simserver.py — a reverse-engineered server whose defining
+feature is modeled INCOHERENCE (the class every 0.103-0.109 escapee belonged to):
+view-lag (chars_here trails truth by `lag` ticks — the flap/ghost class), phantom
+vault ids, per-item mirage visibility, chaos clock (stall/burst), plus the rules
+(config-driven stamina economy, error taxonomy, slot truth w/ STR gates, poison DOT,
+band refreshes, buy/sell/equip/embark/recruit, permadeath). tests/test_soak.py drives
+the REAL GuildBot thousands of ticks through it (frames->on_frame->apply->
+on_action_error) and asserts the battery: no dance windows, no error-family storms,
+field worked, arming spreads, depth budget held, deaths 0. Seeded/replayable
+(STEEMER_SIM_SEED). SIM SELF-TESTS prove the oracle can complain (flap reproduced,
+phantoms refuse, slot truth rejects, poison bites, stall freezes clock while frames
+flow). THE SOAK'S FIRST CATCH (pre-deploy, exactly as directed): a scout-vs-mirage
+oscillator that ONLY exists when band cycles are shorter than REFRESH_STAY_TICKS=400 —
+refresh_soon stays true, the looted-out retreat + its commitment latch are suppressed,
+and the scout wanders into the mirage tug (live short-cycle bands would do this;
+0.109.4 only covered the long-cycle path). FIX (0.109.5): HOLD FOR THE SWEEP — no
+scout while (idle and refresh_soon); the mines-crew camping posture made explicit.
+Mutation-checked (hold reverted -> soak fails). TRIAGE DISCIPLINE exercised: 3 sim
+bugs fixed (gold shape, status objects, guild-level recruit) vs 1 real bot bug — each
+soak failure attributed before touching either side; the all-mirage world was ruled
+over-adversarial (every item flickering is beyond the real server) and narrowed to
+per-item mirage WITH THE NARROWING STATED. Soak cost: ~2min in the gate. 1169
+local/reaper green. NEXT: deploy 0.109.5 + 3x2min watch (its job is now CONFIRMING);
+sim pass 2 candidates: mobs/combat, crafting timers, replay-validation vs recorded
+runs, a c19532 limbo-char model.

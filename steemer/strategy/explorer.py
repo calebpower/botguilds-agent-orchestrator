@@ -1250,7 +1250,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.109.4"
+    version = "explorer/0.109.5"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -3067,13 +3067,24 @@ class Explorer:
                         self._retreat(uid, pos, ctx, blocked, offer, 1.5,
                                       "world looted-out, no refresh imminent — home to re-embark")
 
-                for d, (dx, dy) in nav.DIRS.items():
-                    nxt = (pos[0] + dx, pos[1] + dy)
-                    if nav.is_walkable(nxt, ctx.known, blocked) and deep_ok(nxt):
-                        offer({"char_uid": uid, "action": "move", "dir": d}, SCOUT_SCORE,
-                              "no goal reachable — stepping to scout")
+                # v0.109.5 HOLD FOR THE SWEEP: with nothing productive and a refresh
+                # imminent, the scout-wander is worse than standing still — the sim
+                # soak caught a scout-vs-mirage oscillator (recruit r90008, tiles
+                # (3,9)-(3,11)) that only exists because short band cycles keep
+                # refresh_soon TRUE, which suppresses the looted-out retreat AND its
+                # commitment latch. Camping until the sweep is the mines-crew posture,
+                # now explicit: no scout while (idle and refresh_soon).
+                _nr = (frame.get("next_refresh") or {}).get("in_ticks")
+                _hold = (not productive and isinstance(_nr, int)
+                         and _nr <= REFRESH_STAY_TICKS)
+                if not _hold:
+                    for d, (dx, dy) in nav.DIRS.items():
+                        nxt = (pos[0] + dx, pos[1] + dy)
+                        if nav.is_walkable(nxt, ctx.known, blocked) and deep_ok(nxt):
+                            offer({"char_uid": uid, "action": "move", "dir": d}, SCOUT_SCORE,
+                                  "no goal reachable — stepping to scout")
+                            break
                         break
-                    break
 
     # -- helpers --------------------------------------------------------------
 
