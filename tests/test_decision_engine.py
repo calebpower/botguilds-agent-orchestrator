@@ -2083,8 +2083,9 @@ def test_bat_brown_is_a_predator_not_a_farm_animal():
 def test_the_leveling_lever_hunts_AT_the_retreat_line_not_above_it():
     # v0.111.1 — DEVELOP_HP 0.7 -> 0.6: a 65%-hp armed char now hunts (it used to
     # hesitate); below the 0.6 retreat line it still disengages. Literal boundary.
-    from steemer.strategy.explorer import DEVELOP_HP
-    assert DEVELOP_HP == 0.6, "the gate moved; re-read the numbers in this test"
+    from steemer.strategy.explorer import HUNT_HP, DEVELOP_HP
+    assert HUNT_HP == 0.6, "the gate moved; re-read the numbers in this test"
+    assert DEVELOP_HP == 0.7, "predator comfort margin must stay above the hunt gate"
     def acts_at(hp):
         bot = _bot()
         char = _field_char(pos=[0, 5], stamina=40, hp=hp,

@@ -5502,3 +5502,22 @@ station) — the mines forge is the MASTERWORK forge, never used by anyone serve
 (0 events); exploitation needs ~6 potions of depth budget + cargo = a future
 "masterwork expedition" lever gated on the heal economy. Suite+gate in flight;
 deploy + watch on green.
+
+ITER 114b (2026-08-25, INCIDENT + explorer/0.111.2): THE STALE-BYTECODE GATE VIOLATION —
+recorded in full because process failures are findings. (1) THE VIOLATION: the
+suite+gate background command chained `push` and `restart` UNCONDITIONALLY, so when the
+gate came back RED the deploy had already happened — a failed-gate build ran live for
+~20 minutes. The chain must gate the deploy on the result (fixed in practice: deploy
+now issued only after reading the gate output). (2) THE MASK: the pre-commit "suite
+green" was FALSE — __pycache__ served STALE BYTECODE (source DEVELOP_HP=0.6, runtime
+0.7) after a day of hand-rolled cp-restore mutants, exactly the failure mode the
+verification-traps memory records with the instruction "use tools/mutate.py, never
+re-roll it in scratch". Own lesson, violated, bitten. Post-purge the TRUE suite state
+was red: the old dodge-not-fight pin (armed@63% + adjacent wolf must dodge) conflicted
+with the single-gate loosening. (3) THE RESOLUTION IS PRECISION: the evidence (xp
+starvation, frog sightings) justified hunting WILDLIFE at 0.6 — never trading hits
+with a WOLF at 0.63. Gates SPLIT: DEVELOP_HP stays 0.7 (predator engagement keeps its
+comfort margin; the old pin deliberately preserved), new HUNT_HP=0.6 gates the
+wildlife-seek only. 151 targeted tests green on FRESH bytecode; full suite+gate
+re-running with the deploy conditioned on the result. RULE ADOPTED: purge __pycache__
+before gate runs; mutants via tools/mutate.py.

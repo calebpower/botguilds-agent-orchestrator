@@ -974,10 +974,14 @@ WEAPON_BUY_FLOOR = 45      # v0.100.0: recalibrated — arm a bare char down to 
 # enforced INDIRECTLY: develop-mode requires a weapon, and the weapon-buy is itself gated on
 # WEAPON_BUY_FLOOR, so a poor guild can't arm -> its chars aren't in develop-mode -> they
 # harvest/survive. No per-tick treasury read needed in the field.
-DEVELOP_HP = 0.6          # v0.111.1 (the leveling lever): AT the retreat line, not
-                           # comfortably above it — with 27/30 armed and xp at 14/16k
-                           # ticks, hesitancy is the binder; the retreat itself still
-                           # fires at 0.6 so a hurt hunter disengages immediately
+DEVELOP_HP = 0.7          # predator ENGAGEMENT keeps its comfort margin: a fight you
+                           # might not finish before the 0.6 retreat line is a fight
+                           # you dodge (the pre-lever pin, deliberately preserved)
+HUNT_HP = 0.6             # v0.111.1: WILDLIFE hunting runs AT the retreat line — a
+                           # chicken cannot hit back, so the margin a wolf demands is
+                           # pure hesitancy against prey; split from DEVELOP_HP when
+                           # the old dodge-not-fight pin caught the single gate
+                           # loosening PREDATOR fights the evidence never justified
 DEVELOP_STAMINA = 15      # enough stamina to attack AND still afford a step to disengage
 DEVELOP_HP_FODDER = 0.4   # v0.87.0: fodder keeps swinging far below the 0.7 line
 COMBAT_SEEK_RADIUS = 5    # gauge predator density within this many tiles (swarm gate)
@@ -2615,6 +2619,8 @@ class Explorer:
         hp_bar = DEVELOP_HP_FODDER if my_role == "fodder" else DEVELOP_HP
         develop = (armed and not homing and not caster and hp >= max_hp * hp_bar
                    and stamina >= DEVELOP_STAMINA)
+        hunt = (armed and not homing and not caster and stamina >= DEVELOP_STAMINA
+                and hp >= max_hp * (DEVELOP_HP_FODDER if my_role == "fodder" else HUNT_HP))
         near_preds = [p for p in preds
                       if abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= COMBAT_SEEK_RADIUS]
         if develop and len(near_preds) < COMBAT_SWARM:
@@ -2891,7 +2897,7 @@ class Explorer:
             # income still comes first) but ABOVE frontier(2.5)/scout(1.0), so leveling beats
             # aimless wandering. Only wildlife is sought (its neighbour tiles are walkable);
             # predators are fought only when they reach us (block A), never chased into.
-            if develop:
+            if hunt:
                 wild = {p for p, en in ctx.enemies.items()
                         if en.get("kind") in WILDLIFE_SAFE
                         and abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= WILDLIFE_SEEK_RADIUS}
