@@ -5372,3 +5372,20 @@ bottleneck measurement. 0.109.5's post-deploy watch runs in parallel (the sim-se
 test bed shipped last iter; its job is now confirming). Bones still 0 — the vigor brew
 input remains herb-carried; watch whether bone drops need specific mob kinds (bestiary
 question for the leveling pass).
+
+ITER 107 (2026-08-25, explorer/0.110.0): WIRE V3 PORT — Will announced a breaking
+format change (vault grouped: one descriptor/kind with count+item_ids, 'use any id';
+motivated by dropped frames at 400+ item banks). Operator: "pull the starter
+submodule". PORTED: reference_starter_kit pin -> 0735217 (reviewed: PROTO_VERSION=3 +
+hello proto_version echo); ONE SEAM (protocol.vault_items) bridges BOTH formats so
+recorded-history replay keeps working; all 4 vault consumers routed through it
+(potion/club/lumber withdrawals + ingot count now uses `count`); client_version
+steemer/3 + LOUD hello mismatch warning (this change shipped silent — never again).
+EMPIRICAL BONUS: the live potion group's first 8 ids are EXACTLY our probed-phantom
+set — stale ids accumulate at the HEAD, so vault_items yields NEWEST-FIRST (the tail
+is where real items live, if any). SIM upgraded to speak wire v3 natively (fidelity
+contract) — the full soak passed the new format BEFORE deploy: the test bed's first
+upstream-change rehearsal, exactly the scenario it was built for yesterday. 3 bridge
+tests + old-format replay claim named; 2 mutants killed (expansion dropped,
+oldest-first). 1173 local/reaper green. NEXT: deploy + watch; watch the first
+tail-end withdrawal (a REAL vault potion would be the heal economy's jackpot).

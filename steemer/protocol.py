@@ -254,3 +254,32 @@ def check_action(action: Any) -> str | None:
         return "bad_item_ids"
 
     return None
+
+# Wire revision this client understands (mirrors the reference kit): 1 = plain JSON,
+# 2 = zlib + delta tiles, 3 = grouped guild inventory. hello_ok echoes the server's
+# proto_version; the client warns on mismatch rather than guessing.
+PROTO_VERSION = 3
+
+
+def vault_items(guild):
+    """Per-item view of ``guild.inventory`` across BOTH wire formats.
+
+    Wire v3 (2026-08-25) groups interchangeable items: one descriptor per kind with
+    ``count`` and ``item_ids`` ("use any of those ids in actions"); v1/v2 listed one
+    entry per item with its own ``item_id``. Recorded history holds both, so replay
+    and live code share this seam. Yields dicts shaped like the OLD entries
+    ({kind, item_id, tier, uses, ...}) — every consumer keeps its idiom.
+
+    Ids are yielded NEWEST-FIRST within a group (ids ascend with creation, and the
+    HEAD of the live potion list is exactly the 20 phantoms this project has probed
+    dead — the stale entries accumulate at the front, so the tail is where the real
+    items live).
+    """
+    for entry in (guild or {}).get("inventory") or []:
+        ids = entry.get("item_ids")
+        if isinstance(ids, list):
+            base = {k: v for k, v in entry.items() if k not in ("item_ids", "count")}
+            for iid in reversed(ids):
+                yield dict(base, item_id=iid)
+        else:
+            yield entry

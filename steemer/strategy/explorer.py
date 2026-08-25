@@ -397,7 +397,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from .. import intel, knowledge, nav
+from .. import intel, knowledge, nav, protocol
 from .base import FieldContext
 from ..reasoning import DecisionTrace
 
@@ -1250,7 +1250,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.109.5"
+    version = "explorer/0.110.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1705,7 +1705,7 @@ class Explorer:
                 # `sell` is excluded from it: each names a distinct item_id, so a
                 # stale-frame repeat cannot double-spend — it bounces off no_such_item
                 # and the per-char cooldown already spaces the retries.
-                banked = next((i for i in (frame.get("guild", {}).get("inventory") or [])
+                banked = next((i for i in protocol.vault_items(frame.get("guild"))
                                if i.get("kind") == "potion_red"
                                and i.get("item_id") is not None
                                and i.get("item_id") not in self._vault_dead), None)
@@ -1721,7 +1721,7 @@ class Explorer:
                         bot, uid, {"char_uid": uid, "action": "drop",
                                    "item_id": banked["item_id"]},
                         f"withdrawing a banked potion_red (item {banked['item_id']}; "
-                        f"{sum(1 for i in frame['guild']['inventory'] if i.get('kind') == 'potion_red')} "
+                        f"{sum(i.get('count', 1) for i in frame['guild']['inventory'] if i.get('kind') == 'potion_red')} "
                         f"in the vault) — free, unlike the 20g shop buy")]
                 buy = self._afford_potion(frame, gold)
                 if buy is not None:
@@ -1749,7 +1749,7 @@ class Explorer:
                     and uid not in self._vault_pending
                     and self._vault_arm_failures < VAULT_ARM_PROBES):
                 banked_club = next(
-                    (i for i in (frame.get("guild", {}).get("inventory") or [])
+                    (i for i in protocol.vault_items(frame.get("guild"))
                      if i.get("kind") in VAULT_ARM_KINDS
                      and i.get("item_id") is not None
                      and i.get("item_id") not in self._vault_dead), None)
@@ -1894,7 +1894,7 @@ class Explorer:
                     and uid not in self._vault_pending
                     and len(self._vault_dead) < VAULT_DEAD_LIMIT):
                 banked_lum = next(
-                    (i for i in (guild.get("inventory") or [])
+                    (i for i in protocol.vault_items(guild)
                      if str(i.get("kind", "")).startswith("lumber")
                      and i.get("item_id") is not None
                      and i.get("item_id") not in self._vault_dead), None)
@@ -3889,7 +3889,7 @@ class Explorer:
         """Is the guild short on ingots? Counted from the shared stash (the surplus pool
         the smith pipeline draws on). Ore is the scarce half; lumber is plentiful, so this
         is the signal to route gatherers to the mines rather than more surface worlds."""
-        n = sum(1 for i in (guild.get("inventory") or [])
+        n = sum(i.get("count", 1) for i in (guild.get("inventory") or [])
                 if str(i.get("kind", "")).startswith("ingot"))
         return n <= INGOT_HUNGRY
 

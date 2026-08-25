@@ -190,3 +190,34 @@ def test_club_phantoms_DO_latch_the_arm_branch():
                                  gold=20, tick=600))
     assert all(a.get("action") != "drop" for a in acts), \
         f"the arm branch kept probing after a full storm: {acts}"
+
+
+# ---- wire v3 (2026-08-25): grouped guild inventory ---------------------------
+
+def test_wire_v3_grouped_vault_still_arms_and_withdraws():
+    """Will's breaking change: one descriptor per kind with count + item_ids. The
+    protocol.vault_items seam bridges it; a bare char arms from a grouped club
+    entry exactly as it did from a per-item one."""
+    vault = [{"kind": "club", "tier": 1, "count": 2, "item_ids": [9001, 9002]}]
+    acts = _bot().on_frame(_village([_char("c1")], vault=vault, gold=20))
+    drops = [a for a in acts if a.get("action") == "drop"]
+    assert drops and drops[0]["item_id"] == 9002, \
+        f"grouped vault not bridged (or newest-first lost): {drops}"
+
+
+def test_wire_v3_dead_ids_are_skipped_within_a_group():
+    bot = _bot()
+    bot.strategy._vault_dead.add(9002)                  # the newest is a phantom
+    vault = [{"kind": "club", "tier": 1, "count": 2, "item_ids": [9001, 9002]}]
+    acts = bot.on_frame(_village([_char("c1")], vault=vault, gold=20))
+    drops = [a for a in acts if a.get("action") == "drop"]
+    assert drops and drops[0]["item_id"] == 9001, \
+        f"did not fall through the group past the dead id: {drops}"
+
+
+def test_old_format_frames_still_work_for_replay():
+    """Recorded history predates wire v3; the seam must pass per-item entries
+    through untouched — every fixture above this line is that proof, and this test
+    names the claim so the ratchet knows it is deliberate."""
+    acts = _bot().on_frame(_village([_char("c1")], vault=[CLUB], gold=20))
+    assert {"char_uid": "c1", "action": "drop", "item_id": 9001} in acts

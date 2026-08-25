@@ -204,7 +204,11 @@ class SimServer:
                     "guild": {"guild_id": "g_sim", "gold": self.guild_gold,
                               "chars_here": list(here),
                               "chars_by_world": by_world,
-                              "inventory": [dict(v) for v in self.vault],
+                              # wire v3 (2026-08-25): grouped inventory — one
+                              # descriptor per kind with count + item_ids; phantom
+                              # ids stay IN the listing (observed: the live head ids
+                              # are exactly the probed-dead set)
+                              "inventory": self._grouped_vault(),
                               "market_listings": []},
                     "shop": {"stock": [dict(s) for s in SHOP]},
                     "chars": [self._village_snapshot[u] for u in here
@@ -234,6 +238,13 @@ class SimServer:
                                     "gold": [{"pos": list(p), "amount": 2}
                                              for p in st["gold"]]}})
         return out
+
+    def _grouped_vault(self) -> list[dict]:
+        groups: dict[str, list[int]] = {}
+        for v in self.vault:
+            groups.setdefault(v["kind"], []).append(v["item_id"])
+        return [{"kind": k, "tier": 1, "count": len(ids),
+                 "item_ids": sorted(ids)} for k, ids in sorted(groups.items())]
 
     # -- action application ----------------------------------------------------
 

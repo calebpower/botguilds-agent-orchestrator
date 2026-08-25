@@ -187,3 +187,21 @@ def test_SOAK_with_mirage_and_a_mid_run_stall():
     fam = Counter(e["reason"] for e in sim.errors)
     for reason, n in fam.items():
         assert n <= 40, f"error storm under chaos: {reason} x{n}"
+
+
+def test_sim_vault_is_wire_v3_grouped_and_the_bot_still_withdraws():
+    """The sim's fidelity contract: guild.inventory is the GROUPED wire-v3 shape
+    (one descriptor per kind, count + item_ids) — and the bot's withdrawal chooser,
+    routed through protocol.vault_items, still finds a real id behind a phantom."""
+    sim = SimServer(seed=3)
+    sim.add_char("c1", hand="club")           # armed: heal-first is the live branch
+    ghost = sim.add_vault("potion_red", phantom=True)
+    real = sim.add_vault("potion_red", phantom=False)
+    village = sim.frames()[0]
+    inv = village["guild"]["inventory"]
+    assert all("item_ids" in e and "item_id" not in e for e in inv), inv
+    from steemer.protocol import vault_items
+    ids = [i["item_id"] for i in vault_items(village["guild"])
+           if i["kind"] == "potion_red"]
+    assert set(ids) == {ghost, real}
+    assert ids[0] == real, "newest-first ordering lost (the phantom head wins again)"

@@ -148,7 +148,8 @@ class _Transport:
         sock.connect(self.server)
         self.socket = sock
         self.send(p.msg(p.HELLO, guild_id=self.creds["guild_id"],
-                        token=self.creds["token"], client_version="steemer/0"))
+                        token=self.creds["token"],
+                        client_version=f"steemer/{p.PROTO_VERSION}"))
 
     def poll(self, timeout_ms: int = 1000) -> dict[str, Any] | None:
         assert self.socket is not None
@@ -328,6 +329,13 @@ class Client:
                 self._visible = {}
                 self._call(self.bot, "on_hello", message)
                 self._say(f"connected as {self.guild.get('name')} at tick {self.tick}")
+                # v0.110.0 (wire v3 port): the server echoes its wire revision; a
+                # mismatch is a LOUD line, not a guess — the 2026-08-25 grouped-
+                # inventory change shipped breaking and silent.
+                srv_proto = message.get("proto_version", 1)
+                if srv_proto != p.PROTO_VERSION:
+                    self._say(f"server speaks wire v{srv_proto}, this client speaks "
+                              f"v{p.PROTO_VERSION} — port the delta before trusting frames")
             elif mtype == p.HELLO_ERR:
                 self._say(f"auth failed: {message.get('reason')}")
                 self.running = False
