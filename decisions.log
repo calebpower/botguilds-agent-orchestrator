@@ -5680,3 +5680,13 @@ ITER 123 (2026-08-25) — explorer/0.114.0: PROPOSAL B, beatable-predator engage
   beatable predator stays productive. Wishlist: added embark-chooser item; table recalced at
   114.0 (top unblocked: danger-as-cost 0.560, scope-quarantine 0.559; magic-cast 0.562
   BLOCKED on treasury — the 0.113.0 throttle is the unblocking lever, check gold next pass).
+
+ITER 124 (2026-08-25) — explorer/0.114.1: TTK re-pricing after the FIRST live engagement.
+0.114.0 deployed (gate green 1197/1206 after reachability registration), watch3 3x CLEAN,
+0 dancers. Run 222 c19750: full chain proven live (7 engage steps -> 2 develop-attacks ->
+burn-DoT retreat -> heal -> re-embark; 0 deaths) BUT the fight was a net loss: lava_ant
+measured ~27hp = 4 swings at our every-other-tick cadence (attack=20 sta) while it bites
+every tick + burns. Damage-sunk across 8 runs: wolf<=15/crab_green<=15 (2 swings) IN;
+lava_ant 21-27/spider_brown 18 OUT. Entry rule: BOTH measured dph AND hp, <=2 swings.
+Mutant (lava_ant re-added) KILLED. The dph-only pricing was the rates-not-durations trap
+(finding #205) in new clothes.

@@ -14,9 +14,10 @@ from steemer.strategy.explorer import (ENGAGE_KINDS, ENGAGE_SEEK_RADIUS,
 
 
 def test_pinned_literals():
-    assert ENGAGE_KINDS == frozenset({"wolf", "lava_ant", "spider_brown",
-                                      "crab_green"}), \
-        "every member must carry a MEASURED dph <= 4.3 (findings #156/#290) before entry"
+    assert ENGAGE_KINDS == frozenset({"wolf", "crab_green"}), \
+        ("every member needs BOTH a measured dph AND a measured hp giving <= 2 swings "
+         "to kill at club 8 (v0.114.1: lava_ant 21-27hp and spider_brown ~18hp were "
+         "dropped after the first live fight proved dph-only pricing wrong)")
     assert ENGAGE_SEEK_RADIUS == 10
 
 
@@ -140,3 +141,19 @@ def test_a_paired_wolf_is_not_lone_and_is_not_sought():
             after = (5 + s[0], 5 + s[1])
             assert _dist(after, w1) >= _dist((5, 5), w1), \
                 f"sought a PAIRED wolf: {acts}"
+
+
+def test_a_lava_ant_is_not_on_the_menu_either():
+    """v0.114.1: the FIRST live engagement (run 222) closed on a lava_ant priced by dph
+    (3.4) and lost the trade — measured ~27hp means 4 of our every-other-tick swings
+    while it bites every tick and burns. Two-swing kills only."""
+    bot = _bot()
+    control = _char("ctl", pos=(5, 5), int_stat=1)
+    antpos = (9, 5)
+    acts = bot.on_frame(_field([control], [_mob("lava_ant", antpos)]))
+    for a in _acts_for(acts, "ctl"):
+        if a["action"] == "move":
+            s = STEP[a["dir"]]
+            after = (5 + s[0], 5 + s[1])
+            assert _dist(after, antpos) >= _dist((5, 5), antpos), \
+                f"the seek closed on a lava_ant (4-swing mob, burn DoT): {acts}"

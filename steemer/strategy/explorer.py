@@ -1002,12 +1002,16 @@ WILDLIFE_SEEK_RADIUS = 15 # v0.112.0: raised 8 -> 15 on the live window capture
 COMBAT_SWARM = 2          # >=2 melee predators within reach -> too dangerous to fight, flee
 
 # --- v0.114.0 PROPOSAL B (operator: "go for proposal B, but protect my wizards"):
-# beatable-predator ENGAGEMENT. Every kind here is bestiary-PRICED (findings #156/#290,
-# run92 measurements): dph <= 4.3 against a club's 8/swing — two of our swings to one of
-# theirs — and all are chasers (~0.9), so once engaged they close the last step themselves.
-# NOT here, deliberately: boar (6.0), delver (~5.0), golem_stone (the -15 hitter), every
-# undead kind (doctrine: never trade with poison), and anything without a measured price.
-ENGAGE_KINDS = frozenset({"wolf", "lava_ant", "spider_brown", "crab_green"})
+# beatable-predator ENGAGEMENT. v0.114.1 re-priced the list by TIME-TO-KILL, not dph:
+# the first live engagement (run 222, c19750 vs lava_ant) proved the dph-only pricing
+# wrong — our swings land every OTHER tick (attack costs 20 stamina), the mob bites every
+# tick, so a 4-swing mob out-trades us even at dph 3.4. Damage-sunk telemetry across 8
+# runs: wolf <=15hp (2 swings) and crab_green <=15hp (2 swings) are winnable; lava_ant
+# 21-27hp (4 swings, plus a BURN DoT that rightly triggers the early retreat) and
+# spider_brown ~18hp (3 swings; also #180's recruit-killer) are NOT. Still excluded from
+# ever entering: boar (6.0 dph, 26+hp), delver, golem_stone (the -15 hitter), every
+# undead kind (doctrine), and anything without BOTH a measured dph and a measured hp.
+ENGAGE_KINDS = frozenset({"wolf", "crab_green"})
 ENGAGE_SEEK_RADIUS = 10   # close on a lone allowlisted predator this far out. Wider than
                           # the spacing bubble (2), narrower than wildlife (15): a predator
                           # trek costs hp on arrival, so we only cross ground we can see.
@@ -1297,7 +1301,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.114.0"
+    version = "explorer/0.114.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
