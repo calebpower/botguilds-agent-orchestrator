@@ -985,7 +985,14 @@ HUNT_HP = 0.6             # v0.111.1: WILDLIFE hunting runs AT the retreat line 
 DEVELOP_STAMINA = 15      # enough stamina to attack AND still afford a step to disengage
 DEVELOP_HP_FODDER = 0.4   # v0.87.0: fodder keeps swinging far below the 0.7 line
 COMBAT_SEEK_RADIUS = 5    # gauge predator density within this many tiles (swarm gate)
-WILDLIFE_SEEK_RADIUS = 8  # v0.111.1: wildlife is HUNTED further than danger is gauged —
+WILDLIFE_SEEK_RADIUS = 15 # v0.112.0: raised 8 -> 15 on the live window capture
+                          # (run #219, 11:00): a chicken at (29,8) — shallow, VISIBLE,
+                          # in every budget — parked 11 tiles from the nearest armed
+                          # char while the window expired unhunted. Live strips are
+                          # looted, chars sit parked, and nothing walked toward
+                          # visible prey beyond the old 8. Vision bounds the chase
+                          # naturally; deep_ok still gates depth; wildlife-only.
+                          # (v0.111.1 history: raised 5 -> 8 on frog sightings —
                           # live sightings put frogs at 6-8 tiles off the strip (4 at
                           # range vs 0 in the old radius 5); the calibrated soak: xp 9
                           # pre -> 12 post over 1200 ticks (+33%, kills 3 -> 4, zero
@@ -1269,7 +1276,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.111.3"
+    version = "explorer/0.112.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been

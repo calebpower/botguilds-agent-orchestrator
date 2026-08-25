@@ -5572,3 +5572,17 @@ captured. DECISION: no lever without the mechanism (three near-misses this pass 
 test bed doing its job — each would have shipped inert); next pass CAPTURES the next
 live window in the moment (wildlife y-distribution + hunter positions + budgets).
 Sim gains kept: despawn-on-roll, entry clustering. No bot change, no deploy.
+
+ITER 118 (2026-08-25, explorer/0.112.0): THE WINDOW CAPTURE DECIDED IT. The armed
+capturer (scratchpad/window_watch.sh) caught the next live wildlife window in the act:
+a chicken at (29,8) — SHALLOW, within every char's budget, VISIBLE in-frame — parked
+11 tiles from the nearest armed char (c19563 @ (33,1)) while the window expired
+unhunted. The mechanism, measured not guessed: live strips are looted, chars sit
+parked (hold-for-sweep), and WILDLIFE_SEEK_RADIUS=8 is shorter than live spawn-to-char
+distances (11+); nothing walks toward visible prey beyond the radius. The bed's three
+falsifications stand explained: sim loot kept chars roaming, so co-location was free
+in-bed and absent live. EXPRESSION: parked-chars config (no loot anywhere, wildlife at
+~11) — the FIRST honestly-failing expression of the arc (xp 0 pre-lever). LEVER:
+radius 8 -> 15 (vision-bounded chase, wildlife-only, deep_ok-gated). Expression
+converts post-lever; radius mutant KILLED via tools/mutate.py. Suite+gate in flight;
+gate-conditioned deploy + watch.

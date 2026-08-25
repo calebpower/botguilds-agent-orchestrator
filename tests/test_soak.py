@@ -357,3 +357,25 @@ def test_SOAK_the_leveling_lever_farms_wildlife_at_range():
     assert sim.deaths == [], f"the wider seek got someone killed: {sim.deaths}"
     for uid, track in tracks.items():
         assert not dance_windows(track), f"{uid} danced while hunting"
+
+
+def test_SOAK_visible_wildlife_at_eleven_tiles_gets_hunted():
+    """The live window capture (2026-08-25 11:00, run #219): a chicken at (29,8) —
+    shallow, in every char's budget, VISIBLE — parked 11 tiles from the nearest
+    armed char, outside the old seek radius 8. Live strips are looted, so chars sit
+    parked (hold-for-sweep) and never drift into range: the window expires unhunted.
+    This config reproduces that exactly (no loot anywhere, wildlife at ~11): the
+    radius-15 lever must convert it; the pre-lever build measured xp 0 here."""
+    sim = SimServer(seed=SEED + 71, lag=3, width=40)
+    sim.entry_width = 8
+    for n in range(4):
+        sim.add_char(f"p{n}", hand="club")
+    sim.guild_gold = 40
+    for w in ("vale", "mines", "spire"):
+        sim.add_mob(w, "chicken", (16, 6), behavior="wanderer", hp=8, xp=3)
+    bot, tracks = _soak(sim, 800)
+    total_xp = sum(c.get("xp", 0) for c in sim.chars.values())
+    assert total_xp > 0, "visible wildlife at ~11 tiles expired unhunted (radius wall)"
+    assert sim.deaths == []
+    for uid, track in tracks.items():
+        assert not dance_windows(track), f"{uid} danced on the hunt"
