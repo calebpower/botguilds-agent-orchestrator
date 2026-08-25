@@ -2009,3 +2009,49 @@ def test_a_healed_wizard_PAST_the_base_cap_retreats_home():
     mine = [a for a in acts if a.get("char_uid") == "wiz"]
     assert {"char_uid": "wiz", "action": "move", "dir": "S"} in mine, \
         f"a healed wizard camped past the base cap: {mine}"
+
+
+def test_a_refresh_RELEASES_the_looted_home_commitment():
+    # v0.109.4 — the latch's causal clear: fresh spawns are a real reason to stop
+    # walking home. Latched char, world refreshes after the latch, in-cap loot nearby:
+    # the gather beeline must fire again (a permanent in-field latch walks a char
+    # home past brand-new loot).
+    bot = _bot()
+    bot.strategy._looted_home["c1"] = 5
+    bot.refreshed_at = {"vale": 8}                     # refresh OBSERVED after the latch
+    char = _field_char(pos=[0, 5], stamina=40, inventory=[])
+    acts = bot.on_frame({"world": "vale", "tick": 10, "chars": [char],
+                         "bounds": [1, 17],
+                         "visible": {"tiles": _vert_corridor(16), "entities": [],
+                                     "items": [{"pos": [0, 8], "kind": "egg"}],
+                                     "gold": []}})
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts, \
+        f"the latch survived the refresh and starved gathering: {acts}"
+
+
+def test_reaching_the_village_ENDS_the_commitment_for_the_next_stint():
+    # v0.109.4 — the stint boundary: a village visit clears the latch, so the NEXT
+    # stint gathers normally (a persistent latch would starve the char on the fresh
+    # strip it was just re-embarked into).
+    bot = _bot()
+    bot.strategy._looted_home["c1"] = 5
+    # the char reaches the village (chars list of a village frame)
+    vchar = {"char_uid": "c1", "eid": 1, "pos": [3, 3], "hp": 30, "max_hp": 30,
+             "stamina": 48, "max_stamina": 56, "level": 3, "stats": {}, "gifts": [],
+             "statuses": [], "spells": [], "spell_cap": 1,
+             "carry": {"used": 0, "cap": 20}, "inventory": [],
+             "equipment": {"hand": {"kind": "club"}}}
+    bot.on_frame({"world": "village", "tick": 20, "events": [],
+                  "guild": {"guild_id": "g_us", "gold": 5, "chars_here": ["c1"],
+                            "chars_by_world": {}, "inventory": [],
+                            "market_listings": []},
+                  "shop": {"stock": []}, "chars": [vchar]})
+    assert "c1" not in bot.strategy._looted_home, "the stint boundary did not clear"
+    # and the next stint gathers
+    char = _field_char(pos=[0, 5], stamina=40, inventory=[])
+    acts = bot.on_frame({"world": "vale", "tick": 30, "chars": [char],
+                         "bounds": [1, 17],
+                         "visible": {"tiles": _vert_corridor(16), "entities": [],
+                                     "items": [{"pos": [0, 8], "kind": "egg"}],
+                                     "gold": []}})
+    assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts, acts

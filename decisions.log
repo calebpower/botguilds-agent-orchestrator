@@ -5315,3 +5315,19 @@ legitimate trial-laddering of NEW kinds (persisted map confirmed live: dagger/cl
 shield_wood/elder_robes) — no action. 1 test (flap -> field sighting -> unghosted ->
 embarks on return), mutant killed. 1159 local/reaper green. Redeploy restarts the
 3-check count per the rule.
+
+ITER 104 (2026-08-24, explorer/0.109.4): MIRAGE LOOT — the oscillation class's last
+member, caught by the watch (check 3/3 on 0.109.3 flagged c19550) and then MY OWN FIX'S
+FLAW caught by the oracle before deploy. The live trace showed a mild vision-edge flip
+(loot appears from afar -> "toward loot" N; vanishes on approach -> "looted-out" S; x2,
+self-resolving). FIX: COMMITMENT — the looted-out walk latches (_looted_home) and gather
+beelines stay off until the causal ends. FIRST DRAFT cleared the latch at y<=2 — the
+ORACLE'S new mirage config (an item visible only from >=3 tiles, the worst-case
+flickering attractor) exposed a 14-tile MACRO cycle: reach y2, latch clears, the mirage
+9 tiles away re-pulls to y9, forever — invisible to the 16-tick window detector, caught
+by the end-state assert. Redesign: the latch clears ONLY on (a) an observed world
+refresh (fresh spawns = a real reason to stop) or (b) reaching the VILLAGE (the stint's
+true end). 4 mutants killed (latch-never-set, beelines-not-suppressed, refresh-clear-
+removed, village-clear-removed — the last two survived round 1 as unobserved behavior;
+tests added). Oracle permanently extended with the mirage config. 1162 local/reaper
+green. Watch count restarts on deploy.

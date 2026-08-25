@@ -53,7 +53,7 @@ def _char(uid, pos, healed=False, armed=True, int_gift=False):
             "equipment": ({"hand": {"kind": "club"}} if armed else {})}
 
 
-def simulate(tiles, bounds, chars, items=(), ticks=120, world="vale"):
+def simulate(tiles, bounds, chars, items=(), ticks=120, world="vale", mirage=None):
     """Drive the real bot; return {uid: [positions...]} and the surviving item set.
     Walkable set derives from the tile list (same rule the bot's nav uses for floor)."""
     bot = _bot()
@@ -69,11 +69,20 @@ def simulate(tiles, bounds, chars, items=(), ticks=120, world="vale"):
                 for u in state if u not in done]
         if not live:
             break
+        vis_items = [{"pos": list(p), "kind": k} for p, k in items.items()]
+        if mirage is not None:
+            # a MIRAGE item is visible only from afar (>= 3 tiles) and vanishes on
+            # approach — the worst-case flickering attractor (run #209's vision-edge
+            # loot). It can never be collected; a bot without commitment dances on it.
+            mp, mk = mirage
+            near = min(abs(p[0] - mp[0]) + abs(p[1] - mp[1])
+                       for u, p in state.items() if u not in done) if state else 99
+            if near >= 3:
+                vis_items.append({"pos": list(mp), "kind": mk})
         frame = {"type": "frame", "world": world, "tick": 1000 + t, "events": [],
                  "bounds": list(bounds), "chars": live,
                  "visible": {"tiles": tiles, "entities": [],
-                             "items": [{"pos": list(p), "kind": k}
-                                       for p, k in items.items()],
+                             "items": vis_items,
                              "gold": []}}
         for a in bot.on_frame(frame):
             uid = a.get("char_uid")
@@ -207,4 +216,15 @@ def test_a_healed_char_does_not_OVERRANGE_its_potion():
                              [_char("c1", (0, CAP - 2), healed=True)],
                              items=(((0, CAP + 17), "egg"),))
     assert (0, CAP + 17) in items, "chased loot past the potion budget"
+    assert_clean_and_home(tracks, "c1")
+
+
+def test_MIRAGE_loot_cannot_hold_a_committed_char_hostage():
+    # v0.109.4 — run #209's residual: loot flickering at the vision edge pulled a
+    # homing char N ("toward loot") then vanished ("looted-out" S), twice, before
+    # self-resolving. Commitment ends the class: once the looted-out walk starts,
+    # a mirage generates no pull, and the char walks home clean.
+    tracks, _ = simulate(_corridor(CAP + 4), (1, CAP + 5),
+                         [_char("c1", (0, 8))],
+                         mirage=((0, 11), "egg"), ticks=200)
     assert_clean_and_home(tracks, "c1")

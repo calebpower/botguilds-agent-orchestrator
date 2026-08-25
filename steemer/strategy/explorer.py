@@ -1250,7 +1250,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.109.3"
+    version = "explorer/0.109.4"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1336,6 +1336,11 @@ class Explorer:
         self._make_room: dict = {}     # world -> tick: a seat needs a slot there
         self._wizard_recall: dict = {}   # v0.102.0: uid -> tick of last band-danger fallback
         self._returned_empty: dict = {}  # v0.105.0: uid -> tick the looted-out retreat fired
+        self._looted_home: dict = {}     # v0.109.4: uid -> tick it COMMITTED to the
+                                         # looted-out walk; gather beelines stay off
+                                         # until arrival (y<=2) or an observed refresh
+                                         # — the mirage-loot flip (run #209, c19550:
+                                         # N-loot/S-looted-out x2) dies of commitment
         self._scout_sent: dict = {}      # v0.106.1: world -> tick a scout was released to it
         self._ghosted: dict = {}         # v0.107.1: uid -> tick the server refused its command
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
@@ -1538,6 +1543,7 @@ class Explorer:
 
         for char in chars:
             uid = char["char_uid"]
+            self._looted_home.pop(uid, None)   # v0.109.4: home — the stint is over
             # v0.107.1: a ghost (server-refused) char gets NO village economy actions
             # either — the 23k not_in_village errors on #202 were largely village
             # moves/buys re-commanded for a char the server said was not there.
@@ -2314,6 +2320,18 @@ class Explorer:
             (its mission scores outrank the retreat, so it cannot dance)."""
             return step[1] < _cap
 
+        # v0.109.4: the looted-home COMMITMENT clears on the causal conditions only —
+        # REACHING THE VILLAGE (the stint's true end; cleared in the village routine)
+        # or the world visibly refreshing (fresh spawns are a real reason to stop
+        # walking). NOT on nearing the strip edge: the oracle's mirage config caught
+        # the first draft clearing at y<=2, where the still-visible mirage re-pulled
+        # the char to y9 in a 14-tile macro cycle the window detector cannot see.
+        if uid in self._looted_home:
+            if (getattr(bot, "refreshed_at", {}).get(frame.get("world"), -1)
+                    > self._looted_home[uid]):
+                self._looted_home.pop(uid, None)
+        _committed_home = uid in self._looted_home
+
         # v0.96.0: nuisance upkeep — learn Will's positions, (re)designate a volunteer,
         # stand down when he leaves the vale. Cheap; runs for every vale char.
         self._nuisance_track(bot, char, uid, frame, bot.tick)
@@ -2792,6 +2810,8 @@ class Explorer:
                 # un-healed char may not reach must generate NO pull at any distance;
                 # then "looted-out" is a true statement and the char goes home once.
                 gstep = self._step(pos, lambda p: p in ctx.gold and deep_ok(p), ctx, blocked)
+                if gstep and _committed_home:
+                    gstep = None       # v0.109.4: committed to the looted-out walk
                 if gstep and not deep_ok(gstep):
                     gstep = None
                 if gstep:
@@ -2801,6 +2821,8 @@ class Explorer:
                 cstep = self._step(pos, lambda p: deep_ok(p) and
                                    any(n in ctx.containers for n in nav.neighbors(p)),
                                    ctx, blocked)
+                if cstep and _committed_home:
+                    cstep = None       # v0.109.4: committed to the looted-out walk
                 if cstep and not deep_ok(cstep):
                     cstep = None
                 if cstep:
@@ -2820,6 +2842,8 @@ class Explorer:
                         loot_goal = toward
                         loot_why = "moving toward loot near an ally (forming up as we work)"
                 lstep = self._step(pos, lambda p: p in loot_goal and deep_ok(p), ctx, blocked)
+                if lstep and _committed_home:
+                    lstep = None       # v0.109.4: committed to the looted-out walk
                 if lstep and not deep_ok(lstep):
                     lstep = None
                 if lstep:
@@ -3039,6 +3063,7 @@ class Explorer:
                         # something better wins and the char never reaches the village,
                         # the stamp expires harmlessly in the field.
                         self._returned_empty[uid] = bot.tick
+                        self._looted_home[uid] = bot.tick   # v0.109.4: commit the walk
                         self._retreat(uid, pos, ctx, blocked, offer, 1.5,
                                       "world looted-out, no refresh imminent — home to re-embark")
 
