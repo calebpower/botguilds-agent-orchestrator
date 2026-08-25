@@ -5360,3 +5360,15 @@ per-item mirage WITH THE NARROWING STATED. Soak cost: ~2min in the gate. 1169
 local/reaper green. NEXT: deploy 0.109.5 + 3x2min watch (its job is now CONFIRMING);
 sim pass 2 candidates: mobs/combat, crafting timers, replay-validation vs recorded
 runs, a c19532 limbo-char model.
+
+ITER 106 (2026-08-25, measurement-only): THE OVERNIGHT PAYOFF. Runs #207-211: 308 equip
+events, 29 club buys, **15/30 armed by frame truth (was 1/30)**, 0 deaths across five
+runs, levels climbing (2x lvl-8, 4x lvl-7 vs the old 2-5 plateau), 3 brews, gold 5 =
+fully cycling working capital. The 0.109.x arc (dead-capital arming -> proven slots ->
+persistence -> commitment latches) is compounding WITHOUT further intervention. NO new
+lever this pass, deliberately: the binding constraint (arming) is dissolving on its
+own; the combat/leveling scale-up waits for arming saturation (~25/30) and a fresh
+bottleneck measurement. 0.109.5's post-deploy watch runs in parallel (the sim-server
+test bed shipped last iter; its job is now confirming). Bones still 0 — the vigor brew
+input remains herb-carried; watch whether bone drops need specific mob kinds (bestiary
+question for the leveling pass).
