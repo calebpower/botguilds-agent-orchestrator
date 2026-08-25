@@ -187,6 +187,33 @@ is satisfied by the active brewing/economy thread; **danger-as-cost corridor is 
 next lever** once the post-deploy watch (new standing rule) is clean and the heal-economy
 thread reaches a stable point.
 
+**Scored 2026-08-25 (iter 111, deploy 0.110.3 — ~20 deploys since the 08-24 table).**
+SWEEP: four items SHIPPED since last scoring and move to Done — **tick-participation
+bar** (0.108.3/0.108.4), **dashboard field truth** (0.108.2), **scope-error
+quarantine** (shipped as the ghost quarantine + render distrust, 0.107.1/0.110.3 — a
+BETTER version of the item as written), and danger-as-cost (0.84.0, swept last pass).
+Old items sit near their ceilings (tc factor ~0.73).
+
+| item | good | risk | ceiling | tc | score | verdict |
+|---|---|---|---|---|---|---|
+| **LEVELING lever (combat scale-up)** — NEW | 0.90 | 0.85 | 0.574 | 0 | — | THE standing-direction item (arming 24/30, gate 25); ships on direction, not age; PRECONDITION: sim pass 2 (mobs) |
+| sim pass 2: mobs in the test bed — NEW | 0.85 | 1.00 | 0.638 | 0 | — | process-mandated by the testing directive (combat levers must soak pre-deploy); builds next pass |
+| shadow-eval (ML Pass 4) | 0.75 | 1.00 | 0.563 | ~65 | **0.55** | qualifies; parked by the operator's ML deprioritisation (stated, not hidden) |
+| magic / cast | 0.75 | 0.98 | 0.551 | ~65 | 0.54 | **BLOCKED** (0 spells ever; tome 150g vs gold ~7; the INT ladder rebuilt to lvl-9 after the arch-wizard loss) |
+| rival-recon dashboard | 0.73 | 1.00 | 0.548 | ~65 | **0.54** | qualifies — and value FIRMED: WillMorr is actively fielding again (subjects exist; nuisance 1-0) |
+| adaptive-cohesion remainder | 0.72 | 1.00 | 0.540 | ~55 | 0.53 | qualifies; thin remainder (cohesion/escort/party shipped) |
+| forge-in-mines investigation (operator) | 0.70 | 1.00 | 0.525 | ~27 | **0.499** | crosses at the NEXT deploy — the top operator-added item |
+| hints: wizard rival-avoidance | 0.70 | 1.00 | 0.525 | ~22 | 0.49 | crosses in ~3 deploys |
+| player market | 0.68 | 0.99 | 0.505 | ~65 | 0.49 | perpetually marginal (market dead server-wide; one listing ever) |
+| deterministic party-card order (operator) | 0.62 | 1.00 | 0.465 | — | — | INELIGIBLE (ceiling < 0.5) unless re-scoped |
+| hints: vulture / early-warning / routing / overlay | 0.55-0.65 | 1.0 | <0.49 | — | — | INELIGIBLE |
+| zombie-char detector (input-paralysis counter) — NEW | 0.55 | 1.00 | 0.41 | — | — | INELIGIBLE: no mitigation exists (the char is doomed); the server_bugs entry IS the action |
+| ML model ideas (11 parked) | — | — | <0.5 | — | — | unchanged; rival-behaviour's data-starvation is EASING (rivals active) but ML stays parked per direction |
+
+**Queue implied by the table + direction:** sim pass 2 (mobs) -> leveling lever (both
+direction/process-mandated), with forge-in-mines investigation as the interleave item
+the moment it crosses (next deploy), then rival-recon.
+
 ## Open
 
 
@@ -250,7 +277,7 @@ MOVE-PREDICTION model itself is already a table item — now UNBLOCKED by the li
   screen, so `good_idea` credits the annoyance it removes.
 
 
-- [ ] **Scope-error quarantine** — stop issuing actions for a char uid after K consecutive
+- [x] **Scope-error quarantine** — SHIPPED as the ghost quarantine + render distrust (0.107.1 / 0.110.3), a stronger form than written. Original text: — stop issuing actions for a char uid after K consecutive
   scope errors (`unknown_character` / `not_in_village` / `no_such_character`) with no
   intervening successful event; release on any fresh authoritative signal (own event, xp,
   successful action). Born from run #179's portal vanish spiral: the server renders
