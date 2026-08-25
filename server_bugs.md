@@ -315,3 +315,17 @@ exposed or introduced an actor-lifecycle race. Client-side there is NO mitigatio
 the char cannot move, fight, or heal — it is doomed from the first eaten command.
 Priority for the server: this one costs permadeath characters through no fault of
 the client.
+
+## Error echo: one rejected command produces ~20 `action_err` messages (2026-08-25, run #215)
+
+Windowed evidence (airtight): our client sent exactly ONE `move` for c19579 at tick
+2530529 (`actions_sent` has the single row); the server answered with ~20
+`not_in_village` action_err messages spread across ticks 2530531-2530550. The char was
+village-resident and village-listed the whole window — the rejection itself is
+plausible (a stale-frame command); the AMPLIFICATION is not. Effect: error-rate
+telemetry inflates ~20x per rejected command, which turned a handful of stale-frame
+flaps into what read as a 719-error storm client-side. Same 2026-08-24/25 window as
+the entity-lifecycle family; possibly the same underlying actor-queue fault
+re-delivering the rejection each tick until the queued command expires. Detection:
+multiple identical action_err for one (char, action) with NO matching actions_sent
+rows between them.

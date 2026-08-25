@@ -231,3 +231,36 @@ def test_SOAK_a_frozen_render_must_not_become_an_error_storm():
                 bot.on_action_error(rej)
     niv = sum(1 for e in sim.errors if e["reason"] == "not_in_village")
     assert niv <= 25, f"the frozen render became a storm: {niv} not_in_village"
+
+
+def test_SOAK_a_DUAL_render_live_here_frozen_there_cannot_storm():
+    """Run #215's residual (719 not_in_village at 1-tick gaps): the char is LIVE in
+    one world (moving — each sighting proves life and clears the quarantine) while a
+    FROZEN render of it persists in another (commands -> errors -> re-quarantine).
+    The live render and the dead one fight through a per-uid quarantine. Bounded-cost
+    contract: a handful of errors per episode, never a storm — and the live-world
+    char keeps working."""
+    sim = SimServer(seed=SEED + 11, lag=3)
+    for n in range(3):
+        sim.add_char(f"d{n}", hand="club")
+    sim.guild_gold = 30
+    sim.seed_loot("vale", (4, 5), kind="egg")
+    bot, tracks = _soak(sim, 200)
+    # d0 is truly in the VALE and active; a frozen render of it appears in the MINES
+    sim.chars["d0"]["world"] = "vale"
+    sim.chars["d0"]["pos"] = [2, 2]
+    sim.freeze_render("d0", "mines")
+    for _ in range(500):
+        sim.step()
+        for frame in sim.frames():
+            acts = bot.on_frame(frame)
+            for rej in sim.apply(acts):
+                bot.on_action_error(rej)
+        for uid, c in sim.chars.items():
+            if c["world"] != "village":
+                tracks[uid].append(tuple(c["pos"]))
+    niv = sum(1 for e in sim.errors if e["reason"] == "not_in_village")
+    assert niv <= 25, f"the dual render stormed: {niv} not_in_village"
+    # the live char was not frozen out: it kept moving in the vale
+    d0 = tracks.get("d0", [])
+    assert len(set(d0[-200:])) > 3, f"the live char was starved by its own ghost: {set(d0[-200:])}"

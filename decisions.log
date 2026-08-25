@@ -5451,3 +5451,16 @@ wire-v3 deploy window. server_bugs.md entry filed URGENT-priority with the detec
 signature (silent command acceptance + frozen pos/stamina + hp dropping). The
 post-death unknown_character flap (~10 errors) was absorbed by the quarantine as
 designed. No bot lever exists for this class; the report is the action.
+
+ITER 112 (2026-08-25, measurement + forensics, no bot code): ARMING SATURATED —
+**27/30 armed** (gate 25 crossed): the LEVELING lever formally unlocks; xp 14/16k
+ticks confirms it as the binding constraint. Nuisance idle (Will left the vale — 0
+shadowing, correct). The 44/1k not_in_village reading triaged BEFORE building: the sim
+repro for a dual-render hypothesis PASSED (hypothesis wrong — honest miss recorded),
+and the live forensics found the truth instead: **SERVER ERROR ECHO** — one sent move
+(actions_sent: a single row at t2530529) answered by ~20 not_in_village errors over 19
+ticks. Our machinery is fine; the error telemetry inflates ~20x per rejection.
+server_bugs.md entry filed with the windowed proof + detection signature (identical
+errors with no matching sent rows). Run-wide ratios are uninformative and were NOT
+used (stated). NEXT PASS: SIM PASS 2 (wildlife + chaser mobs) then the leveling lever
+design — the queue's head per the fresh wishlist table.
