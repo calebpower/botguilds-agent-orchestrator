@@ -264,3 +264,69 @@ def test_SOAK_a_DUAL_render_live_here_frozen_there_cannot_storm():
     # the live char was not frozen out: it kept moving in the vale
     d0 = tracks.get("d0", [])
     assert len(set(d0[-200:])) > 3, f"the live char was starved by its own ghost: {set(d0[-200:])}"
+
+
+# ---- sim pass 2 (2026-08-25): mobs ------------------------------------------
+
+
+def test_sim_a_chaser_pursues_and_bites_and_a_wanderer_never_does():
+    sim = SimServer(seed=5)
+    sim.add_char("c1")
+    sim.chars["c1"]["world"] = "vale"
+    sim.chars["c1"]["pos"] = [5, 5]
+    sim.chars["c1"]["hp"] = sim.chars["c1"]["max_hp"] = 200   # survive the whole test
+    wolf = sim.add_mob("vale", "wolf", (9, 5), behavior="chaser", dmg=4)
+    sim.add_mob("vale", "chicken", (5, 7), behavior="wanderer", dmg=0)
+    d0 = abs(sim.mobs[wolf]["pos"][0] - 5)
+    hp0 = sim.chars["c1"]["hp"]
+    for _ in range(8):
+        sim.step()
+    assert abs(sim.mobs[wolf]["pos"][0] - 5) < d0 or sim.chars["c1"]["hp"] < hp0, \
+        "the chaser neither closed nor bit"
+    for _ in range(10):
+        sim.step()
+    assert sim.chars["c1"]["hp"] < hp0, "adjacent chaser never dealt damage"
+    assert not any(e.get("attacker_name") == "chicken"
+                   for e in sim.events_out), "the wanderer attacked"
+
+
+def test_sim_a_kill_yields_xp_and_the_bone_drop():
+    sim = SimServer(seed=5)
+    sim.add_char("c1", hand="club")
+    sim.chars["c1"]["world"] = "vale"
+    sim.chars["c1"]["pos"] = [5, 5]
+    sim.add_mob("vale", "chicken", (5, 6), behavior="wanderer", hp=8, xp=3, drop="bone")
+    r = sim.apply([{"char_uid": "c1", "action": "attack", "target": [5, 6]}])
+    assert not r, r
+    assert not sim.mobs, "one club swing (8) should fell an 8hp chicken"
+    kinds = [e["kind"] for e in sim.events_out]
+    assert "xp" in kinds and "death" in kinds, kinds
+    assert any(i["kind"] == "bone" for i in sim.worlds["vale"]["items"].values()), \
+        "the bone never dropped"
+
+
+def test_SOAK_the_current_build_holds_against_a_mob_world():
+    """The leveling lever's precondition measurement: with wildlife to farm and one
+    wolf hunting, the CURRENT build must keep its promises — nobody dies to
+    wildlife, the wolf's kills stay bounded (dodge/spacing exist), no dancers, and
+    armed DEVELOP chars actually farm some xp."""
+    sim = SimServer(seed=SEED + 21, lag=3)
+    for n in range(6):
+        sim.add_char(f"w{n}", hand="club")
+    sim.guild_gold = 40
+    for w in ("vale", "mines", "spire"):
+        for k in range(4):
+            sim.add_mob(w, "chicken", (3 + k * 2, 5 + (k % 3)), behavior="wanderer",
+                        hp=8, xp=3, drop="bone" if k == 0 else None)
+    sim.add_mob("vale", "wolf", (9, 9), behavior="chaser", dmg=4, hp=14, xp=8)
+    bot, tracks = _soak(sim, 1200)
+    fam = Counter(e["reason"] for e in sim.errors)
+    xp_events = sum(1 for uid, c in sim.chars.items())  # survivors
+    total_xp = sum(c.get("xp", 0) for c in sim.chars.values())
+    assert len(sim.deaths) <= 1, \
+        f"the mob world killed {sim.deaths} (dodge/spacing failed)"
+    for uid, track in tracks.items():
+        assert not dance_windows(track), f"{uid} danced among mobs"
+    for reason, n in fam.items():
+        assert n <= 40, f"error storm in the mob world: {reason} x{n}"
+    assert total_xp > 0, "six armed chars farmed ZERO xp in a world full of chickens"

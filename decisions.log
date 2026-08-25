@@ -5464,3 +5464,21 @@ server_bugs.md entry filed with the windowed proof + detection signature (identi
 errors with no matching sent rows). Run-wide ratios are uninformative and were NOT
 used (stated). NEXT PASS: SIM PASS 2 (wildlife + chaser mobs) then the leveling lever
 design — the queue's head per the fresh wishlist table.
+
+ITER 113 (2026-08-25, SIM PASS 2 + explorer/0.111.0): MOBS IN THE TEST BED + THE BAT
+CORRECTION. BUILT: tests/simserver.py pass 2 — wildlife (wanderer: seeded drift, never
+attacks) and chasers (step-toward-nearest + contact damage, the bestiary wolf/lava_ant
+shape); attack resolution (club swing 8, mob death -> death event + XP event + optional
+BONE drop — the vigor brew input finally has a source in the bed); entities rendered
+with faction/hp_frac. 2 sim self-tests + THE MOB SOAK: six armed chars vs 12 chickens +
+1 wolf for 1200 ticks — the CURRENT build held every promise (deaths <=1, no dancers,
+no error storms, xp actually farmed): dodge/spacing/combat-seek are sound, so the
+leveling lever can widen them with a safety net under it. 2 sim mutants killed
+(chaser-never-moves, kills-yield-nothing). LIVE DISCOVERY EN ROUTE: **bat_brown sat on
+WILDLIFE_SAFE while dealing ~3 dmg/hit** (27 recorded attacks, runs #210-215 — the
+swarm that finished the paralyzed Recruit-19575) and is ABSENT from the frozen
+bestiary: it post-dates the profile freeze; "safe" was assumed, never measured.
+0.111.0 removes it (evidence in-comment); test pins a DEVELOP char must not seek it
+(mutant killed). 1184 local green; reaper in flight. NEXT: deploy 0.111.0 + watch;
+then the leveling lever proper (widen combat-seek), soaked against the mob world
+FIRST.

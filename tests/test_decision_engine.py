@@ -2055,3 +2055,26 @@ def test_reaching_the_village_ENDS_the_commitment_for_the_next_stint():
                                      "items": [{"pos": [0, 8], "kind": "egg"}],
                                      "gold": []}})
     assert {"char_uid": "c1", "action": "move", "dir": "N"} in acts, acts
+
+
+def test_bat_brown_is_a_predator_not_a_farm_animal():
+    # v0.111.0 — 27 recorded attacks at ~3 damage (runs #210-215; a swarm finished
+    # Recruit-19575), and the kind is absent from the frozen bestiary: never measured
+    # safe, only assumed. A DEVELOP char must not seek it as wildlife.
+    from steemer.strategy.explorer import WILDLIFE_SAFE
+    assert "bat_brown" not in WILDLIFE_SAFE
+    bot = _bot()
+    char = _field_char(stamina=40, pos=[2, 2],
+                       inventory=[{"kind": "potion_red", "item_id": "p1"}])
+    char["equipment"] = {"hand": {"kind": "club"}}
+    tiles = [[x, y, "floor"] for x in range(8) for y in range(8)]
+    acts = bot.on_frame({"world": "vale", "tick": 10, "chars": [char],
+                         "bounds": [8, 8],
+                         "visible": {"tiles": tiles,
+                                     "entities": [{"pos": [5, 2], "faction": "monster",
+                                                   "kind": "bat_brown",
+                                                   "hp_frac": 1.0}],
+                                     "items": [], "gold": []}})
+    # whatever it does, it must NOT be a step toward the bat as prey
+    assert all(not (a.get("action") == "move" and a.get("dir") == "E")
+               for a in acts), f"sought a bat_brown as wildlife: {acts}"

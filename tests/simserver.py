@@ -80,6 +80,7 @@ class SimServer:
         self.events_out: list[dict] = []      # per-tick event feed (equip, death, ...)
         self.deaths: list[str] = []
         self._stalled = 0
+        self.mobs: dict[int, dict] = {}                # eid -> mob (pass 2)
         self._frozen_renders: dict[tuple, dict] = {}   # (world, uid) -> frozen char
                                                        # snapshot (the live server's
                                                        # frame-ghost bug, 2026-08-25:
@@ -112,6 +113,19 @@ class SimServer:
         if phantom:
             self._phantoms.add(iid)
         return iid
+
+    def add_mob(self, world: str, kind: str, pos, behavior: str = "wanderer",
+                dmg: int = 0, hp: int = 6, xp: int = 3, drop: str | None = None) -> int:
+        """Pass 2 (2026-08-25): wildlife and chasers. `wanderer` steps randomly and
+        never attacks (the bestiary's chicken/rat shape); `chaser` steps toward the
+        nearest char each tick and attacks when adjacent (the wolf/lava_ant shape,
+        ~one step/tick, contact damage). Kills yield an xp event and an optional
+        drop (bone = the vigor brew input)."""
+        eid = self._nid()
+        self.mobs[eid] = {"eid": eid, "kind": kind, "world": world,
+                          "pos": list(pos), "behavior": behavior, "dmg": dmg,
+                          "hp": hp, "max_hp": hp, "xp": xp, "drop": drop}
+        return eid
 
     def seed_loot(self, world: str, pos, kind="egg", mirage=False):
         """mirage=True marks THIS item as a vision-edge flicker (visible only from
@@ -173,6 +187,32 @@ class SimServer:
                 if c["hp"] <= 0:
                     self._die(uid)
             c["acted"] = False
+        # -- mob turn (pass 2): chasers pursue and bite; wanderers drift --------
+        for m in list(self.mobs.values()):
+            live = [c for c in self.chars.values() if c["world"] == m["world"]]
+            if m["behavior"] == "chaser" and live:
+                tgt = min(live, key=lambda c: abs(c["pos"][0] - m["pos"][0])
+                          + abs(c["pos"][1] - m["pos"][1]))
+                d = abs(tgt["pos"][0] - m["pos"][0]) + abs(tgt["pos"][1] - m["pos"][1])
+                if d <= 1:
+                    tgt["hp"] -= m["dmg"]
+                    self.events_out.append({"kind": "attack", "attacker": m["eid"],
+                                            "attacker_name": m["kind"],
+                                            "target_name": tgt["char_uid"],
+                                            "damage": m["dmg"]})
+                    if tgt["hp"] <= 0:
+                        self._die(tgt["char_uid"])
+                else:
+                    dx = (1 if tgt["pos"][0] > m["pos"][0] else
+                          -1 if tgt["pos"][0] < m["pos"][0] else 0)
+                    dy = 0 if dx else (1 if tgt["pos"][1] > m["pos"][1] else -1)
+                    m["pos"][0] += dx
+                    m["pos"][1] += dy
+            elif m["behavior"] == "wanderer" and self.rng.random() < 0.2:
+                dx, dy = self.rng.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])
+                nx, ny = m["pos"][0] + dx, m["pos"][1] + dy
+                if 0 <= nx < self.width and 0 <= ny < self.height:
+                    m["pos"] = [nx, ny]
         for w, st in self.worlds.items():
             st["next_refresh"] -= 1
             if st["next_refresh"] <= 0:
@@ -247,13 +287,17 @@ class SimServer:
                               "item_id": it["item_id"]})
             tiles = [[x, y, "floor", 0, 0] for x in range(self.width)
                      for y in range(self.height)]
+            ents = [{"eid": m["eid"], "kind": m["kind"], "faction": "monster",
+                     "pos": list(m["pos"]),
+                     "hp_frac": m["hp"] / max(1, m["max_hp"])}
+                    for m in self.mobs.values() if m["world"] == w]
             out.append({"type": "frame", "world": w, "tick": self.tick,
                         "events": list(self.events_out),
                         "bounds": [self.width, self.height],
                         "next_refresh": {"band": 0, "in_ticks": st["next_refresh"]},
                         "chars": [dict(self._char_public(c), pos=list(c["pos"]))
                                   for c in live] + [dict(g) for g in ghosts],
-                        "visible": {"tiles": tiles, "entities": [], "items": items,
+                        "visible": {"tiles": tiles, "entities": ents, "items": items,
                                     "gold": [{"pos": list(p), "amount": 2}
                                              for p in st["gold"]]}})
         return out
@@ -430,8 +474,32 @@ class SimServer:
             self.events_out.append({"kind": "equip", "eid": c["eid"], "item": kind,
                                     "slot": slot, "pos": list(c["pos"])})
             return None
-        if act in ("attack", "open", "say", "taste", "recruit", "brew", "smelt",
+        if act == "attack":
+            c["acted"] = True
+            c["stamina"] -= cost
+            tp = a.get("target")
+            if isinstance(tp, list) and not in_village:
+                m = next((m for m in self.mobs.values()
+                          if m["world"] == c["world"] and m["pos"] == list(tp)
+                          and abs(tp[0] - c["pos"][0]) + abs(tp[1] - c["pos"][1]) <= 1),
+                         None)
+                if m is not None:
+                    m["hp"] -= 8                       # a club swing
+                    if m["hp"] <= 0:
+                        self.mobs.pop(m["eid"])
+                        self.events_out.append({"kind": "death", "eid": m["eid"],
+                                                "kind_name": m["kind"],
+                                                "name": m["kind"],
+                                                "pos": list(m["pos"])})
+                        self.events_out.append({"kind": "xp", "char_uid": uid,
+                                                "amount": m["xp"]})
+                        c["xp"] = c.get("xp", 0) + m["xp"]
+                        if m["drop"]:
+                            self.worlds[c["world"]]["items"][tuple(m["pos"])] = {
+                                "kind": m["drop"], "item_id": self._nid()}
+            return None
+        if act in ("open", "say", "taste", "recruit", "brew", "smelt",
                    "spend_xp", "ride", "return"):
-            c["acted"] = act in ("attack", "open", "ride")
+            c["acted"] = act in ("open", "ride")
             return None
         return None

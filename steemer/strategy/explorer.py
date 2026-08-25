@@ -540,7 +540,12 @@ MELEE_DENSE_FODDER = 6         # v0.87.0: fodder barely acknowledges a swarm at 
 # bat). Undead (THREAT_KINDS) keep their wider radius-4 flee; everything else that
 # isn't benign gets the melee treatment.
 WILDLIFE_SAFE = frozenset({"turtle", "chicken", "cow", "sheep", "frog", "skunk",
-                           "rat_grey", "mole", "bat_brown"})
+                           "rat_grey", "mole"})
+# v0.111.0: bat_brown REMOVED from the allowlist on evidence — 27 recorded attacks at
+# ~3 damage each across runs #210-215 (a swarm of them finished Recruit-19575), and
+# the kind is ABSENT from the frozen bestiary snapshot: it post-dates the profile
+# freeze, so "safe" was never measured, only assumed. Combat-seek must not walk
+# armed chars into bat swarms believing them harmless.
 # Confirmed-dangerous kinds seen so far (documentation only — the LOGIC uses the
 # allowlist above, so this need not be exhaustive): golem_stone, delver, boar, drake,
 # lake_drake, spider_brown, wolf, crab_green, lava_ant, rhino_beetle.
@@ -1250,7 +1255,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.110.3"
+    version = "explorer/0.111.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
