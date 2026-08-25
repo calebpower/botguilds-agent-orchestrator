@@ -5635,3 +5635,17 @@ operator: (A) potion-carry hunting PARKED on world economics (no brew scale poss
 candidate — the only heal-free xp scale-up (shallow wolves/delvers, bestiary-priced,
 deaths-risk explicit) — AWAITING OPERATOR GO. Meanwhile the shallow-window machine
 works (xp 0.9/1k, conversion proven).
+
+ITER 122 (2026-08-25, explorer/0.113.0, operator-ordered): THE RECRUIT GOLD LEAK.
+Operator asked "is gold a concern?" — the answer was a measured leak: #220 burned 39
+recruits x 15g dead-capital clubs = ~585g (the run's ENTIRE income, four tomes' worth)
+against 2 deaths, because the roster count chronically reads 29<30 (~37 SILENT
+disappearances/run — the vanish bug's economic cost, quantified in server_bugs.md).
+FIX (operator: "yes ship the recruit fix"): recruit throttling, SHORTFALL-RELATIVE
+(the first draft's absolute floor broke under the test file's cap and was redesigned):
+shortfall <= RECRUIT_CHRONIC_MAX(3) -> at most one recruit per RECRUIT_MIN_INTERVAL
+(2000t) — the vanish drip refills at ~8/run instead of 39; shortfall > 3 -> the old
+8-tick cadence (a real wipe recovers fast). 2 tests (chronic-slow + wipe-fast,
+literal+pin), BOTH mutants killed via tools/mutate.py (throttle-removed, fast-path-
+removed). Expected effect: ~500g/run accumulation -> the 150g TOME (the magic unlock)
+within a run. Suite+gate next; gate-conditioned deploy + watch.

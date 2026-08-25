@@ -1106,6 +1106,16 @@ EMBARK_ISSUED_TTL = 30     # v0.107.0: how long an issued embark blocks re-issui
 #   guard the bot re-embarks it every tick and the tail bounces no_such_character
 #   once it finally leaves. Observed embark latency ~3 ticks; 8 is safe headroom and
 #   still retries a genuinely-failed embark after ~2 s.
+RECRUIT_MIN_INTERVAL = 2000  # v0.113.0 (the gold-leak fix, operator-ordered): run #220
+                             # burned 39 recruits x 15g clubs = ~585g — THE ENTIRE
+                             # RUN'S INCOME — because the roster count reads a chronic
+                             # 29<30 (one char invisible to every counter: ~37 silent
+                             # disappearances per run, the vanish-bug class, filed).
+                             # A chronic 1-2 shortfall now refills at ~8/run instead of
+                             # 39; four tomes' worth of gold stays in the treasury.
+RECRUIT_CHRONIC_MAX = 3      # a shortfall this small is the vanish drip (or ordinary
+                             # deaths), not a wipe — shortfall-relative so the rule
+                             # holds under any roster_cap, unlike an absolute floor
 RECRUIT_COOLDOWN = 8  # v0.10.0: same staleness for recruit — a just-recruited char
 #   isn't in the roster for a few frames, so re-firing recruit storms roster_cap.
 RECRUIT_BENCH = 2     # v0.27.0: recruit only up to (party_cap * maps) + this small
@@ -1276,7 +1286,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.112.0"
+    version = "explorer/0.113.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2037,8 +2047,11 @@ class Explorer:
         self._recruit_inflight = [t for t in self._recruit_inflight
                                   if tick - t < RECRUIT_INFLIGHT_TTL]
         roster = roster_seen + len(self._recruit_inflight)
+        _interval = (RECRUIT_MIN_INTERVAL
+                     if recruit_target - roster <= RECRUIT_CHRONIC_MAX
+                     else RECRUIT_COOLDOWN)
         if roster < recruit_target and (
-                self._recruit_at is None or tick - self._recruit_at >= RECRUIT_COOLDOWN):
+                self._recruit_at is None or tick - self._recruit_at >= _interval):
             self._recruit_at = tick
             self._recruit_inflight.append(tick)
             return [self._village_act(bot, None, {"action": "recruit"},

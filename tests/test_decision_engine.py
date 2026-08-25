@@ -2105,3 +2105,37 @@ def test_the_leveling_lever_hunts_AT_the_retreat_line_not_above_it():
     hurt = acts_at(17)          # 56%: below the retreat line -> no hunting
     assert all(not (a.get("action") == "move" and a.get("dir") == "E")
                for a in hurt), hurt
+
+
+def test_a_chronic_roster_shortfall_recruits_SLOWLY_not_every_cooldown():
+    # v0.113.0 — run #220's gold leak: the count reads a chronic 29<30 (one char
+    # invisible to every counter — the vanish-bug class) and the gate recruited 39
+    # times, burning ~585g of clubs, the run's whole income. A 1-2 shortfall now
+    # waits RECRUIT_MIN_INTERVAL between recruits. Literal + pin.
+    from steemer.strategy.explorer import RECRUIT_MIN_INTERVAL, RECRUIT_CHRONIC_MAX
+    assert (RECRUIT_MIN_INTERVAL, RECRUIT_CHRONIC_MAX) == (2000, 3), \
+        "the throttle moved; re-read the numbers in this test"
+    bot = _bot()                                     # roster_cap 10 in this file
+    by_world = {"vale": [f"v{i}" for i in range(5)]}  # 5 fielded + 4 here = 9 < 10
+    here = [_idle_village_char(f"h{i}") for i in range(4)]
+    uids = [c["char_uid"] for c in here]
+    first = bot.on_frame(_deploy_frame(uids, by_world, here, tick=100))
+    assert any(a.get("action") == "recruit" for a in first), "the first recruit is due"
+    again = bot.on_frame(_deploy_frame(uids, by_world, here, tick=100 + 200))
+    assert all(a.get("action") != "recruit" for a in again), \
+        "a chronic shortfall re-recruited inside the throttle window"
+    later = bot.on_frame(_deploy_frame(uids, by_world, here, tick=100 + 2001))
+    assert any(a.get("action") == "recruit" for a in later), \
+        "the slow drip never resumed"
+
+
+def test_a_real_wipe_recruits_at_the_fast_cadence():
+    # below ROSTER_FLOOR the shortfall is a wipe, not the vanish drip — recovery
+    # must be quick (the old 8-tick cooldown).
+    bot = _bot()
+    here = [_idle_village_char(f"h{i}") for i in range(5)]      # 5 of 10: shortfall 5,
+    uids = [c["char_uid"] for c in here]                        # past CHRONIC_MAX=3
+    bot.on_frame(_deploy_frame(uids, {}, here, tick=100))
+    soon = bot.on_frame(_deploy_frame(uids, {}, here, tick=110))
+    assert any(a.get("action") == "recruit" for a in soon), \
+        f"wipe recovery throttled: {soon}"

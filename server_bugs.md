@@ -329,3 +329,14 @@ the entity-lifecycle family; possibly the same underlying actor-queue fault
 re-delivering the rejection each tick until the queued command expires. Detection:
 multiple identical action_err for one (char, action) with NO matching actions_sent
 rows between them.
+
+## Silent character disappearances, quantified (2026-08-25, run #220)
+
+39 successful `recruit` events against 2 recorded deaths on a roster that spectate
+reports stable at 30 — ~37 characters left the roster in one run with NO death event.
+The client's roster count chronically reads 29/30 (one char invisible to every
+counting surface), so its recruit gate kept refilling, and each refill bought a 15g
+club: the vanish bug converted the guild's entire run income (~585g) into equipment
+for bodies that then evaporated. Same entity-lifecycle family as the limbo/frozen-
+render entries; this is its economic cost. Client mitigation shipped: recruit
+throttling (chronic shortfall <= 3 refills at most once per 2,000 ticks).
