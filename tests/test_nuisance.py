@@ -375,3 +375,20 @@ def test_the_tour_PAUSES_off_stage_the_mines_are_not_the_vale():
     moves = [a for a in acts if a.get("char_uid") == "c1" and a.get("action") == "move"]
     assert moves and moves[0]["dir"] == "S", \
         f"the tour did not pause off-stage (expected the depth retreat): {acts}"
+
+
+def test_on_station_the_depth_retreat_yields_no_hang_boundary_dance():
+    """v0.111.3 — run #218, c19657: within hang radius the follow goes quiet and the
+    un-healed depth retreat pulled one step home, exiting the radius, re-triggering
+    the follow — a y22/23 dance ON the proper stage. Holding station is a deliberate
+    choice: within the radius, deep, un-healed, the char RESTS (no S move); one step
+    outside, the follow (not the retreat) is the winning pull (N, back to station)."""
+    bot = _bot()
+    bot.on_frame(_frame(600, char_pos=(10, 14), will=_party((10, 15))))  # designate deep
+    assert bot.strategy._nuisance["uid"] == "c1"
+    # ON station (centroid ~(11,16), char at (10,14): d=3... use adjacent) — re-frame:
+    f = _frame(610, char_pos=(10, 15), will=_party((10, 15)))
+    acts = bot.on_frame(f)
+    mine = [a for a in acts if a.get("char_uid") == "c1" and a.get("action") == "move"]
+    assert all(a.get("dir") != "S" for a in mine), \
+        f"the depth retreat broke station: {mine}"

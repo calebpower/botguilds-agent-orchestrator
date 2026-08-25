@@ -1269,7 +1269,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.111.1"
+    version = "explorer/0.111.3"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1363,6 +1363,7 @@ class Explorer:
         self._scout_sent: dict = {}      # v0.106.1: world -> tick a scout was released to it
         self._ghosted: dict = {}         # v0.107.1: uid -> tick the server refused its command
         self._ghost_seen: dict = {}      # v0.110.3: uid -> last sighted (pos, sta, hp)
+        self._nuisance_hold = -1         # v0.111.3: tick the nuisance held station
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -3007,7 +3008,9 @@ class Explorer:
             # A char carrying a heal may range deep (it can drink en route home).
             # has_heal is hoisted to the loop header (v0.103.0) — the gather block
             # gates on the same POISON_SAFE_DEPTH threshold this retreat uses.
-            if pos[1] >= depth_cap:
+            if (pos[1] >= depth_cap
+                    and not (self._nuisance["uid"] == uid
+                             and self._nuisance_hold == bot.tick)):
                 # v0.107.0: the SAME budget the goals use. For an un-healed char this
                 # is the old cap; for a healed one it fires beyond the potion-covered
                 # range; for a WIZARD it fires at the base cap however healed — the
@@ -3094,6 +3097,11 @@ class Explorer:
                     nr = frame.get("next_refresh") or {}
                     in_ticks = nr.get("in_ticks")
                     refresh_soon = isinstance(in_ticks, int) and in_ticks <= REFRESH_STAY_TICKS
+                    if (self._nuisance["uid"] == uid
+                            and self._nuisance_hold == bot.tick):
+                        refresh_soon = True   # v0.111.3: ON STATION is the job —
+                                              # holding beside Will's party is not
+                                              # "looted-out"; no home walk, no stamp
                     if not refresh_soon:
                         # v0.105.0: stamp the reason the char is heading home, so the
                         # village won't bounce it straight back into the same farmed
@@ -3584,6 +3592,16 @@ class Explorer:
         if centroid is not None:
             cx, cy = centroid
             near = abs(pos[0] - cx) + abs(pos[1] - cy) <= NUISANCE_HANG_RADIUS
+            if near:
+                # v0.111.3 ON STATION: within hang radius the mission's offer goes
+                # QUIET, and run #218 showed what fills the silence — the un-healed
+                # depth retreat (2.5) pulls one step home, exits the radius, the
+                # follow (3.6) pulls back: a hang-boundary dance (c19657 at y22/23).
+                # Holding station is a deliberate choice, not an absence: stamp the
+                # tick and the depth retreat yields for it (survival offers at 7+
+                # still outrank everything and evacuate a genuinely hurt nuisance).
+                self._nuisance_hold = bot.tick
+                trace.observe("nuisance on station — holding in the centre")
             step = None if near else self._greedy_toward(
                 pos, centroid, ctx.known, ctx.bodies | set(ctx.enemies))
             if step is not None:
