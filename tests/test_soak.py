@@ -330,3 +330,30 @@ def test_SOAK_the_current_build_holds_against_a_mob_world():
     for reason, n in fam.items():
         assert n <= 40, f"error storm in the mob world: {reason} x{n}"
     assert total_xp > 0, "six armed chars farmed ZERO xp in a world full of chickens"
+
+
+def test_SOAK_the_leveling_lever_farms_wildlife_at_range():
+    """v0.111.1's expression, written FIRST (it fails on the pre-lever build): the
+    live map's wildlife sits 6-8 tiles off the strip (4 frog sightings at range vs
+    the old radius 5), so a world with all its wildlife at distance ~7 yields ZERO
+    xp under the old gates. The lever (COMBAT_SEEK_RADIUS 5 -> 8 for wildlife,
+    DEVELOP_HP 0.7 -> 0.6) must convert exactly this world into farmed xp — with
+    the chaser-safety promises still held (the wolf config in the base mob soak
+    keeps guarding those)."""
+    sim = SimServer(seed=SEED + 31, lag=3)
+    for n in range(5):
+        sim.add_char(f"h{n}", hand="club")
+    sim.guild_gold = 40
+    # wildlife ONLY at distance ~7 from the y0-2 strip the chars work
+    for w in ("vale", "mines", "spire"):
+        sim.add_mob(w, "chicken", (4, 7), behavior="wanderer", hp=8, xp=3, drop="bone")
+        sim.add_mob(w, "chicken", (8, 8), behavior="wanderer", hp=8, xp=3)
+    bot, tracks = _soak(sim, 1200)
+    total_xp = sum(c.get("xp", 0) for c in sim.chars.values())
+    # calibrated: pre-lever build measured xp 9 on this exact seed; post-lever 12
+    # (and 18/18 on neighbour seeds). 11 splits the distributions.
+    assert total_xp >= 11, \
+        f"the radius wall is back (xp {total_xp}; pre-lever measured 9)"
+    assert sim.deaths == [], f"the wider seek got someone killed: {sim.deaths}"
+    for uid, track in tracks.items():
+        assert not dance_windows(track), f"{uid} danced while hunting"

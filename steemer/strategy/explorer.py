@@ -974,10 +974,20 @@ WEAPON_BUY_FLOOR = 45      # v0.100.0: recalibrated — arm a bare char down to 
 # enforced INDIRECTLY: develop-mode requires a weapon, and the weapon-buy is itself gated on
 # WEAPON_BUY_FLOOR, so a poor guild can't arm -> its chars aren't in develop-mode -> they
 # harvest/survive. No per-tick treasury read needed in the field.
-DEVELOP_HP = 0.7          # only pick a fight comfortably above the 0.6 retreat line
+DEVELOP_HP = 0.6          # v0.111.1 (the leveling lever): AT the retreat line, not
+                           # comfortably above it — with 27/30 armed and xp at 14/16k
+                           # ticks, hesitancy is the binder; the retreat itself still
+                           # fires at 0.6 so a hurt hunter disengages immediately
 DEVELOP_STAMINA = 15      # enough stamina to attack AND still afford a step to disengage
 DEVELOP_HP_FODDER = 0.4   # v0.87.0: fodder keeps swinging far below the 0.7 line
-COMBAT_SEEK_RADIUS = 5    # seek wildlife / gauge predator density within this many tiles
+COMBAT_SEEK_RADIUS = 5    # gauge predator density within this many tiles (swarm gate)
+WILDLIFE_SEEK_RADIUS = 8  # v0.111.1: wildlife is HUNTED further than danger is gauged —
+                          # live sightings put frogs at 6-8 tiles off the strip (4 at
+                          # range vs 0 in the old radius 5); the calibrated soak: xp 9
+                          # pre -> 12 post over 1200 ticks (+33%, kills 3 -> 4, zero
+                          # deaths). Modest because FIELDED COUNT is the next binder —
+                          # the hunting-release slice. Chasing stays wildlife-only;
+                          # the swarm gate keeps its tighter radius 5.
 COMBAT_SWARM = 2          # >=2 melee predators within reach -> too dangerous to fight, flee
 
 # v0.44.0 FORGE-TO-ARM probe (slice 1): breakable terrain we HARVEST for raw materials by
@@ -1255,7 +1265,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.111.0"
+    version = "explorer/0.111.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2884,7 +2894,7 @@ class Explorer:
             if develop:
                 wild = {p for p, en in ctx.enemies.items()
                         if en.get("kind") in WILDLIFE_SAFE
-                        and abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= COMBAT_SEEK_RADIUS}
+                        and abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= WILDLIFE_SEEK_RADIUS}
                 if wild:
                     wstep = self._step(pos, lambda p: deep_ok(p) and
                                        any(n in wild for n in nav.neighbors(p)),

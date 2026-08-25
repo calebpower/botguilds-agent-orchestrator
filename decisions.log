@@ -5482,3 +5482,23 @@ bestiary: it post-dates the profile freeze; "safe" was assumed, never measured.
 (mutant killed). 1184 local green; reaper in flight. NEXT: deploy 0.111.0 + watch;
 then the leveling lever proper (widen combat-seek), soaked against the mob world
 FIRST.
+
+ITER 114 (2026-08-25, explorer/0.111.1 + investigation): THE LEVELING LEVER, slice 1.
+DESIGNED FROM DATA: live wildlife sits 6-8 tiles off the strips (4 frog sightings in
+range 8 vs 0 in the old radius 5) — reach, not gates, binds first. LEVER:
+WILDLIFE_SEEK_RADIUS=8 (new constant — the swarm-density gauge keeps its tighter 5)
++ DEVELOP_HP 0.7 -> 0.6 (hunt AT the retreat line; the retreat still disengages
+below it). PROCESS: the soak expression was written FIRST and — honestly recorded —
+PASSED pre-lever (idle wandering leaks kills), so the assertion was CALIBRATED
+instead: pre-lever xp 9 on the pinned seed, post-lever 12 (18/18 on neighbour seeds,
+0 deaths everywhere); threshold 11 splits the distributions. An optimistic "21" in a
+draft comment was corrected to the measured 12 before commit. 2 mutants killed
+(radius revert via the calibrated soak; hp-gate revert via a boundary unit test at
+66%/56%). NEXT BINDER NAMED: fielded-count (the bench holds hunters home) — the
+hunting-release slice, next pass. ALSO: forge-in-mines investigation CLOSED (wishlist
+item, crossed): 3 forge tiles confirmed y105-117; "special" = the documented
+station-tier rule (village caps quality at tier 2; masterwork x1.5 needs a real
+station) — the mines forge is the MASTERWORK forge, never used by anyone server-wide
+(0 events); exploitation needs ~6 potions of depth budget + cargo = a future
+"masterwork expedition" lever gated on the heal economy. Suite+gate in flight;
+deploy + watch on green.

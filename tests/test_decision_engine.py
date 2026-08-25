@@ -2078,3 +2078,29 @@ def test_bat_brown_is_a_predator_not_a_farm_animal():
     # whatever it does, it must NOT be a step toward the bat as prey
     assert all(not (a.get("action") == "move" and a.get("dir") == "E")
                for a in acts), f"sought a bat_brown as wildlife: {acts}"
+
+
+def test_the_leveling_lever_hunts_AT_the_retreat_line_not_above_it():
+    # v0.111.1 — DEVELOP_HP 0.7 -> 0.6: a 65%-hp armed char now hunts (it used to
+    # hesitate); below the 0.6 retreat line it still disengages. Literal boundary.
+    from steemer.strategy.explorer import DEVELOP_HP
+    assert DEVELOP_HP == 0.6, "the gate moved; re-read the numbers in this test"
+    def acts_at(hp):
+        bot = _bot()
+        char = _field_char(pos=[0, 5], stamina=40, hp=hp,
+                           inventory=[{"kind": "potion_red", "item_id": "p1"}])
+        char["equipment"] = {"hand": {"kind": "club"}}
+        tiles = [[x, y, "floor"] for x in range(8) for y in range(8)]
+        return bot.on_frame({"world": "vale", "tick": 10, "chars": [char],
+                             "bounds": [8, 8],
+                             "visible": {"tiles": tiles,
+                                         "entities": [{"pos": [6, 5],
+                                                       "faction": "monster",
+                                                       "kind": "chicken",
+                                                       "hp_frac": 1.0}],
+                                         "items": [], "gold": []}})
+    hunt = acts_at(20)          # 66% of 30: above the new gate -> hunts east
+    assert {"char_uid": "c1", "action": "move", "dir": "E"} in hunt, hunt
+    hurt = acts_at(17)          # 56%: below the retreat line -> no hunting
+    assert all(not (a.get("action") == "move" and a.get("dir") == "E")
+               for a in hurt), hurt

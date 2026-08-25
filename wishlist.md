@@ -217,7 +217,16 @@ the moment it crosses (next deploy), then rival-recon.
 ## Open
 
 
-- [ ] **Investigate the forge in the mines (operator, 2026-08-23)** — the mines forge tiles
+- [x] **Investigate the forge in the mines (operator, 2026-08-23)** — INVESTIGATED
+  2026-08-25 (iter 114): three forge tiles confirmed at mines y105-117 (mapped to y126
+  by old healed treks). What makes them special is DOCUMENTED, not mysterious: docs/07
+  caps village crafting at quality tier 2 — the top tier (masterwork, x1.5 effect)
+  requires a real station tile in the world. The mines forge is therefore the
+  MASTERWORK forge. Nobody on the server has ever used one (0 forge events in the
+  mines, ours or rivals'). Exploitation cost today: y105+ needs ~6 potions of depth
+  budget (16 rows/potion past cap 12) + the ingot/lumber cargo hauled there — a
+  full expedition design. Filed as a FUTURE lever ("masterwork expedition") gated on
+  the heal economy maturing; the investigation itself is complete. Original text: — the mines forge tiles
   (y105-117) may be a SPECIAL forge, not equivalent to the village forge we use. docs/08
   explicitly flags the Embermines: "Forging (something big guards **the great forge at the
   top**)." We have only ever forged at the VILLAGE forge, producing tier-0/1 items
