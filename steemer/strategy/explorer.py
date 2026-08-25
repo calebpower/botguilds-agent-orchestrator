@@ -1250,7 +1250,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.110.1"
+    version = "explorer/0.110.2"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -3467,6 +3467,16 @@ class Explorer:
         centroid, pout when hit), LOOT (a fallen Will member dropped spoils — go grab
         them), DELIVER (cackle and run the loot home)."""
         if self._nuisance["uid"] != uid:
+            return
+        # v0.110.2: THE TOUR PAUSES OFF-STAGE. The designation is made in the vale
+        # (_nuisance_track is world-guarded) but the OFFERS weren't — a designated
+        # nuisance that strayed (or whose target moved) kept shadowing through LOCAL
+        # visibility in any world: run #213, c19460 followed WillMorr's party into
+        # the MINES at y=28, un-healed, flickering follow(3.6)-vs-poison-retreat(2.5)
+        # at the vision edge. The operator's spec is vale-only ("if Will's party
+        # leaves the vale... reclassify"); outside the stage the ordinary ladder
+        # (incl. the depth cap) governs.
+        if frame.get("world") != NUISANCE_WORLD:
             return
         tick = bot.tick
         events = frame.get("events") or []

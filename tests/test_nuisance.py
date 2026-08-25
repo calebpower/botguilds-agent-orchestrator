@@ -355,3 +355,23 @@ def test_local_vision_OVERRIDES_hints_when_will_is_actually_in_sight():
     bot.tick = 600
     acts = _acts(bot, _frame(600, char_pos=(10, 12), will=_party((10, 2))))  # local LOW y
     assert _closer(acts, (10, 12), (10, 3)), f"ignored local vision for hints: {acts}"
+
+
+def test_the_tour_PAUSES_off_stage_the_mines_are_not_the_vale():
+    """v0.110.2 — run #213: the vale-designated nuisance followed WillMorr's party
+    into the MINES (local visibility carried the offers cross-world) and flickered
+    follow-vs-poison-retreat at y=28, un-healed. The operator's spec is vale-only;
+    off the stage, the ordinary ladder governs — here the depth-cap retreat, which
+    must be the winning move with Will's party visibly adjacent."""
+    bot = _bot()
+    bot.config["maps"] = [{"id": "vale"}, {"id": "mines"}]
+    # designate in the vale (Will's trio present)
+    bot.on_frame(_frame(600, will=_party((12, 10))))
+    assert bot.strategy._nuisance["uid"] == "c1"
+    # same char now deep in the MINES with Will's party right there
+    f = _frame(610, char_pos=(10, 15), will=_party((12, 15)))
+    f["world"] = "mines"
+    acts = bot.on_frame(f)
+    moves = [a for a in acts if a.get("char_uid") == "c1" and a.get("action") == "move"]
+    assert moves and moves[0]["dir"] == "S", \
+        f"the tour did not pause off-stage (expected the depth retreat): {acts}"

@@ -5405,3 +5405,17 @@ local/reaper green. Watch 3/3 CLEAN on 0.110.0 beforehand. NEXT: deploy 0.110.1 
 watch; the heal economy now rests entirely on BREWS banking fresh (above-frontier!)
 vault ids — the first brewed potion deposited will prove the frontier's auto-resume
 live.
+
+ITER 109 (2026-08-25, explorer/0.110.2): THE NUISANCE LEFT THE STAGE. 0.110.1's watch:
+no_such_item 18-23/run -> **0** (the frontier ended the graveyard probing) — but check
+3/3 flagged c19460 dancing, and the trace unmasked a scope bug: the vale-designated
+NUISANCE followed WillMorr's party into the MINES (the designation is world-guarded in
+_nuisance_track, but the OFFERS weren't — local visibility carried the tour cross-
+world), flickering follow(3.6)-vs-poison-retreat(2.5) at the vision edge, y=28,
+un-healed. Operator spec is vale-only ("if Will's party leaves the vale...
+reclassify"). FIX (0.110.2): _nuisance_act pauses off-stage (same guard as the
+tracker); outside the vale the ordinary ladder (incl. the depth cap) governs. 1 test
+(designate in vale -> Will adjacent in the MINES -> the depth retreat must win),
+mutant killed. My own 0.96.0 doctrine note ("the nuisance cannot dance — its scores
+outrank the retreat") is REFUTED for flickering signals and corrected in the comment.
+1176 local/reaper green. Watch count restarts on deploy.
