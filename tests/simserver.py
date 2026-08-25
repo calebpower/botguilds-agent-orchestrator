@@ -120,6 +120,10 @@ class SimServer:
 
     def add_mob(self, world: str, kind: str, pos, behavior: str = "wanderer",
                 dmg: int = 0, hp: int = 6, xp: int = 3, drop: str | None = None) -> int:
+        # NB (2026-08-25, measured): the LIVE server's kills drop NOTHING (42 kills,
+        # zero drops, wolf included) — bones are rare band-refresh ground loot, not
+        # kill loot. `drop` here stays as a what-if knob; soak configs must not
+        # assume kill-fed brewing when pricing economy levers.
         """Pass 2 (2026-08-25): wildlife and chasers. `wanderer` steps randomly and
         never attacks (the bestiary's chicken/rat shape); `chaser` steps toward the
         nearest char each tick and attacks when adjacent (the wolf/lava_ant shape,

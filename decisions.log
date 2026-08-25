@@ -5602,3 +5602,18 @@ density lives; costs ~20g/hunter-trip from a 9-gold treasury unless brewing scal
 first, or (B) BEATABLE-PREDATOR engagement — bestiary-priced fights (wolf dph 4.1 vs
 our 30hp+club): real xp, real deaths risk. Recommendation: (A) after a brew-throughput
 push (bones now droppable via kills feed vigor), (B) only with explicit go.
+
+ITER 120 (2026-08-25, economics investigation, no deploy): BONES ARE NOT KILL LOOT.
+Measured across runs #219-220: 42 mob kills (chicken/rat/sheep/bat/frog/mole/cow/
+turtle/wolf/delver), ZERO drops from any. The historical bone `drop` events co-locate
+with NO death, NO chest-open, NO terrain-destroy — they are CHARS shedding carried
+bones (the drop action); bones enter the world only as rare band-refresh ground loot.
+CONSEQUENCE FOR PROPOSAL A (potion-carry hunting): kills cannot offset potion costs
+via bone->vigor->brew — the heal economy scales ONLY through gathering coverage
+(embercap herbs + rare ground bones) and the 2g bottle chain. Proposal A's economics
+are therefore: 20g/hunter-trip against a ~9-gold treasury with no combat offset —
+NOT viable until brew throughput rises; the brew-throughput push (gathering-side) is
+the prerequisite and is PRE-APPROVED direction. Proposal B (beatable predators: pure
+xp, no loot) remains operator-gated. Sim annotated (kill-drop stays a what-if knob;
+soaks must not price economy levers on it). xp holding at 0.9/1k; deaths 2; invariants
+clean (deduped). Wishlist unchanged materially (tc +2).
