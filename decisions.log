@@ -5440,3 +5440,14 @@ test). Hygiene ratchet caught a derived fixture -> literal+pin. server_bugs.md g
 the live-char frame-ghost entry with the stamina-above-max detection signature. 1178
 local/reaper green. NEXT: deploy + watch; then the leveling pass (sim pass 2: mobs)
 once arming crosses ~25/30.
+
+ITER 111 (2026-08-25, postmortem, no code): WHO DIED — Recruit-19575, and the answer is
+Will's bug in its LETHAL form. The char was INPUT-PARALYZED: 6+ commanded moves onto
+verified-clear floor, zero errors, zero bounces, pos AND stamina frozen (no costs, no
+regen — the server-side actor loop dead) while 7 bat_brown attacks landed and killed
+it. Nothing the client could do — commands were eaten silently. Third member of the
+entity-lifecycle family (c19532 limbo / c19534 frozen render / this), all inside the
+wire-v3 deploy window. server_bugs.md entry filed URGENT-priority with the detection
+signature (silent command acceptance + frozen pos/stamina + hp dropping). The
+post-death unknown_character flap (~10 errors) was absorbed by the quarantine as
+designed. No bot lever exists for this class; the report is the action.

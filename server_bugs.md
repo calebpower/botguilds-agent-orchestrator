@@ -291,3 +291,27 @@ ghost forever (we ate 3,654 `not_in_village` before mitigating). Signature for
 detection: frame-char state (pos/stamina/hp) identical across many ticks, stamina
 possibly above max. Mitigation shipped client-side: world-frame sightings only count
 as proof-of-life when the state CHANGES between sightings.
+
+## Frame ghosts, LETHAL edition: an input-paralyzed char takes damage but no commands (2026-08-25, run #215 — KILLS CHARACTERS)
+
+Third manifestation of the entity-lifecycle bug family, and the worst. Recruit-19575,
+mines (13,17), bat_brown swarm adjacent, ticks 2530752-2530759:
+
+- our client commanded `move S` EVERY tick (south tile: clear floor, verified);
+- the server neither executed them (pos frozen for 8 ticks), errored them (zero
+  action_errors during the fight — the unknown_character flap starts only AFTER
+  death), nor bounced them (zero move_failed events);
+- the char's stamina sat FROZEN at 48 the whole time — no move costs deducted AND no
+  regen applied, so its server-side actor loop was not running at all;
+- meanwhile combat resolution still targeted it: seven bat_brown `attack` events
+  landed (hp 13 -> 7 -> 4 -> 1 -> dead) and the death dropped its kit.
+
+Signature for detection: commands accepted silently (no error, no effect), pos AND
+stamina frozen across ticks, hp changing only from incoming attacks, statuses empty.
+Family resemblance: c19532 (roster limbo, refuses loudly), c19534 (frozen render
+after returning home), and now this — alive, attackable, and input-dead. All three
+observed within the wire-v3 deploy window (2026-08-24/25), suggesting the change
+exposed or introduced an actor-lifecycle race. Client-side there is NO mitigation:
+the char cannot move, fight, or heal — it is doomed from the first eaten command.
+Priority for the server: this one costs permadeath characters through no fault of
+the client.
