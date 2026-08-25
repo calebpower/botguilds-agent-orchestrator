@@ -119,7 +119,8 @@ class SimServer:
         return iid
 
     def add_mob(self, world: str, kind: str, pos, behavior: str = "wanderer",
-                dmg: int = 0, hp: int = 6, xp: int = 3, drop: str | None = None) -> int:
+                dmg: int = 0, hp: int = 6, xp: int = 3, drop: str | None = None,
+                move_rate: float = 1.0) -> int:
         # NB (2026-08-25, measured): the LIVE server's kills drop NOTHING (42 kills,
         # zero drops, wolf included) — bones are rare band-refresh ground loot, not
         # kill loot. `drop` here stays as a what-if knob; soak configs must not
@@ -130,9 +131,14 @@ class SimServer:
         ~one step/tick, contact damage). Kills yield an xp event and an optional
         drop (bone = the vigor brew input)."""
         eid = self._nid()
+        # pass 3 (2026-08-25, proposal B): move_rate models the LIVE chaser cadence
+        # (bestiary run92: wolf moves ~0.22 tiles/tick — a walking char outruns it).
+        # Movement only — an adjacent chaser still bites every tick. Default 1.0 draws
+        # NO rng, so every pre-existing seeded test's stream is byte-identical.
         self.mobs[eid] = {"eid": eid, "kind": kind, "world": world,
                           "pos": list(pos), "behavior": behavior, "dmg": dmg,
-                          "hp": hp, "max_hp": hp, "xp": xp, "drop": drop}
+                          "hp": hp, "max_hp": hp, "xp": xp, "drop": drop,
+                          "move_rate": move_rate}
         return eid
 
     def seed_loot(self, world: str, pos, kind="egg", mirage=False):
@@ -210,7 +216,8 @@ class SimServer:
                                             "damage": m["dmg"]})
                     if tgt["hp"] <= 0:
                         self._die(tgt["char_uid"])
-                else:
+                elif (m.get("move_rate", 1.0) >= 1.0
+                      or self.rng.random() < m["move_rate"]):
                     dx = (1 if tgt["pos"][0] > m["pos"][0] else
                           -1 if tgt["pos"][0] < m["pos"][0] else 0)
                     dy = 0 if dx else (1 if tgt["pos"][1] > m["pos"][1] else -1)

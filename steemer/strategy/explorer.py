@@ -1001,6 +1001,17 @@ WILDLIFE_SEEK_RADIUS = 15 # v0.112.0: raised 8 -> 15 on the live window capture
                           # the swarm gate keeps its tighter radius 5.
 COMBAT_SWARM = 2          # >=2 melee predators within reach -> too dangerous to fight, flee
 
+# --- v0.114.0 PROPOSAL B (operator: "go for proposal B, but protect my wizards"):
+# beatable-predator ENGAGEMENT. Every kind here is bestiary-PRICED (findings #156/#290,
+# run92 measurements): dph <= 4.3 against a club's 8/swing — two of our swings to one of
+# theirs — and all are chasers (~0.9), so once engaged they close the last step themselves.
+# NOT here, deliberately: boar (6.0), delver (~5.0), golem_stone (the -15 hitter), every
+# undead kind (doctrine: never trade with poison), and anything without a measured price.
+ENGAGE_KINDS = frozenset({"wolf", "lava_ant", "spider_brown", "crab_green"})
+ENGAGE_SEEK_RADIUS = 10   # close on a lone allowlisted predator this far out. Wider than
+                          # the spacing bubble (2), narrower than wildlife (15): a predator
+                          # trek costs hp on arrival, so we only cross ground we can see.
+
 # v0.44.0 FORGE-TO-ARM probe (slice 1): breakable terrain we HARVEST for raw materials by
 # attacking the tile (docs/08: "trees/bushes/fences break after a few attacks; vein drops ore").
 # We treated all of these as impassable scenery (nav.SOLID) and never touched them — the entire
@@ -1286,7 +1297,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.113.0"
+    version = "explorer/0.114.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2638,8 +2649,12 @@ class Explorer:
         # whose death is budgeted. (It is usually bare-handed since no coin buys it a
         # weapon, but looted and forged gear still equips for free.)
         hp_bar = DEVELOP_HP_FODDER if my_role == "fodder" else DEVELOP_HP
-        develop = (armed and not homing and not caster and hp >= max_hp * hp_bar
-                   and stamina >= DEVELOP_STAMINA)
+        # v0.114.0 (operator: "protect my wizards"): the caster check alone had a hole —
+        # wizard SEATS are rank-chosen (int gift preferred, not required), so a non-gifted
+        # seat-holder passed `not caster` and would trade hits with predators. The seat is
+        # the protection contract, so the ROLE gates too.
+        develop = (armed and not homing and not caster and my_role != "wizard"
+                   and hp >= max_hp * hp_bar and stamina >= DEVELOP_STAMINA)
         hunt = (armed and not homing and not caster and stamina >= DEVELOP_STAMINA
                 and hp >= max_hp * (DEVELOP_HP_FODDER if my_role == "fodder" else HUNT_HP))
         near_preds = [p for p in preds
@@ -2931,6 +2946,48 @@ class Explorer:
                     if wstep:
                         offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, wstep)},
                               3.5, "develop: closing on wildlife to farm XP")
+                        productive = True
+            # --- v0.114.0 PROPOSAL B: engage a LONE beatable predator. Gated on `develop`
+            # (the 0.7 comfort margin — a predator fight is entered with room to lose two
+            # hits, unlike the 0.6 wildlife bar) and on the develop-block's own swarm gate
+            # via the loneness filter: the TARGET must have no second predator within
+            # COMBAT_SEEK_RADIUS of it, or we'd arrive into the exact pair the swarm gate
+            # exists to refuse. Scored 3.3: below wildlife (3.5 — free xp first), ABOVE
+            # spacing (3.0) so approach beats back-away and the pair can't tug-of-war;
+            # on arrival the develop-attack (7.6) outranks the adjacent-dodge (7.3), and
+            # if hp dips below the bar mid-fight `develop` flips false and the ordinary
+            # dodge/retreat ladder owns the exit. Wizards never enter: `develop` now
+            # excludes the role outright (the gate fix above).
+            # NB: near_preds was re-bound by the spacing block (radius 2); the swarm
+            # gate here needs the develop-block's meaning (COMBAT_SEEK_RADIUS around US),
+            # so compute it locally rather than trusting whichever binding survived.
+            eng_near = [p for p in preds
+                        if abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= COMBAT_SEEK_RADIUS]
+            if develop and len(eng_near) < COMBAT_SWARM:
+                lone = {p for p, en in ctx.enemies.items()
+                        if en.get("kind") in ENGAGE_KINDS
+                        and abs(p[0] - pos[0]) + abs(p[1] - pos[1]) <= ENGAGE_SEEK_RADIUS
+                        and not any(q != p and self._is_melee_predator(ctx.enemies[q].get("kind"))
+                                    and abs(q[0] - p[0]) + abs(q[1] - p[1]) <= COMBAT_SEEK_RADIUS
+                                    for q in ctx.enemies)}
+                if lone:
+                    # The v0.30 strike-halo marks every predator-adjacent tile as a
+                    # wall, which is right for every seek EXCEPT this one — walking
+                    # into strike range of the TARGET is the entire point of an
+                    # engagement. Un-wall only the target's own halo; the loneness
+                    # filter already guarantees no other predator within
+                    # COMBAT_SEEK_RADIUS of it, so no foreign halo overlaps.
+                    eng_blocked = blocked - {n for p in lone
+                                             for n in nav.neighbors(p)}
+                    estep = self._step(pos, lambda p: deep_ok(p) and
+                                       any(n in lone for n in nav.neighbors(p)),
+                                       ctx, eng_blocked)
+                    if estep and not deep_ok(estep):
+                        estep = None
+                    if estep:
+                        kinds = {ctx.enemies[p].get("kind") for p in lone}
+                        offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, estep)},
+                              3.3, f"engage: closing on a lone beatable {'/'.join(sorted(k for k in kinds if k))} for XP")
                         productive = True
 
         # Gather/explore only when NOT heading home (v0.16.0): a homing char that

@@ -5649,3 +5649,34 @@ shortfall <= RECRUIT_CHRONIC_MAX(3) -> at most one recruit per RECRUIT_MIN_INTER
 literal+pin), BOTH mutants killed via tools/mutate.py (throttle-removed, fast-path-
 removed). Expected effect: ~500g/run accumulation -> the 150g TOME (the magic unlock)
 within a run. Suite+gate next; gate-conditioned deploy + watch.
+
+ITER 123 (2026-08-25) — explorer/0.114.0: PROPOSAL B, beatable-predator engagement (operator:
+"go for proposal B, but protect my wizards").
+- LEVER: engage-seek (3.3) closes on a LONE bestiary-priced predator — ENGAGE_KINDS
+  {wolf 4.3, lava_ant ~3.4, spider_brown ~3.3, crab_green 4.0 dph} vs a club's 8/swing;
+  boar(6.0)/delver(5.0)/golem_stone/undead/unmeasured EXCLUDED. Gated on develop (0.7 comfort
+  margin, NOT hunt's 0.6), loneness (no 2nd predator within COMBAT_SEEK_RADIUS of the TARGET),
+  ENGAGE_SEEK_RADIUS 10. Ordering: wildlife 3.5 > engage 3.3 > spacing 3.0; arrival:
+  develop-attack 7.6 > dodge 7.3; hp<0.7 mid-fight flips develop -> ladder owns the exit.
+- WIZARD PROTECTION: found+closed a REAL hole — wizard seats are rank-chosen (int gift
+  preferred, not required), so a non-gifted seat-holder passed `not caster` and would trade
+  hits. `develop` now excludes my_role=="wizard" outright. Two-oracle test (control fights,
+  wizard refuses on the same fixture).
+- HARD-WON MECHANISM: the v0.30 strike-halo walls every predator-adjacent tile, so no seek
+  could EVER path into adjacency (bfs returned None; found via in-block tracer). Engage
+  un-walls ONLY the target's own halo (loneness guarantees no foreign halo overlaps).
+- SIM: add_mob(move_rate=) models the live 0.22 tiles/tick wolf cadence (movement only —
+  adjacent bite every tick; default 1.0 draws NO rng so pre-existing seeded streams are
+  byte-identical). Self-tested + mutation-checked.
+- EXPRESSION (written FIRST, verified failing pre-lever by stash: wolf alive at t300; passes
+  post-lever). Compass trap caught in test: N is +y in this game (nav.DIRS); the first
+  closing-assert table was inverted and the first mutant SURVIVED because the wolf sat in the
+  frontier's northward pull — geometry rotated EAST, mutant then killed.
+- 6/6 mutants killed via tools/mutate.py (offer deleted, wizard exclusion deleted, boar
+  allowlisted, loneness deleted, halo exemption deleted, sim move_rate gate deleted).
+- 0.113.0 watch3: 3x BUG? flags on c19747 = pre-existing looted-home revolving door
+  (~40-tick embark period, self-terminated on refresh; rates 208-238/1k in runs 219/220
+  BEFORE the throttle — not introduced). B is the fix-shaped response: a looted world with a
+  beatable predator stays productive. Wishlist: added embark-chooser item; table recalced at
+  114.0 (top unblocked: danger-as-cost 0.560, scope-quarantine 0.559; magic-cast 0.562
+  BLOCKED on treasury — the 0.113.0 throttle is the unblocking lever, check gold next pass).

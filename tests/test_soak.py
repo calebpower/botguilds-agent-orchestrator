@@ -379,3 +379,57 @@ def test_SOAK_visible_wildlife_at_eleven_tiles_gets_hunted():
     assert sim.deaths == []
     for uid, track in tracks.items():
         assert not dance_windows(track), f"{uid} danced on the hunt"
+
+
+def test_sim_a_slow_chaser_barely_moves_but_still_bites_when_adjacent():
+    """Self-test for the move_rate knob (proposal B): a 0.22-rate wolf must cover
+    roughly a fifth of a full-rate wolf's ground — the live cadence the bestiary
+    measured — while an ADJACENT slow wolf still bites every tick (rate gates
+    movement, never aggression)."""
+    sim = SimServer(seed=11)
+    sim.add_char("c1")
+    sim.chars["c1"]["world"] = "vale"
+    sim.chars["c1"]["pos"] = [5, 5]
+    sim.chars["c1"]["hp"] = sim.chars["c1"]["max_hp"] = 500
+    fast = sim.add_mob("vale", "wolf", (35, 5), behavior="chaser", dmg=4)
+    slow = sim.add_mob("vale", "wolf", (5, 35), behavior="chaser", dmg=4,
+                       move_rate=0.22)
+    for _ in range(20):
+        sim.step()
+    fast_moved = 30 - abs(sim.mobs[fast]["pos"][0] - 5)
+    slow_moved = 30 - abs(sim.mobs[slow]["pos"][1] - 5)
+    assert fast_moved == 20, f"full-rate chaser moved {fast_moved}/20"
+    assert 1 <= slow_moved <= 9, \
+        f"0.22-rate chaser moved {slow_moved}/20 — knob not gating movement"
+    # adjacency: park the slow wolf next to the char and count bites
+    sim.mobs[slow]["pos"] = [5, 6]
+    sim.mobs.pop(fast)
+    hp0 = sim.chars["c1"]["hp"]
+    for _ in range(5):
+        sim.step()
+    assert sim.chars["c1"]["hp"] <= hp0 - 4 * 4, \
+        "an adjacent slow chaser stopped biting — move_rate leaked into aggression"
+
+
+def test_SOAK_a_lone_beatable_wolf_gets_hunted_not_outwaited():
+    """Proposal B's expression, written FIRST (verified failing on the pre-lever
+    build: zero of three wolves died in 300 ticks). A LIVE wolf moves ~0.22
+    tiles/tick (bestiary run92, finding #156) so it never catches a working char —
+    pre-lever, roster and wolf simply coexist and the wolf's 8 xp goes unfarmed
+    forever. The engage-seek must convert exactly this world: a lone allowlisted
+    predator (dph 4.3 vs a club's 8 — two swings to one) is closed on and killed.
+    Deaths must stay ZERO (the fight is priced, and the retreat ladder still owns
+    hp < 0.7) and nobody dances at it (seek 3.3 vs spacing 3.0 vs attack 7.6 is a
+    strict ordering, not a tug-of-war)."""
+    sim = SimServer(seed=SEED + 47, lag=3, worlds=("vale",))
+    sim.config["roster_cap"] = 3          # the armed three ARE the roster — recruiting
+    for n in range(3):                    # would field a bare-handed crowd that cannot
+        sim.add_char(f"e{n}", hand="club")  # develop, and the armed chars would idle home
+    wolf = sim.add_mob("vale", "wolf", (8, 8), behavior="chaser", dmg=4, hp=14,
+                       xp=8, move_rate=0.22)
+    bot, tracks = _soak(sim, 300)
+    assert wolf not in sim.mobs, \
+        f"the lone beatable wolf outlived 300 ticks at {sim.mobs.get(wolf, {}).get('pos')} — nobody engaged"
+    assert not sim.deaths, f"engaging the wolf cost deaths: {sim.deaths}"
+    for uid, track in tracks.items():
+        assert not dance_windows(track), f"{uid} danced at the wolf"
