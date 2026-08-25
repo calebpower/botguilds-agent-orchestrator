@@ -1250,7 +1250,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.109.2"
+    version = "explorer/0.109.3"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2234,6 +2234,13 @@ class Explorer:
     def act(self, bot: "Any", char: dict[str, Any], frame: dict[str, Any],
             ctx: FieldContext, trace: DecisionTrace) -> None:
         uid = char["char_uid"]
+        # v0.109.3: EVIDENCE-BASED UNGHOSTING. A char acting in a FIELD frame is
+        # definitionally not a ghost — run #208 showed the quarantine's blunt edge:
+        # ~15 chars each flapped 2-6 not_in_village errors around their own
+        # departures (the stale chars_here lag), got 600-tick quarantines, and would
+        # have lost their village economy (sells/equips/buys) on return. A true
+        # limbo char (c19532) never appears in any world frame and stays barred.
+        self._ghosted.pop(uid, None)
         if char.get("craft"):
             # A craft (brew/smelt/forge) occupies the character; any other action
             # is rejected with `crafting`, and moving/embarking abandons the work.

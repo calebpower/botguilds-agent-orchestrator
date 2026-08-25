@@ -5302,3 +5302,16 @@ mutants survived; rewrote with a dagger-wearer + spare club so only the persiste
 proof can stop the probe; both mutants then died. 1158 local/reaper green. NEXT:
 deploy + watch; then measure arming saturation + first bone/brew scale-up; the
 armed-sentinel preference looks moot (armed chars cycle naturally now).
+
+ITER 103 (2026-08-24, explorer/0.109.3): THE QUARANTINE'S BLUNT EDGE — caught by the
+post-deploy watch doing its job (check 1/3 on 0.109.2 flagged a not_in_village uptick;
+the count restarted per the standing rule). ATTRIBUTION: not a ghost — ~15 chars each
+flapping 2-6 village-move errors around their OWN departures (stale chars_here lag),
+each then eating a 600-tick quarantine that would mute its village economy (sells/
+equips/buys) on return. FIX: EVIDENCE-BASED UNGHOSTING — a char observed acting in a
+FIELD frame is definitionally not a ghost; the sighting clears the stamp. A true limbo
+char (c19532 class: never in any world frame) stays barred. wrong_slot x4 attribution:
+legitimate trial-laddering of NEW kinds (persisted map confirmed live: dagger/club/
+shield_wood/elder_robes) — no action. 1 test (flap -> field sighting -> unghosted ->
+embarks on return), mutant killed. 1159 local/reaper green. Redeploy restarts the
+3-check count per the rule.

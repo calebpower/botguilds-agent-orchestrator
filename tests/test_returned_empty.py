@@ -251,3 +251,25 @@ def test_one_ghost_does_not_choke_the_scout_release_for_the_benched():
     emb = _embarks(acts)
     assert emb and emb[0]["char_uids"] == ["r1"] and emb[0]["map"] == "vale", \
         f"the bench stayed locked behind the ghost: {acts}"
+
+
+def test_a_field_sighting_UNGHOSTS_a_departure_flap():
+    """v0.109.3 — the quarantine's blunt edge (run #208): a char that flapped one
+    not_in_village error while EMBARKING got 600 ticks of no village economy on its
+    return. A field-frame sighting is proof of life: the quarantine clears, and the
+    returned char sells/equips/embarks normally. A true limbo char (never in any
+    world frame) stays barred — the c19532 class is untouched."""
+    bot = _bot()
+    bot.tick = 600
+    bot.on_action_error({"char_uid": "r1", "reason": "not_in_village",
+                         "tick": 600, "action": "move"})
+    assert "r1" in bot.strategy._ghosted
+    # the char then acts in a vale frame — proof it is real and fielded
+    tiles = [[x, y, "floor"] for x in range(4) for y in range(4)]
+    bot.on_frame({"type": "frame", "world": "vale", "tick": 610, "events": [],
+                  "bounds": [4, 200], "chars": [_char("r1", pos=(1, 1))],
+                  "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}})
+    assert "r1" not in bot.strategy._ghosted, "a fielded char stayed quarantined"
+    # and on return it embarks/works normally
+    acts = bot.on_frame(_village([_char("r1")], _pad(), tick=650))
+    assert _embarks(acts), "the returned flap-char was still barred"
