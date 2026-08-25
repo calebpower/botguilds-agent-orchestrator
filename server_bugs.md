@@ -257,3 +257,25 @@ potion_red group's `item_ids` in the village. Contrast: lumber withdrawals succe
 so the staleness is kind- or event-correlated, not universal. Client mitigation:
 probe only ids NEWER than the newest known phantom (ids ascend with creation), so a
 genuinely new banked item is tried automatically and the graveyard is never re-walked.
+
+### Evidence strengthening (2026-08-25, on operator request for verification rigor)
+
+Verification is necessarily single-session (a second authenticated client risks the
+single-session kick-war), so three within-session axes substitute for independence:
+
+1. **Live-vs-frozen kind contrast** (the decisive one): one village frame sampled per
+   run across #190-#213 (~200k ticks). `lumber` count ticked 20 -> 40 (deposits land,
+   withdrawals succeed — the listing machinery demonstrably UPDATES), while
+   `potion_red` (202), `club` (14), and `bottle_empty` (404) never moved once. Same
+   listing, same session, same serializer: one kind live, three fossils.
+2. **Format-migration invariance**: the phantom ids survived the v2->v3 wire rewrite
+   byte-identical (the v3 potion group's first 8 item_ids are exactly the 8 ids probed
+   dead under v2) — two different server serialization paths agree on the stale data,
+   so the rot is in the underlying store, not a serializer.
+3. **Cross-run, cross-restart persistence**: 78 distinct ids probed dead across 9+
+   client restarts and both wire formats; zero successes ever.
+
+Also noted: the server's own web viewer (web/app.js, sha de9a52bd..., baselined) reads
+only `count` from the grouped inventory and never dereferences `item_ids` — the ids'
+validity is exercised by nothing but the `drop` action, which is presumably how the
+rot went unnoticed.
