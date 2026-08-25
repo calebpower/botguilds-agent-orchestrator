@@ -5268,3 +5268,22 @@ with rationale in-file. 3 mutants killed. 1154 local/reaper green. Validation pl
 (burst-compatible): next burst should show buy:club events for bare chars, armed
 fraction climbing from 1/30, then attacks/bones. NEXT: deploy + 3x2min watch; then
 armed-sentinel preference if arming alone doesn't lift combat.
+
+ITER 101 (2026-08-24, explorer/0.109.1): ARMING IS SPREADING — MEASURED BY THE RIGHT
+ORACLE. Post-0.109.0 stretch (~4400t at ~120-240/min, the first sustained clock in 13h):
+dead-capital fired twice (2 clubs bought at gold 16->8), and the server's `equip` EVENTS
+prove **5 club-equips landed** (5 distinct eids) + the incumbent dagger = 6/30 armed —
+while the spectate roster STILL reads 1/30 (stale/wrong; the frames+events oracles agree
+against it — noted for server_bugs if it persists). c19534's spear equip failed LOUDLY
+(stat_requirement — STR gate), not silently: the "silent no-op" hypothesis died under
+the event check. Invariants held: 0 deaths, 0 dancers, errors single-digit. DEFECT
+FOUND + FIXED: a char already WEARING a club walked a SECOND club through offhand/
+outfit/trinket/boots (4 wrong_slot errors) — the slot ladder learns wrong slots but
+never RIGHT ones. 0.109.1: slot_right learned from OBSERVED gear (any of our chars seen
+wearing a kind proves its slot, global), and a proven kind never probes elsewhere (its
+copy becomes sellable surplus = income). 3 tests (proven-never-probes / proof-carries-
+across-chars / unproven-still-ladders + proven-fills-empty = the anti-starvation side);
+2 mutants killed (never-learned, not-restricting). Chatter's "club equipped" say was
+event-driven and truthful (loose speaker attribution only — left alone). 1157
+local/reaper green. NEXT: deploy + watch; then measure arming trajectory (armed count
+by EVENTS, gold cycle, first bone).

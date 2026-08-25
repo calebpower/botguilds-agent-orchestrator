@@ -1250,12 +1250,15 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.109.0"
+    version = "explorer/0.109.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
         # rejected from (wrong_slot), and kinds that fail a stat requirement.
         self.slot_wrong: dict[str, set[str]] = defaultdict(set)
+        self.slot_right: dict[str, str] = {}  # v0.109.1: kind -> slot PROVEN by seeing
+                                              # any of our chars wear it (frames are
+                                              # truth); a proven kind never slot-probes
         # v0.65.0: kind -> the stat TOTAL of the character that failed its requirement.
         #
         # This was a plain set, and that made it a ratchet with a known key: the gate is a
@@ -3044,11 +3047,22 @@ class Explorer:
         already been rejected from. Slots are learned by trial (see
         on_action_error), so this needs no content knowledge of which item goes
         where. Returns an equip action (with a ``_why`` note) or None."""
+        # v0.109.1: LEARN right slots from what is actually worn — run #206's cost
+        # of not doing so: a char already wearing a club walked a SECOND club through
+        # offhand/outfit/trinket/boots, four wrong_slot errors for a kind whose slot
+        # its own hand was proving the whole time.
+        for s_ in EQUIP_SLOTS:
+            worn = eqp.get(s_)
+            wk = worn.get("kind") if isinstance(worn, dict) else worn
+            if wk:
+                self.slot_right.setdefault(wk, s_)
         for item in inv:
             kind = item["kind"]
             if "equip" not in (item.get("uses") or []) or self._wont_fit(kind, uid):
                 continue
-            slot = next((s for s in EQUIP_SLOTS
+            proven = self.slot_right.get(kind)
+            candidates = (proven,) if proven else EQUIP_SLOTS
+            slot = next((s for s in candidates
                          if eqp.get(s) is None and s not in self.slot_wrong[kind]), None)
             if slot is None:
                 continue                    # no empty, not-known-wrong slot for it

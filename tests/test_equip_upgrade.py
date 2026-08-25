@@ -266,3 +266,38 @@ def test_it_reads_a_worn_slot_given_either_frame_shape():
     assert Explorer._worn_kind("club") == "club"
     assert Explorer._worn_kind(None) is None
     assert Explorer._worn_kind({"item_id": 7}) is None
+
+
+# ---- v0.109.1: proven slots never probe --------------------------------------
+
+def test_a_kind_seen_worn_never_probes_other_slots():
+    """Run #206: a char already WEARING a club walked a second club through
+    offhand/outfit/trinket/boots — four wrong_slot errors for a kind whose slot its
+    own hand was proving the whole time. Wearing a kind proves its slot; a second
+    copy with the proven slot occupied is simply not equipped (it becomes sellable
+    surplus, which is income)."""
+    exp = Explorer()
+    act = exp._equip_action("c1", [_item("club", item_id="club-2")],
+                            _eqp(hand="club"))
+    assert act is None, f"probed a second copy of a proven-slot kind: {act}"
+
+
+def test_the_proof_carries_ACROSS_characters():
+    """Char A wearing a spear teaches the guild spear->hand; char B, hand occupied,
+    holding a spear, must not probe it into offhand — the learning is global."""
+    exp = Explorer()
+    exp._equip_action("a", [], _eqp(hand="spear"))                 # A teaches
+    act = exp._equip_action("b", [_item("spear", item_id="sp-b")],
+                            _eqp(hand="club"))
+    assert act is None, f"char B probed a kind char A had already proven: {act}"
+
+
+def test_an_unproven_kind_still_probes_and_a_proven_one_fills_its_empty_slot():
+    """The guard must not starve arming: an unproven kind keeps the trial ladder,
+    and a proven kind still equips into its (empty) proven slot."""
+    exp = Explorer()
+    a1 = exp._equip_action("c1", [_item("gadget")], _eqp())
+    assert a1 is not None and a1["slot"] == "hand", f"trial ladder broken: {a1}"
+    exp.slot_right["club"] = "hand"
+    a2 = exp._equip_action("c2", [_item("club")], _eqp())
+    assert a2 is not None and a2["slot"] == "hand", f"proven kind failed to equip: {a2}"
