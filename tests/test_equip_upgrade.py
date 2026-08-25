@@ -301,3 +301,48 @@ def test_an_unproven_kind_still_probes_and_a_proven_one_fills_its_empty_slot():
     exp.slot_right["club"] = "hand"
     a2 = exp._equip_action("c2", [_item("club")], _eqp())
     assert a2 is not None and a2["slot"] == "hand", f"proven kind failed to equip: {a2}"
+
+
+def test_slot_proofs_PERSIST_across_a_restart(tmp_path):
+    """v0.109.2 — the ladder re-learned from zero on every restart (4 wrong_slot
+    probes on #207 for kinds proven the run before). Through the real bot + real
+    storage: run 1 observes a worn club (proof learned + persisted on the next
+    village frame); a FRESH bot on the same storage must refuse to probe a spare
+    club into offhand WITHOUT ever seeing anyone wear one."""
+    from steemer.bot import GuildBot
+    from steemer.storage import Storage
+    st = Storage(str(tmp_path / "s.db"))
+    st.begin_run("sha", "test/0")
+    def bot():
+        b = GuildBot(strategy="explorer", storage=st)
+        b.config = {"party_cap": 5, "world_cap": 10, "roster_cap": 6,
+                    "maps": [{"id": "vale"}]}
+        b.tick = 500
+        return b
+    def vchar(uid, hand, inv):
+        return {"char_uid": uid, "eid": 1, "pos": [3, 3], "hp": 30, "max_hp": 30,
+                "stamina": 48, "max_stamina": 56, "level": 3, "stats": {},
+                "gifts": [], "statuses": [], "spells": [], "spell_cap": 1,
+                "carry": {"used": 0, "cap": 20}, "inventory": inv,
+                "equipment": {"hand": ({"kind": hand, "item_id": 1} if hand else None)}}
+    def vframe(chars, tick):
+        return {"world": "village", "tick": tick, "events": [],
+                "guild": {"guild_id": "g_us", "gold": 5,
+                          "chars_here": [c["char_uid"] for c in chars],
+                          "chars_by_world": {"vale": [f"v{i}" for i in range(5)]},
+                          "inventory": [], "market_listings": []},
+                "shop": {"stock": []}, "chars": chars}
+    b1 = bot()
+    b1.on_frame(vframe([vchar("t", "club", [])], 500))     # teacher wears a club
+    b1.on_frame(vframe([vchar("t", "club", [])], 510))     # next frame persists it
+    st.conn.commit()
+    b2 = bot()                                             # the restart
+    # the fresh bot's char wears a DAGGER (so nothing in-frame teaches club->hand)
+    # and carries a spare club: only the PERSISTED proof can stop the offhand probe.
+    # (The first draft had the char wearing a club — the same-frame learning proved
+    # the slot and both persistence mutants survived; fixture, not code.)
+    acts = b2.on_frame(vframe([vchar("s", "dagger",
+                                     [{"kind": "club", "item_id": 77,
+                                       "uses": ["equip", "attack"]}])], 600))
+    probes = [a for a in acts if a.get("action") == "equip"]
+    assert not probes, f"the restart forgot the proof and probed again: {probes}"

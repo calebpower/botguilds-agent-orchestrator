@@ -1250,12 +1250,14 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.109.1"
+    version = "explorer/0.109.2"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
         # rejected from (wrong_slot), and kinds that fail a stat requirement.
         self.slot_wrong: dict[str, set[str]] = defaultdict(set)
+        self._slots_hydrated = False
+        self._slots_persisted = 0
         self.slot_right: dict[str, str] = {}  # v0.109.1: kind -> slot PROVEN by seeing
                                               # any of our chars wear it (frames are
                                               # truth); a proven kind never slot-probes
@@ -1531,6 +1533,8 @@ class Explorer:
         self._learn_prices(frame)
         self._hydrate_forge(bot)
         self._hydrate_vault(bot)
+        self._hydrate_slots(bot)
+        self._persist_slots(bot)   # no-op unless the proof map grew last frame
 
         for char in chars:
             uid = char["char_uid"]
@@ -3729,6 +3733,40 @@ class Explorer:
             return parts[0], int(parts[1]), int(parts[2])
         except ValueError:
             return None
+
+    def _hydrate_slots(self, bot: "Any") -> None:
+        """Load the kind->slot proofs from EARLIER runs, once per process. The ladder
+        re-learned from zero on every restart (run #207: 4 wrong_slot probes for kinds
+        proven the run before) — and we restart several times a day. Best-effort."""
+        if self._slots_hydrated:
+            return
+        self._slots_hydrated = True
+        st = getattr(bot, "storage", None)
+        if st is None:
+            return
+        try:
+            row = intel.latest(st.conn, "slot_right")
+            if row and isinstance(row.get("data"), dict):
+                for k, v in (row["data"].get("map") or {}).items():
+                    self.slot_right.setdefault(k, v)
+        except Exception as e:
+            print(f"[equip] could not load slot proofs ({e}) — starting fresh",
+                  flush=True)
+
+    def _persist_slots(self, bot: "Any") -> None:
+        """Write the proof map when it has grown. Cheap (a dict of a few entries)."""
+        if len(self.slot_right) == self._slots_persisted:
+            return
+        st = getattr(bot, "storage", None)
+        if st is None:
+            return
+        try:
+            import time as _t
+            intel.record(st.conn, "slot_right", bot.tick, _t.time(),
+                         {"map": dict(self.slot_right)})
+            self._slots_persisted = len(self.slot_right)
+        except Exception:
+            pass                    # best-effort, never load-bearing
 
     def _hydrate_vault(self, bot: "Any") -> None:
         """Load the phantom vault ids proven in EARLIER runs, once per process — the
