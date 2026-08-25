@@ -279,3 +279,15 @@ Also noted: the server's own web viewer (web/app.js, sha de9a52bd..., baselined)
 only `count` from the grouped inventory and never dereferences `item_ids` — the ids'
 validity is exercised by nothing but the `drop` action, which is presumably how the
 rot went unnoticed.
+
+## Frame ghosts, live-char edition: a RETURNED char renders frozen in its old world (2026-08-25, run #214)
+
+The 2026-08-23 frame-ghost entry covered dead-to-the-roster chars. Run #214 shows the
+same render bug for a LIVE char: c19534 returned to the village (its village frame
+listed it; village actions worked), but the MINES frames kept rendering it at a frozen
+position (20,7) with stamina **64 of a 56 max** — an impossible value, a corrupt/stale
+snapshot — for ~2,000 ticks. Any client that trusts world-frame residency commands the
+ghost forever (we ate 3,654 `not_in_village` before mitigating). Signature for
+detection: frame-char state (pos/stamina/hp) identical across many ticks, stamina
+possibly above max. Mitigation shipped client-side: world-frame sightings only count
+as proof-of-life when the state CHANGES between sightings.

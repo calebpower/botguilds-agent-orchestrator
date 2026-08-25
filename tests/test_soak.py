@@ -205,3 +205,29 @@ def test_sim_vault_is_wire_v3_grouped_and_the_bot_still_withdraws():
            if i["kind"] == "potion_red"]
     assert set(ids) == {ghost, real}
     assert ids[0] == real, "newest-first ordering lost (the phantom head wins again)"
+
+
+def test_SOAK_a_frozen_render_must_not_become_an_error_storm():
+    """The live 2026-08-25 storm (run #214, 3,654 not_in_village): the server kept
+    rendering a RETURNED char in its old world at frozen pos and stamina-above-max;
+    the bot commanded moves off the ghost render every tick, and the quarantine and
+    the sighting-based unghosting re-armed each other at one error per tick. The
+    bounded-cost contract: a frozen render may cost a handful of probes, never a
+    storm."""
+    sim = SimServer(seed=SEED + 7, lag=3)
+    for n in range(4):
+        sim.add_char(f"f{n}", hand="club")
+    sim.guild_gold = 30
+    sim.seed_loot("vale", (4, 5), kind="egg")
+    bot, tracks = _soak(sim, 300)
+    # the ghost event: f0 (wherever it truly is) starts rendering frozen in the mines
+    sim.chars["f0"]["world"] = "village"
+    sim.freeze_render("f0", "mines")
+    for _ in range(600):
+        sim.step()
+        for frame in sim.frames():
+            acts = bot.on_frame(frame)
+            for rej in sim.apply(acts):
+                bot.on_action_error(rej)
+    niv = sum(1 for e in sim.errors if e["reason"] == "not_in_village")
+    assert niv <= 25, f"the frozen render became a storm: {niv} not_in_village"

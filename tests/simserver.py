@@ -80,6 +80,12 @@ class SimServer:
         self.events_out: list[dict] = []      # per-tick event feed (equip, death, ...)
         self.deaths: list[str] = []
         self._stalled = 0
+        self._frozen_renders: dict[tuple, dict] = {}   # (world, uid) -> frozen char
+                                                       # snapshot (the live server's
+                                                       # frame-ghost bug, 2026-08-25:
+                                                       # a returned char kept rendering
+                                                       # in its old world at frozen
+                                                       # pos/stamina for ~2000 ticks)
 
     # -- setup helpers ---------------------------------------------------------
 
@@ -127,6 +133,16 @@ class SimServer:
 
     def burst(self, n: int) -> None:
         self.tick += n
+
+    def freeze_render(self, uid: str, world: str) -> None:
+        """Model the live frame-ghost bug: keep emitting this char in ``world``'s
+        frames at its current (frozen) state even after it leaves — with the same
+        corrupt signature observed live (stamina pinned above max)."""
+        c = self.chars[uid]
+        snap = self._char_public(c)
+        snap["pos"] = list(c["pos"])
+        snap["stamina"] = c["max_stamina"] + 8          # the impossible 64/56
+        self._frozen_renders[(world, uid)] = snap
 
     # -- the tick --------------------------------------------------------------
 
@@ -215,7 +231,10 @@ class SimServer:
                               if u in self._village_snapshot]})
         for w, st in self.worlds.items():
             live = [c for c in self.chars.values() if c["world"] == w]
-            if not live:
+            ghosts = [snap for (gw, gu), snap in self._frozen_renders.items()
+                      if gw == w and (gu not in self.chars
+                                      or self.chars[gu]["world"] != w)]
+            if not live and not ghosts:
                 continue
             items = []
             for p, it in st["items"].items():
@@ -233,7 +252,7 @@ class SimServer:
                         "bounds": [self.width, self.height],
                         "next_refresh": {"band": 0, "in_ticks": st["next_refresh"]},
                         "chars": [dict(self._char_public(c), pos=list(c["pos"]))
-                                  for c in live],
+                                  for c in live] + [dict(g) for g in ghosts],
                         "visible": {"tiles": tiles, "entities": [], "items": items,
                                     "gold": [{"pos": list(p), "amount": 2}
                                              for p in st["gold"]]}})

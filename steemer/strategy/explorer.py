@@ -1250,7 +1250,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.110.2"
+    version = "explorer/0.110.3"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1343,6 +1343,7 @@ class Explorer:
                                          # N-loot/S-looted-out x2) dies of commitment
         self._scout_sent: dict = {}      # v0.106.1: world -> tick a scout was released to it
         self._ghosted: dict = {}         # v0.107.1: uid -> tick the server refused its command
+        self._ghost_seen: dict = {}      # v0.110.3: uid -> last sighted (pos, sta, hp)
         self._vault_pending: dict = {}      # char_uid -> item_id of an in-flight withdrawal
         self._village_intent: dict[str, tuple[str, int]] = {}
         # v0.52.0: (product, n_ingot, n_lumber) combinations the server has REJECTED, so a
@@ -2240,13 +2241,30 @@ class Explorer:
     def act(self, bot: "Any", char: dict[str, Any], frame: dict[str, Any],
             ctx: FieldContext, trace: DecisionTrace) -> None:
         uid = char["char_uid"]
-        # v0.109.3: EVIDENCE-BASED UNGHOSTING. A char acting in a FIELD frame is
-        # definitionally not a ghost — run #208 showed the quarantine's blunt edge:
-        # ~15 chars each flapped 2-6 not_in_village errors around their own
-        # departures (the stale chars_here lag), got 600-tick quarantines, and would
-        # have lost their village economy (sells/equips/buys) on return. A true
-        # limbo char (c19532) never appears in any world frame and stays barred.
-        self._ghosted.pop(uid, None)
+        # v0.109.3/v0.110.3: EVIDENCE-BASED UNGHOSTING, render-distrust edition.
+        # 0.109.3 popped the quarantine on ANY field sighting — and run #214's storm
+        # (3,654 not_in_village) proved the server can render a RETURNED char frozen
+        # in its old world (pos pinned, stamina 64 of a 56 max) for thousands of
+        # ticks: each ghost render "proved life", the bot re-commanded a move, the
+        # error re-stamped, one per tick. A sighting now counts only when the char's
+        # STATE CHANGES between sightings (pos/stamina/hp — a live char moves within
+        # ticks; a frozen render never does). A distrusted render gets NO actions;
+        # the 600-tick GHOST_TTL expiry remains the bounded escape for a genuinely
+        # motionless char (cost: one re-probe per TTL, never a storm).
+        if uid in self._ghosted:
+            _cur = (tuple(char["pos"]), char.get("stamina"), char.get("hp"))
+            _prev = self._ghost_seen.get(uid)
+            if _prev is not None and _prev != _cur:
+                self._ghosted.pop(uid, None)
+                self._ghost_seen.pop(uid, None)
+            elif bot.tick - self._ghosted.get(uid, 0) < GHOST_TTL:
+                self._ghost_seen[uid] = _cur
+                trace.observe("quarantined — frozen render distrusted, no commands")
+                trace.consider(None, 1.0, "ghost render; wait for real state change")
+                return
+            else:
+                self._ghosted.pop(uid, None)      # TTL expiry: one re-probe allowed
+                self._ghost_seen.pop(uid, None)
         if char.get("craft"):
             # A craft (brew/smelt/forge) occupies the character; any other action
             # is rejected with `crafting`, and moving/embarking abandons the work.

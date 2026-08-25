@@ -5419,3 +5419,24 @@ tracker); outside the vale the ordinary ladder (incl. the depth cap) governs. 1 
 mutant killed. My own 0.96.0 doctrine note ("the nuisance cannot dance — its scores
 outrank the retreat") is REFUTED for flickering signals and corrected in the comment.
 1176 local/reaper green. Watch count restarts on deploy.
+
+ITER 110 (2026-08-25, explorer/0.110.3): THE FROZEN RENDER STORM. Measurement first:
+21/30 armed (leveling gate ~25 approaching), levels [9,8,7,...], 5 brews, 48 xp events,
+1 death, WillMorr fielding 10 (vale 5 + mines 5 — the nuisance stage is live again) —
+and deploy_check flagged a REAL storm: 3,654 not_in_village on #214. ROOT: the server's
+frame-ghost bug, live-char edition — c19534 RETURNED home but the mines frames kept
+rendering it frozen at (20,7) with stamina 64/56 (impossible) for ~2,000 ticks; the bot
+commanded moves off the ghost render every tick, and 0.109.3's sighting-equals-life
+unghosting re-armed the quarantine loop at 1 error/tick (the quarantine and its own
+escape hatch fighting). PROCESS AS DIRECTED: sim repro FIRST (SimServer.freeze_render
+models the corrupt snapshot incl. the above-max stamina signature; the soak test
+reproduced the storm on the old build), THEN the fix: RENDER DISTRUST — a sighting
+counts only when (pos, stamina, hp) CHANGES between sightings; a distrusted render gets
+NO field actions; GHOST_TTL expiry allows one re-probe per cycle (bounded cost, no
+starvation of a genuinely motionless char — tested). 0.109.3's single-sighting test
+updated deliberately (a moving char unghosts in 2 ticks). 2 mutants killed cleanly
+(sighting-equals-life revert -> soak storm; TTL-escape removed -> motionless-freeze
+test). Hygiene ratchet caught a derived fixture -> literal+pin. server_bugs.md gains
+the live-char frame-ghost entry with the stamina-above-max detection signature. 1178
+local/reaper green. NEXT: deploy + watch; then the leveling pass (sim pass 2: mobs)
+once arming crosses ~25/30.

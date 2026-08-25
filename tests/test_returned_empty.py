@@ -264,12 +264,45 @@ def test_a_field_sighting_UNGHOSTS_a_departure_flap():
     bot.on_action_error({"char_uid": "r1", "reason": "not_in_village",
                          "tick": 600, "action": "move"})
     assert "r1" in bot.strategy._ghosted
-    # the char then acts in a vale frame — proof it is real and fielded
+    # v0.110.3: ONE static sighting is no longer proof — run #214's server bug
+    # rendered a returned char frozen in its old world for thousands of ticks, and
+    # sighting-equals-life turned the quarantine into a 1-error-per-tick loop. Life
+    # is a sighting whose STATE CHANGED: the flap char appears, then appears again
+    # somewhere else (a live char always moves or regens within ticks).
     tiles = [[x, y, "floor"] for x in range(4) for y in range(4)]
-    bot.on_frame({"type": "frame", "world": "vale", "tick": 610, "events": [],
-                  "bounds": [4, 200], "chars": [_char("r1", pos=(1, 1))],
-                  "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}})
-    assert "r1" not in bot.strategy._ghosted, "a fielded char stayed quarantined"
+    def vale(tick, pos):
+        return {"type": "frame", "world": "vale", "tick": tick, "events": [],
+                "bounds": [4, 200], "chars": [_char("r1", pos=pos)],
+                "visible": {"tiles": tiles, "entities": [], "items": [], "gold": []}}
+    bot.on_frame(vale(610, (1, 1)))
+    assert "r1" in bot.strategy._ghosted, "a single static sighting unghosted"
+    bot.on_frame(vale(612, (1, 2)))                   # it MOVED: alive
+    assert "r1" not in bot.strategy._ghosted, "a moving char stayed quarantined"
     # and on return it embarks/works normally
     acts = bot.on_frame(_village([_char("r1")], _pad(), tick=650))
     assert _embarks(acts), "the returned flap-char was still barred"
+
+
+def test_the_render_distrust_TTL_escape_reprobes_a_motionless_char():
+    """v0.110.3 — the bounded escape: a char whose sightings never change stays
+    distrusted only until GHOST_TTL; then ONE re-probe is allowed (a genuinely
+    motionless char resumes; a true frozen render re-errors and re-stamps at a cost
+    of one command per TTL, never a storm)."""
+    from steemer.strategy.explorer import GHOST_TTL
+    assert GHOST_TTL == 600, "the TTL moved; re-read the numbers in this test"
+    bot = _bot()
+    bot.tick = 600
+    bot.on_action_error({"char_uid": "r1", "reason": "not_in_village",
+                         "tick": 600, "action": "move"})
+    tiles = [[x, y, "floor"] for x in range(4) for y in range(6)]
+    def vale(tick):
+        return {"type": "frame", "world": "vale", "tick": tick, "events": [],
+                "bounds": [4, 200], "chars": [_char("r1", pos=(1, 3))],
+                "visible": {"tiles": tiles, "entities": [], "items": [],
+                            "gold": [{"pos": [1, 2], "amount": 2}]}}
+    a1 = bot.on_frame(vale(610))          # baseline sighting
+    a2 = bot.on_frame(vale(612))          # identical -> distrusted, no commands
+    assert not [a for a in a2 if a.get("char_uid") == "r1"], a2
+    a3 = bot.on_frame(vale(1201))                  # 600 + TTL(600) + 1: expired
+    assert [a for a in a3 if a.get("char_uid") == "r1"], \
+        "the motionless char was frozen out forever"
