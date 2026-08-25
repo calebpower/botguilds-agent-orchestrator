@@ -5389,3 +5389,19 @@ upstream-change rehearsal, exactly the scenario it was built for yesterday. 3 br
 tests + old-format replay claim named; 2 mutants killed (expansion dropped,
 oldest-first). 1173 local/reaper green. NEXT: deploy + watch; watch the first
 tail-end withdrawal (a REAL vault potion would be the heal economy's jackpot).
+
+ITER 108 (2026-08-25, explorer/0.110.1): THE VAULT IS A TALLY OF GHOSTS. Wire v3's
+first live probes settled the "use any id" question the DARK way: tail ids 404 like
+the head — 78/78 distinct ids dead across runs, zero successes ever, count frozen at
+202. The stack's count survived whatever consumed the items (server_bugs.md addendum
+with repro). LEVER: THE KNOWLEDGE FRONTIER — probe only ids NEWER than the newest
+known phantom (_vault_frontier = max(dead); ids ascend with creation): zero standing
+waste on the graveyard, automatic probing of any genuinely new banked item (a brew, a
+delivery), no writeoff to undo. Wired at all 3 withdrawal sites. 2 new tests
+(graveyard-never-reprobed / new-id-probed), 2 mutants killed (revert-to-set-check,
+frontier-always-open); 2 superseded pins REVERSED deliberately with rationale
+(fall-through within a group + the storm test's below-frontier club id). 1175
+local/reaper green. Watch 3/3 CLEAN on 0.110.0 beforehand. NEXT: deploy 0.110.1 +
+watch; the heal economy now rests entirely on BREWS banking fresh (above-frontier!)
+vault ids — the first brewed potion deposited will prove the frontier's auto-resume
+live.

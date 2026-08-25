@@ -152,9 +152,12 @@ def test_a_potion_phantom_storm_does_NOT_starve_the_club_probe():
         bot.strategy._vault_pending["c1"] = 9600 + n         # through the real path
         bot.on_action_error({"char_uid": "c1", "action": "drop",
                              "reason": "no_such_item", "tick": 500 + n})
+    # v0.110.1: the club id must sit ABOVE the storm's phantom range (the
+    # knowledge frontier) — a below-frontier id is correctly never probed now.
+    fresh_club = {"kind": "club", "item_id": 9999}
     acts = bot.on_frame(_village([_char("c1", hand="club"), _char("c2")],
-                                 vault=[CLUB], gold=20))
-    assert {"char_uid": "c2", "action": "drop", "item_id": 9001} in acts, \
+                                 vault=[fresh_club], gold=20))
+    assert {"char_uid": "c2", "action": "drop", "item_id": 9999} in acts, \
         f"the potion storm starved the club probe: {acts}"
 
 
@@ -205,14 +208,17 @@ def test_wire_v3_grouped_vault_still_arms_and_withdraws():
         f"grouped vault not bridged (or newest-first lost): {drops}"
 
 
-def test_wire_v3_dead_ids_are_skipped_within_a_group():
+def test_wire_v3_a_dead_NEWEST_id_condemns_the_older_stack():
+    """v0.110.1 REVERSES the fall-through this test first pinned, deliberately: with
+    78/78 probed ids dead across the id range, an id below the newest phantom is
+    graveyard by inference — the frontier skips it rather than spending budget
+    re-proving the pattern one entry at a time."""
     bot = _bot()
     bot.strategy._vault_dead.add(9002)                  # the newest is a phantom
     vault = [{"kind": "club", "tier": 1, "count": 2, "item_ids": [9001, 9002]}]
     acts = bot.on_frame(_village([_char("c1")], vault=vault, gold=20))
-    drops = [a for a in acts if a.get("action") == "drop"]
-    assert drops and drops[0]["item_id"] == 9001, \
-        f"did not fall through the group past the dead id: {drops}"
+    assert all(a.get("action") != "drop" for a in acts), \
+        f"spent budget below the frontier: {acts}"
 
 
 def test_old_format_frames_still_work_for_replay():
@@ -221,3 +227,29 @@ def test_old_format_frames_still_work_for_replay():
     names the claim so the ratchet knows it is deliberate."""
     acts = _bot().on_frame(_village([_char("c1")], vault=[CLUB], gold=20))
     assert {"char_uid": "c1", "action": "drop", "item_id": 9001} in acts
+
+
+# ---- v0.110.1: the knowledge frontier ----------------------------------------
+
+def test_a_graveyard_stack_below_the_frontier_is_never_reprobed():
+    """78/78 probed vault ids are dead (wire v3 proved head AND tail); ids ascend
+    with creation. With every listed id at or below the newest known phantom, no
+    probe is issued at all — the budgets stop being spent on a proven graveyard."""
+    bot = _bot()
+    bot.strategy._vault_dead.update({9001, 9005})       # frontier = 9005
+    vault = [{"kind": "club", "tier": 1, "count": 2, "item_ids": [9000, 9003]}]
+    acts = bot.on_frame(_village([_char("c1")], vault=vault, gold=20))
+    assert all(a.get("action") != "drop" for a in acts), \
+        f"re-walked the graveyard below the frontier: {acts}"
+
+
+def test_a_NEW_id_above_the_frontier_is_probed_automatically():
+    """A genuinely new banked item (a brew, a delivery) gets a fresh higher id —
+    the frontier lets it through with no reset, no writeoff to undo."""
+    bot = _bot()
+    bot.strategy._vault_dead.update({9001, 9005})
+    vault = [{"kind": "club", "tier": 1, "count": 3, "item_ids": [9000, 9003, 9100]}]
+    acts = bot.on_frame(_village([_char("c1")], vault=vault, gold=20))
+    drops = [a for a in acts if a.get("action") == "drop"]
+    assert drops and drops[0]["item_id"] == 9100, \
+        f"the fresh id was not probed: {acts}"

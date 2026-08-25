@@ -243,3 +243,17 @@ stopped. The pause-then-sprint shape suggests the server process being suspended
 resumed (host sleep? VM migration?) rather than load, which degrades gradually. Effect
 on clients: every tick-driven mechanic (band refreshes, cooldowns, regen) is frozen —
 a bot can look "idle/broken" while behaving correctly against a stopped world.
+
+## Wire v3 addendum: the grouped vault's `count` is a tally of ghosts (2026-08-25, runs #204-#212)
+
+The v3 regrouping exposed the full shape of the phantom-inventory bug: the potion_red
+stack lists `count: 202` with 202 `item_ids`, and **78 distinct ids probed across
+runs — head AND tail of the list — all answer `no_such_item`, with zero successful
+withdrawals ever**. The docs' "use any of those ids in actions" therefore reads as
+"any valid id", and this stack appears to contain none: the count is a tally that
+survived whatever consumed the items (drunk potions? old brews?) and the regrouping
+compacted the stale ids rather than collecting them. Repro: `drop` any id from the
+potion_red group's `item_ids` in the village. Contrast: lumber withdrawals succeed,
+so the staleness is kind- or event-correlated, not universal. Client mitigation:
+probe only ids NEWER than the newest known phantom (ids ascend with creation), so a
+genuinely new banked item is tried automatically and the graveyard is never re-walked.

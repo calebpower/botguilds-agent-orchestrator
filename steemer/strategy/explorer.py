@@ -1250,7 +1250,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.110.0"
+    version = "explorer/0.110.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1708,7 +1708,7 @@ class Explorer:
                 banked = next((i for i in protocol.vault_items(frame.get("guild"))
                                if i.get("kind") == "potion_red"
                                and i.get("item_id") is not None
-                               and i.get("item_id") not in self._vault_dead), None)
+                               and i.get("item_id") > self._vault_frontier()), None)
                 # Fail closed: a vault whose first VAULT_DEAD_LIMIT potion ids are all
                 # phantoms is a vault we do not understand — stop withdrawing this run
                 # rather than walking 202 entries of an error storm, and let the shop buy
@@ -1752,7 +1752,7 @@ class Explorer:
                     (i for i in protocol.vault_items(frame.get("guild"))
                      if i.get("kind") in VAULT_ARM_KINDS
                      and i.get("item_id") is not None
-                     and i.get("item_id") not in self._vault_dead), None)
+                     and i.get("item_id") > self._vault_frontier()), None)
                 if banked_club is not None:
                     self._vault_pending_arm.add(banked_club["item_id"])
                     self._vault_pending[uid] = banked_club["item_id"]
@@ -1897,7 +1897,7 @@ class Explorer:
                     (i for i in protocol.vault_items(guild)
                      if str(i.get("kind", "")).startswith("lumber")
                      and i.get("item_id") is not None
-                     and i.get("item_id") not in self._vault_dead), None)
+                     and i.get("item_id") > self._vault_frontier()), None)
                 if banked_lum is not None:
                     self._vault_pending[uid] = banked_lum["item_id"]
                     return [self._village_act(
@@ -3776,6 +3776,16 @@ class Explorer:
             return parts[0], int(parts[1]), int(parts[2])
         except ValueError:
             return None
+
+    def _vault_frontier(self) -> int:
+        """The newest item_id ever proven phantom. Wire v3 exposed the truth of the
+        vault (2026-08-25): 78 distinct ids probed across runs, head AND tail, zero
+        successes — the listed stacks are graveyards, and ids ascend with creation.
+        Only ids ABOVE this frontier are worth a probe: a genuinely new banked item
+        (a brew, a delivery) gets a fresh higher id and is tried automatically,
+        while the known-dead range is never re-walked. Zero standing waste, no
+        writeoff risk."""
+        return max(self._vault_dead, default=-1)
 
     def _hydrate_slots(self, bot: "Any") -> None:
         """Load the kind->slot proofs from EARLIER runs, once per process. The ladder
