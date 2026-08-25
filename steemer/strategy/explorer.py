@@ -868,6 +868,9 @@ HEAL_DEPTH_BONUS = 16      # v0.107.0: extra rows of allowed depth per CARRIED p
                            # must be coverable by one potion; y<28 with one still reaches
                            # the observed veins at 26-27, while the arch-wizard's fatal
                            # y=31 is barred). Wizards get NO bonus (protected, shallow).
+DEAD_CAPITAL_KEEP = 1      # v0.109.0: what a dead-capital weapon buy leaves behind —
+                           # a token float; the point is converting unusable coins into
+                           # a fighter, not zeroing the ledger.
 POTION_MIN_BUFFER = 10     # v0.106.0: what a POTION (or bottle) buy must leave behind —
                            # a minimal operating float, NOT the full POTION_RESERVE.
                            # The reserve protects heal-spending from weapons/armor; it
@@ -1247,7 +1250,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.108.1"
+    version = "explorer/0.109.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -1745,8 +1748,21 @@ class Explorer:
                                    "item_id": banked_club["item_id"]},
                         f"withdrawing a banked {banked_club['kind']} (free, vs 15g at "
                         f"the shop) — arming from the stash instead of the treasury")]
-            if eqp.get("hand") is None and gold > WEAPON_BUY_FLOOR and not is_fodder:
-                buy = self._afford_weapon(char, frame, gold)
+            # v0.109.0 DEAD-CAPITAL ARMING: at 2026-08-24's treasury (gold 16, 1/30
+            # armed) the gold could buy NOTHING — below the potion gate (30) AND the
+            # weapon floor (45) — while the disarmed roster generated no kills, no
+            # bones, no brews, no income. When the POTION BUY ITSELF says it cannot
+            # fire (_afford_potion is None: priced out or out of stock), the floor is
+            # protecting a heal that cannot happen; a bare char may then buy the
+            # cheapest weapon it qualifies for, keeping DEAD_CAPITAL_KEEP behind.
+            # The reachable-heal case is untouched: while a potion IS affordable,
+            # only the classic floor opens the weapon branch.
+            _dead_capital = (self._afford_potion(frame, gold) is None)
+            if (eqp.get("hand") is None and not is_fodder
+                    and (gold > WEAPON_BUY_FLOOR or _dead_capital)):
+                buy = self._afford_weapon(char, frame, gold - DEAD_CAPITAL_KEEP
+                                          if _dead_capital and gold <= WEAPON_BUY_FLOOR
+                                          else gold)
                 if buy is not None:
                     kind, price = buy
                     return [self._village_act(

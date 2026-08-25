@@ -5248,3 +5248,23 @@ refinement candidate noted: probe budgets per N ticks instead of per run. No lev
 shipped (clock still bursty; the income lever needs a sustained world — own rule: do
 not ship what cannot be validated). All guilds remain villaged server-wide. NEXT: clock
 check; income lever + full battery on sustained resume.
+
+ITER 100 (2026-08-24, explorer/0.109.0): DEAD-CAPITAL ARMING. The hour's ~3300-tick
+catch-up burst measured CLEAN (0 deaths, 0 dancers, single-digit errors, 13 pickups,
+3 potion buys) but exposed the deadlock in one number: **1/30 armed** (a single lvl-8
+dagger-holder) at gold 16 — below the potion gate (30) AND the weapon floor (45), so
+the treasury was DEAD CAPITAL buying nothing forever while the disarmed roster
+generated no kills -> no bones -> no brews -> no income. LEVER: when _afford_potion
+ITSELF reports no buy can fire (priced out or out of stock), the weapon floor is
+protecting a heal that cannot happen — a bare non-fodder char then buys the cheapest
+weapon it qualifies for, keeping DEAD_CAPITAL_KEEP=1 behind. The reachable-heal case
+is untouched (floor still gates while a potion is affordable). Serves the operator's
+standing arming+leveling direction directly. 4 tests: the gold-16 deadlock fixture /
+reachable-heal-never-robbed / token-float boundary (15 no, 16 yes) / potion-HOLDER at
+mid-gold buys no weapon — the LAST one is what killed the drop-the-floor mutant (M2
+survived the first fixture because heal-first preempts; isolating the floor's real
+protection took a potion-holding char). The 0.28/0.29 hoard pin REVERSED deliberately
+with rationale in-file. 3 mutants killed. 1154 local/reaper green. Validation plan
+(burst-compatible): next burst should show buy:club events for bare chars, armed
+fraction climbing from 1/30, then attacks/bones. NEXT: deploy + 3x2min watch; then
+armed-sentinel preference if arming alone doesn't lift combat.

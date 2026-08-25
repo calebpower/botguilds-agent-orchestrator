@@ -1528,13 +1528,16 @@ def test_broke_char_below_cheapest_weapon_buys_nothing():
     assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(14)))
 
 
-def test_hoard_buys_neither_weapon_nor_potion_while_bare_handed():
-    # v0.28.0 + v0.29.0: at gold 20 the old logic would arm (weapon before potion);
-    # now the weapon-buy is frozen (0.28.0) and the potion-buy is gated on
-    # POTION_RESERVE (0.29.0) — 20 - 20 = 0 is far below the 100 reserve — so a bare
-    # char at 20g buys nothing at all; every coin stays in the treasury.
+def test_a_bare_char_at_dead_capital_gold_ARMS_instead_of_hoarding():
+    # v0.109.0 REVERSES the 0.28/0.29-era hoard pin, deliberately: at gold 20 the
+    # potion gate (price 20 + buffer 10 = 30) is unreachable, so the coins were dead
+    # capital — 2026-08-24 ran a 1/30-armed roster at gold 16-26 for a full day and
+    # bought NOTHING while income stayed zero for want of fighters. When the potion
+    # buy itself reports unreachable, the bare char arms with the cheapest weapon.
     bot = _bot()
-    assert all(a.get("action") != "buy" for a in bot.on_frame(_barehand_frame(20)))
+    buys = [a for a in bot.on_frame(_barehand_frame(20)) if a.get("action") == "buy"]
+    assert buys and buys[0]["kind"] != "potion_red", \
+        f"dead capital hoarded again (or a phantom heal was bought): {buys}"
 
 
 def test_village_heals_a_potionless_char_only_above_the_reserve():

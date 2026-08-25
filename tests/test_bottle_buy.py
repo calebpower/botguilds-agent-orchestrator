@@ -414,3 +414,60 @@ def test_the_bottle_still_respects_the_operating_buffer():
 def test_no_herbs_no_bottle_at_ANY_gold():
     """The `picks` gate is what keeps this from being a standing 2g tax."""
     assert not _buys(gold=500, inv=[]), "bought a bottle with nothing to brew"
+
+
+# ---- v0.109.0: dead-capital arming ------------------------------------------
+
+def _bare_shop_frame(gold, stock):
+    f = _frame(gold, [], stock=stock)
+    f["chars"][0]["equipment"]["hand"] = None
+    return f
+
+
+def test_DEAD_CAPITAL_arms_when_the_potion_gate_is_unreachable():
+    """2026-08-24's deadlock in one fixture: gold 16 sits below the potion gate (30)
+    and the weapon floor (45) — dead capital, buying nothing forever, while 1/30 of
+    the roster held a weapon. When _afford_potion itself says no buy can fire, the
+    floor is protecting a heal that cannot happen: the bare char buys the club."""
+    f = _bare_shop_frame(16, [{"kind": "club", "buy_price": 15},
+                              {"kind": "potion_red", "buy_price": 20}])
+    buys = [a for a in Explorer().village(_Bot(), f) if a.get("action") == "buy"]
+    assert buys and buys[0]["kind"] == "club", f"dead capital stayed dead: {buys}"
+
+
+def test_a_REACHABLE_heal_is_never_robbed_by_the_weapon():
+    """gold 35: the potion IS affordable (35-20 >= 10), so heal-first buys it and the
+    dead-capital branch must not preempt — the classic ordering invariant holds."""
+    f = _bare_shop_frame(35, [{"kind": "club", "buy_price": 15},
+                              {"kind": "potion_red", "buy_price": 20}])
+    buys = [a for a in Explorer().village(_Bot(), f) if a.get("action") == "buy"]
+    assert buys and buys[0]["kind"] == "potion_red", \
+        f"the weapon robbed a reachable heal: {buys}"
+
+
+def test_dead_capital_keeps_its_token_float():
+    """gold 15 with a 15g club: buying would zero the ledger — DEAD_CAPITAL_KEEP=1
+    must hold it back; at 16 it fires (15 spent, 1 kept)."""
+    from steemer.strategy.explorer import DEAD_CAPITAL_KEEP
+    assert DEAD_CAPITAL_KEEP == 1, "the float moved; re-read the numbers in this test"
+    stock = [{"kind": "club", "buy_price": 15}, {"kind": "potion_red", "buy_price": 20}]
+    at15 = [a for a in Explorer().village(_Bot(), _bare_shop_frame(15, stock))
+            if a.get("action") == "buy"]
+    assert not at15, f"zeroed the ledger: {at15}"
+    at16 = [a for a in Explorer().village(_Bot(), _bare_shop_frame(16, stock))
+            if a.get("action") == "buy"]
+    assert at16 and at16[0]["kind"] == "club"
+
+
+def test_a_potion_HOLDER_at_mid_gold_does_not_buy_a_weapon():
+    """The floor's real protection, isolated: heal-first is satisfied (a potion is in
+    the pack), gold 35 is under the floor and NOT dead capital (a next potion is
+    affordable at 35) — so no weapon buy; the reserve stays for the next heal. This
+    is the fixture that kills the drop-the-floor-entirely mutant, which the
+    REACHABLE-heal test could not (heal-first preempts there)."""
+    f = _frame(35, [{"kind": "potion_red", "item_id": "p1"}],
+               stock=[{"kind": "club", "buy_price": 15},
+                      {"kind": "potion_red", "buy_price": 20}])
+    f["chars"][0]["equipment"]["hand"] = None
+    buys = [a for a in Explorer().village(_Bot(), f) if a.get("action") == "buy"]
+    assert not buys, f"the floor stopped protecting the next heal: {buys}"
