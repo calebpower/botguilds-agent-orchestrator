@@ -381,3 +381,31 @@ recruitment), though the roster is mostly fresh recruits by now (confounded). Th
 began/accelerated mid-run — if a server deploy landed today, a char-cleanup/GC regression
 is a plausible shape. Our recruit spend at this rate: ~30g/1k (clubs), pinning guild gold
 at ~0-11 despite healthy income — the tome/magic pipeline is fully blocked on this bug.
+
+## CONCLUSIVE (2026-08-26 ~02:55): per-guild frame PRODUCTION lag — the server builds our
+## guild's frames slower than real time; the guild is fully paralyzed
+
+Measured directly: public `/api/spectate/guilds` reports tick **2,862,974** while our
+freshest delivered frame is tick **2,862,783** — **191 ticks (~48 s) behind**, up from 22
+ticks at session birth ~20 min earlier, i.e. the offset GROWS ~0.1 s/s even though the
+client now consumes at wire speed. Every action we send is therefore stale on arrival:
+**0 of our moves have landed for hours** (4,352 stale_frame rejections in the last 1.3k
+ticks alone). Rivals are unaffected (their move volume unchanged all night), so the lag
+is OUR GUILD's frame pipeline server-side.
+
+Client-side exhausted, all shipped + verified tonight: 0.115.1 self-heal re-hello (fired
+autonomously; sessions inherit the lag — it is per-GUILD, not per-session), 0.115.2
+decide-on-freshest (we no longer add ANY client-side backlog; verified by wall==tick-
+implied consumption). Tick-compensation was considered and rejected: the offset grows
+without bound, so no constant correction converges.
+
+Hypothesis for Will: our guild's server-side state was churned hard today by the char
+DELETION bug (~100 chars silently deleted + our recruit refills). If frame assembly
+walks any per-guild registry that never GCs deleted chars, our build cost now exceeds
+tick_seconds — matching the growth curve, the cross-session persistence, and the
+guild-specificity. A server restart or a purge of our guild's dead-char state should
+confirm. (Also observed: guild color changed #00ffff -> #ff8000 tonight — if a manual
+poke at guild state happened, that's a correlation datum, not an accusation.)
+
+EXPOSURE while this stands: ~7 fielded chars cannot flee (permadeath); the guild cannot
+recruit, embark, gather, or bank.
