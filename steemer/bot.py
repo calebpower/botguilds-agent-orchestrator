@@ -472,6 +472,13 @@ class GuildBot:
         a = self.anomaly.record(message.get("tick", self.tick), message.get("reason"))
         if a is not None:
             self._report_anomaly(a)
+        # v0.116.1 STORM SHELTER stamp: session-poison rejections mean the server is
+        # not applying our actions — any char we embark now may be STRANDED unable to
+        # flee when the next storm peaks (run 229: 8 deaths including the last two
+        # leveled chars, Recruit-19840 lvl6 among them). The strategy reads this stamp
+        # to hold embarks until the stream has stayed clean for a full shelter window.
+        if message.get("reason") in ("stale_frame", "unknown_character"):
+            self._storm_last = message.get("tick", self.tick)
 
     # -- anomaly self-reporting ----------------------------------------------
 

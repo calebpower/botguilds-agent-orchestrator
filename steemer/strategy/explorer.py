@@ -1186,6 +1186,13 @@ HOME_CLEAR_FRAC = 0.5   # v0.16.0: a char latches into "heading home" when full 
 #   which happens after the village sells its haul. Hysteresis (enter at cap-1, exit
 #   at half-cap) stops the latch flickering, and suppressing pickup while homing is
 #   what kills the 0.15.0 pickup<->drop thrash (a shed item re-grabbed off own tile).
+STORM_SHELTER_TICKS = 2000     # v0.116.1: after a session-poison rejection (stale_frame /
+                               # unknown_character — the server not applying our actions),
+                               # hold ALL embarks until the stream has stayed clean this
+                               # long. A char fielded during the choppy oscillation is
+                               # STRANDED when the next storm peaks (run 229: 8 deaths,
+                               # including our last two leveled chars). Matches the
+                               # "safe to measure" criterion: 2k clean ticks.
 
 
 WIZARD_SEATS = 6           # v0.88.0 (operator): a MAXIMUM of six wizards, two per map
@@ -1313,7 +1320,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.116.0"
+    version = "explorer/0.116.1"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2095,7 +2102,21 @@ class Explorer:
         # income -> no gold -> can't arm -> field stays empty). A bare char in the
         # field still picks up loot and pads a slot, which beats an empty one; arming
         # them is the village loop's job, not a reason to bench them.
-        if here_avail and fielded + len(inflight) < world_cap:
+        # v0.116.1 STORM SHELTER: while the server is rejecting our actions as
+        # session-poison (bot._storm_last stamped in on_action_error), fielding anyone
+        # is walking them into a stranding — they cannot flee once the storm peaks.
+        # The bench waits out the weather; fielded chars keep their normal retreat
+        # ladder (which lands during clean windows and brings them home).
+        _storm_last = getattr(bot, "_storm_last", None)
+        _sheltering = (_storm_last is not None
+                       and tick - _storm_last < STORM_SHELTER_TICKS)
+        if _sheltering and here_avail:
+            if tick - getattr(self, "_shelter_said", -10**9) >= 300:
+                self._shelter_said = tick
+                print(f"[shelter] holding {len(here_avail)} embarks — poison errors "
+                      f"{tick - _storm_last} ticks ago (< {STORM_SHELTER_TICKS})",
+                      flush=True)
+        if here_avail and not _sheltering and fielded + len(inflight) < world_cap:
             maps = [m["id"] for m in cfg.get("maps", [])] or list(DEFAULT_MAPS)
             party_cap = cfg.get("party_cap", 5)
             # v0.26.0: SAFE-WORLD routing — field into the world with the lowest

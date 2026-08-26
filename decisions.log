@@ -5731,3 +5731,11 @@ self-tested). Models RUNTIME fail-closed emission already existed — pinned by 
 (poisoned artifact -> '[models] ... scoring failed'). 7 tests, 5/5 mutants killed.
 INCIDENT STANDING: guild duty-cycles ~10% on the self-heal (clean windows shrinking
 6.7k->300t; dead-session accumulation hypothesis filed for Will).
+
+ITER 129 (2026-08-26) — explorer/0.116.1: STORM SHELTER. Run 229's deaths hit 8 and took
+the last two LEVELED chars (19840 lvl6 top-INT + 19883) — all strandings: fielded during
+clean windows, paralyzed at the next storm peak, killed unable to flee. Shelter: poison
+rejection (stale_frame/unknown_character) stamps bot._storm_last; village holds ALL
+embarks until 2000 clean ticks. Stamina errors never shelter. 2 e2e tests, 3/3 mutants
+killed. Defensive only — the lag remains Will's (diagnosis conclusive, offset 309-332
+oscillating). Also this hour: monitor v3 adaptive cooldown (known patterns hourly).
