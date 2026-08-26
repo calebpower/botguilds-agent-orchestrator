@@ -100,3 +100,41 @@ def test_a_models_runtime_failure_emits_the_disabled_line(capsys):
     finally:
         models._cache.pop("death_risk", None)
         models._warned.discard("death_risk")
+
+
+def test_sheltering_suppresses_kpis_and_restarts_the_collapse_clock():
+    """v0.116.2: a shelter-held bench (deliberate fielded=0) must not flag —
+    and on release the 600-tick collapse measurement starts FRESH, so a healthy
+    post-release embark wave has time to land before anyone cries collapse."""
+    m = KpiMonitor()
+    # the collapse clock is ALREADY RUNNING when the shelter engages (fielded had
+    # collapsed for 400 ticks first) — the reset must wipe that epoch, else the
+    # post-release flag fires instantly off the stale clock.
+    for t in range(600, 1000, 10):
+        m.observe(t, fielded=0, bench=10)
+    for t in range(1000, 4000, 10):
+        assert not m.observe(t, fielded=0, bench=10, sheltering=True), \
+            "flagged the intentional shelter bench-down"
+    # released at t=4000; collapse conditions persist (a REAL problem now) — the
+    # flag must come only after a fresh full window, not instantly.
+    flags = []
+    for t in range(4000, 4600, 10):
+        flags += m.observe(t, fielded=0, bench=10)
+    assert not flags, f"flagged before a fresh post-release window elapsed: {flags}"
+    flags = m.observe(4610, fielded=0, bench=10)
+    assert [a["subtype"] for a in flags] == ["kpi:fielded_collapse"], \
+        "a real post-release collapse never flagged"
+
+
+def test_the_shelter_flag_reaches_the_kpi_monitor_through_the_real_bot(capsys):
+    """Wiring: a poison error stamps bot._storm_last; the village frames that follow
+    must NOT print kpi:fielded_collapse even after 700 sheltered ticks."""
+    bot = GuildBot(strategy="explorer")
+    bot.config = {"party_cap": 5, "world_cap": 10, "roster_cap": 10,
+                  "maps": [{"id": "vale"}]}
+    bot.on_action_error({"tick": 4990, "reason": "stale_frame"})
+    for t in range(5000, 5700, 10):
+        bot.on_frame(_village(t, {}, 8))
+    out = capsys.readouterr().out
+    assert "kpi:fielded_collapse" not in out, \
+        f"the sheltered bench-down still flagged: {out[-300:]}"

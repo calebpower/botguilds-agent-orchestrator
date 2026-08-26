@@ -5739,3 +5739,12 @@ rejection (stale_frame/unknown_character) stamps bot._storm_last; village holds 
 embarks until 2000 clean ticks. Stamina errors never shelter. 2 e2e tests, 3/3 mutants
 killed. Defensive only — the lag remains Will's (diagnosis conclusive, offset 309-332
 oscillating). Also this hour: monitor v3 adaptive cooldown (known patterns hourly).
+
+ITER 130 (2026-08-26) — explorer/0.116.2: KPI shelter-suppression (alert hygiene). While
+the storm shelter holds the bench, fielded_collapse/xp_stall read their expected-bad
+values BY DESIGN — observe(sheltering=True) suppresses both and RESETS the collapse
+clock so release starts a fresh 600t window (mutant caught the reset mattering only when
+the clock was already running pre-shelter — test hardened). 3/3 mutants killed. ALSO this
+pass: controlled restart experiment (baseline ~16 -> 75s at 2-5 -> overshoot 26-31; NO
+manual restarts policy; artifact updated for Will 562be78d). Strategy levers stay parked
+until offset <8 sustained.

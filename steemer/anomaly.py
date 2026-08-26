@@ -118,8 +118,16 @@ class KpiMonitor:
         last = self._last_flagged.get(family)
         return last is None or tick - last >= self.cooldown
 
-    def observe(self, tick: int, fielded: int, bench: int) -> list[dict[str, Any]]:
+    def observe(self, tick: int, fielded: int, bench: int,
+                sheltering: bool = False) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
+        # v0.116.2: while the STORM SHELTER holds the bench (a deliberate fielded=0),
+        # both KPIs read their expected-bad values by DESIGN — flagging them would
+        # cry wolf hourly for the length of a server incident. Suppress and reset the
+        # collapse clock so release starts a fresh 600-tick measurement.
+        if sheltering:
+            self._collapse_since = None
+            return out
         if fielded <= self.collapse_max and bench >= self.bench_min:
             if self._collapse_since is None:
                 self._collapse_since = tick

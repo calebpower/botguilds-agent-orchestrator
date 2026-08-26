@@ -255,9 +255,13 @@ class GuildBot:
                                          if e.get("kind") == "xp"))
         if frame.get("world") == "village":
             by_world = guild.get("chars_by_world") or {}
+            from .strategy.explorer import STORM_SHELTER_TICKS
+            _storm = getattr(self, "_storm_last", None)
             for a in self.kpis.observe(self.tick,
                                        sum(len(v) for v in by_world.values()),
-                                       len(guild.get("chars_here") or [])):
+                                       len(guild.get("chars_here") or []),
+                                       sheltering=(_storm is not None and
+                                                   self.tick - _storm < STORM_SHELTER_TICKS)):
                 self._report_anomaly(a)
             return self.strategy.village(self, frame) or []
         return self._field(frame)
