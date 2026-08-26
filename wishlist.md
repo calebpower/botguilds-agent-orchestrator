@@ -55,6 +55,7 @@ DEPLOYS since an item was added — a pass that ships no deploy does not advance
 
 | item | good | risk | tc | final | ceiling | status |
 |---|---|---|---|---|---|---|
+| Dashboard PHASE banner (operator 2026-08-26: "bunker"/"embark"/"nuisance" at a glance — tonight they had to ask why nobody was deployed; bot records health/phase transitions, dashboard shows the current one) | 0.80 | 1.00 | 0 | — | 0.600 | just added (tc=0) |
 | Embark chooser: skip known-looted worlds (revolving door ~40-tick period, c19747 run 221; B partly covers) | 0.78 | 0.92 | 0 | — | 0.538 | just added (tc=0) |
 | Investigate the mines forge (special/great forge?) | 0.80 | 0.85 | 21 | **0.478** | 0.510 | below 0.5 — ages toward ceiling 0.510 |
 | Hints: rival-avoidance for wizards | 0.82 | 0.95 | 21 | **0.547** | 0.584 | **qualifies** |
