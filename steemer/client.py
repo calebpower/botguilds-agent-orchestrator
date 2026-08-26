@@ -34,6 +34,20 @@ from .storage import Storage
 # server restarted under us: DEALER reconnects the TCP session without raising,
 # and the new server has never seen our HELLO, so we must re-send it.
 SILENCE_TIMEOUT = 10.0
+
+# v0.115.1 SELF-HEAL (operator-directed after the 2026-08-26 outage): the server's
+# per-session state degrades over a connection's lifetime — stale_frame rejections
+# escalate (run 224: 0.27/frame -> 8.7/frame over ~10k ticks, 100% of moves refused,
+# fielding collapsed to 1) and then unknown_character joins in; a fresh hello clears it
+# INSTANTLY (proven twice: manual restarts on runs 224/225). So the client now cures
+# itself: a sustained storm of session-poison reasons triggers one re-hello. Hysteresis
+# (HEAL_MIN_SPACING) stops a flap if the server itself is the problem that day.
+HEAL_REASONS = frozenset({"stale_frame", "unknown_character"})
+HEAL_WINDOW = 600          # ticks — the anomaly watchdog's own spike window
+HEAL_THRESHOLD = 60        # storm errors within HEAL_WINDOW -> re-hello (~0.1/frame,
+                           # 3x the calm baseline, well under the 160+/window of a real
+                           # storm's opening minutes)
+HEAL_MIN_SPACING = 2400    # ticks between self-heals (~10 min) — one cure per storm
 _MAX_BACKOFF = 30.0
 # v0.51.0 — how many pending storage writes to hold before dropping the oldest. The queue
 # exists so the RECEIVE loop never waits on the database; see _AsyncMirror.
@@ -225,6 +239,24 @@ class Client:
 
     # -- connection -----------------------------------------------------------
 
+    def _maybe_heal(self, reason: str, tick: int) -> bool:
+        """One re-hello per sustained storm of session-poison errors. Pure decision
+        (transport-free) so the storm/threshold/hysteresis logic is unit-testable the
+        same way _maybe_refresh is; the caller does the actual reconnect on True."""
+        if reason not in HEAL_REASONS:
+            return False
+        errs = self._heal_errs = [t for t in getattr(self, "_heal_errs", [])
+                                  if tick - t < HEAL_WINDOW]
+        errs.append(tick)
+        if len(errs) < HEAL_THRESHOLD:
+            return False
+        last = getattr(self, "_heal_last", None)
+        if last is not None and tick - last < HEAL_MIN_SPACING:
+            return False
+        self._heal_last = tick
+        self._heal_errs = []
+        return True
+
     def _connect(self) -> None:
         self.connected = False
         backoff = 1.0
@@ -358,6 +390,11 @@ class Client:
             elif mtype == p.ACTION_ERR:
                 self._mirror("record_error", message)
                 self._call(self.bot, "on_action_error", message)
+                if self._maybe_heal(message.get("reason", ""), self.tick):
+                    self._say("[heal] session-poison storm "
+                              f"({message.get('reason')}) — re-hello to shed the "
+                              "degraded server-side session")
+                    self._connect()
             elif mtype == p.KICK and message.get("reason") == "superseded":
                 self._say("kicked: another session hello'd as this guild — exiting")
                 self.running = False

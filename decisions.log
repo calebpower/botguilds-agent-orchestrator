@@ -5700,3 +5700,16 @@ vanishes for free; recruiting goes fully quiet above field demand. 2 tests (deep
 silence + below-demand liveness), mutant killed. ALSO this pass: first engage-kill
 CONFIRMED net-positive (wolf, +8xp for 4 dmg, findings db17470); our club dph measured 4
 not 8 (sim correction queued); 1 death = cultist stamina footrace (known class #290).
+
+ITER 126 (2026-08-26) — explorer/0.115.1: SELF-HEAL re-hello (operator-directed session).
+Operator caught the run-224 outage before the loop did (90 min of stale_frame storm; my
+hold battery read outcomes not capability — postmortem in memory). Same night: (1) armed
+the WAKE-UP CHANNEL (persistent Monitor on steemer-live.log: anomaly spikes, models
+disabled, tracebacks, reconnects; per-family 15-min cooldown; novelty always emits;
+oracle self-tested with synthetic lines — all 5 branches observed firing; arming is now a
+session-startup step in HANDOFF.md). (2) The channel caught the storm RE-EMERGING on the
+fresh run-225 session within minutes — proving session-poison recurs — so the queued
+self-heal lever shipped: client._maybe_heal, one re-hello per sustained storm
+(60/600t, hysteresis 2400t, reasons stale_frame+unknown_character only). 4/4 mutants
+killed. Server-side root cause remains Will's (server_bugs.md updated all night:
+batch char deletions + session-poison both filed).
