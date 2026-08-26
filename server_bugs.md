@@ -419,3 +419,12 @@ frames for (we're 213 connects lifetime, dozens tonight) — per-guild frame-pro
 cost grows with every reconnect, which fits the monotonically shrinking clean windows.
 Check the server's session GC for our guild. If sessions do GC on a timer, our next
 mitigation is to reconnect LESS (raise heal hysteresis), not more.
+
+**Trend (~04:25):** the deep lag is back and at its worst — offset 332 ticks (~83 s),
+3,076 rejections/600t, 0 actions landing. Remission windows tonight: ~6.7k ticks, then
+~300, then ~2.0k, then a ~4k-tick healthy stretch (~03:40-04:00, offset 3-5, 179 landed
+moves/300t), now the deepest storm yet. The oscillation pattern (recovery without any
+action on our side, then regression) reads like the server intermittently catching up
+and falling behind on our guild's frame pipeline. Our deaths tonight: 4 this run — chars
+stranded mid-field during paralysis windows cannot flee. INT pipeline decapitated a
+3rd time (c19796, INT 4, vanished in the storms; top survivor is INT 2).
