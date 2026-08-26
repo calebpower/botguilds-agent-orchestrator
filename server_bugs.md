@@ -362,3 +362,10 @@ window (t≈2,761,000–2,764,000), with exactly ONE death event among them.** E
 - STRATEGIC exposure: the vanished include earlier top-INT wizard candidates (c19781,
   c19793) — the INT/tome pipeline can be silently decapitated. Likely the same class as
   the c19532 roster-limbo entry above, now observed as a fielded BATCH.
+
+**Recurrence (same run #224, t≈2,791,700-2,792,400):** a second batch — roster fell to ~10
+(five wipe-cadence refills at ~100t spacing prove the read), ~30k ticks after the first
+batch. Of 20 chars recruited across the run, only 10 remained at t2792400 (3 died with
+events, ~7 vanished silently). The vanish tax measured this run: ~1.45 chars/1k ticks
+≈ 22g/1k in replacement clubs — the whole margin of a coin-average band. Pattern:
+batches ~30k ticks apart, always fielded chars, never death events.
