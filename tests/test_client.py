@@ -102,3 +102,79 @@ def test_non_poison_reasons_never_heal():
     # and must never cost us a session.
     c = _heal_client()
     assert not any(c._maybe_heal("not_enough_stamina", 1000 + i) for i in range(500))
+
+
+# ---- v0.115.2 decide-on-freshest: backlog frames are ingested but not decided --------
+
+class _QueueTransport:
+    """poll(0) pops from a preloaded queue; send records."""
+    def __init__(self, queued):
+        self.queued = list(queued)
+        self.sent = []
+
+    def poll(self, timeout_ms=0):
+        return self.queued.pop(0) if self.queued else None
+
+    def send(self, message):
+        self.sent.append(message)
+
+
+def _drain_client(queued):
+    c = Client.__new__(Client)
+    c.transport = _QueueTransport(queued)
+    c.verbose = False
+    return c
+
+
+def _frame(tick, world="vale"):
+    return {"type": p.FRAME, "tick": tick, "world": world, "seq": tick,
+            "visible": {"tiles": []}, "chars": []}
+
+
+def test_drain_pulls_all_queued_frames_and_stops_at_a_non_frame():
+    kick = {"type": p.KICK, "reason": "superseded"}
+    c = _drain_client([_frame(2), _frame(3), kick, _frame(4)])
+    got = c._drain_frames()
+    assert [m["tick"] for m in got] == [2, 3], "drain crossed a non-frame message"
+    assert c._pending is kick, "the non-frame message must be re-dispatched, not dropped"
+    assert c.transport.queued == [_frame(4)] or c.transport.queued[0]["tick"] == 4
+
+
+def test_drain_returns_empty_on_an_empty_queue():
+    c = _drain_client([])
+    assert c._drain_frames() == []
+
+
+def test_a_backlog_is_ingested_fully_but_decided_only_on_the_newest_per_world():
+    """The wiring test through _loop: four queued frames (vale x3 stale + newest, mines
+    x1) must ALL be mirrored/ingested (seq advances to the last frame) while on_frame
+    runs exactly twice — newest vale + the mines frame. This is what bounds the
+    2026-08-26 lag spiral at one frame. Drives the REAL GuildBot (hygiene: no stub for
+    an object the strategy side owns) with a thin instance-level recording wrapper."""
+    from steemer.bot import GuildBot
+    frames = [_frame(10, "vale"), _frame(11, "vale"), _frame(12, "mines"),
+              _frame(13, "vale")]
+    c = _drain_client(frames[1:])          # 11,12,13 sit in the socket backlog
+    c.bot = GuildBot(strategy="explorer")
+    c.bot.config = {"party_cap": 5, "world_cap": 10, "roster_cap": 10,
+                    "maps": [{"id": "vale"}, {"id": "mines"}]}
+    decided_log = []
+    _real = c.bot.on_frame
+    c.bot.on_frame = lambda f: (decided_log.append((f.get("world"), f.get("tick"))),
+                                _real(f))[1]
+    c.bot.decided = decided_log
+    c.storage = None                        # _mirror no-ops (test/replay path)
+    c.running = True
+    c.connected = True
+    c.tick = 0
+    c._last_seq = 9                         # frames are seq-contiguous from 10
+    c._refresh_at = 0.0
+    c._tiles_mem = {}
+    c._visible = {}
+    c._pending = frames[0]                  # _loop consumes this before polling
+    c._loop(max_ticks=4)                    # 4 frames seen -> loop exits
+    assert c.tick == 13, f"tick did not advance through the batch: {c.tick}"
+    assert c._last_seq == 13, "a backlog frame skipped seq/refresh ingestion"
+    decided = sorted(c.bot.decided)
+    assert decided == [("mines", 12), ("vale", 13)], \
+        f"decided on stale backlog frames (or missed a world): {decided}"

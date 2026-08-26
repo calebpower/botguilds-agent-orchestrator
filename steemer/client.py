@@ -239,6 +239,25 @@ class Client:
 
     # -- connection -----------------------------------------------------------
 
+    def _drain_frames(self) -> list[dict[str, Any]]:
+        """Pull every FRAME already sitting in the socket queue (non-blocking). A
+        non-frame message ends the drain and is handled by the caller loop on its
+        next poll — heals/kicks must not be skipped, only stale frames may be
+        decision-skipped. Bounded so a pathological flood cannot spin forever."""
+        out: list[dict[str, Any]] = []
+        for _ in range(64):
+            try:
+                m = self.transport.poll(0)
+            except (zmq.ZMQError, OSError):
+                break
+            if m is None:
+                break
+            if m.get("type") != p.FRAME:
+                self._pending = m           # re-dispatched by _loop before polling
+                break
+            out.append(m)
+        return out
+
     def _maybe_heal(self, reason: str, tick: int) -> bool:
         """One re-hello per sustained storm of session-poison errors. Pure decision
         (transport-free) so the storm/threshold/hysteresis logic is unit-testable the
@@ -332,7 +351,10 @@ class Client:
         last_seen = time.monotonic()
         while self.running:
             try:
-                message = self.transport.poll(1000)
+                message = getattr(self, "_pending", None)
+                self._pending = None
+                if message is None:
+                    message = self.transport.poll(1000)
                 if message is None:
                     if time.monotonic() - last_seen > SILENCE_TIMEOUT:
                         self._say(f"silent {SILENCE_TIMEOUT:.0f}s — re-hello")
@@ -372,19 +394,35 @@ class Client:
                 self._say(f"auth failed: {message.get('reason')}")
                 self.running = False
             elif mtype == p.FRAME:
-                self.tick = message.get("tick", self.tick)
-                # v0.44.0: resync on a dropped-frame gap, then expand the delta tile
-                # layer back to the full visible set BEFORE logging or acting, so the
-                # stored frame and on_frame see the pre-delta shape.
-                self._maybe_refresh(message)
-                p.reassemble_tiles(message, self._tiles_mem, self._visible)
-                # v0.51.0: DECIDE AND SEND FIRST, then hand the frame to storage. The
-                # write no longer sits between receiving a frame and answering it, and it
-                # no longer sits between two receives either (it happens off-thread).
-                actions = self.bot.on_frame(message) or []
-                self.send_actions(actions)
-                self._mirror("record_frame", message)
-                seen += 1
+                # v0.115.2 DECIDE-ON-FRESHEST: the 2026-08-26 stale_frame storms were
+                # BACKLOG — we consumed ~10.9 frames/s against ~16 produced, the server-
+                # side queue grew ~0.09s/s, every frame arrived already ticks old, and
+                # every action tagged with its tick was dead on arrival (0 landed moves;
+                # reconnects reset the queue, then it re-rotted — the [heal] loop). So:
+                # drain everything already queued, INGEST every frame (seq/refresh, tile
+                # reassembly and the mirror must see each one — cheap), but run the
+                # EXPENSIVE stage (bot.on_frame -> actions) only on the newest frame per
+                # world in the batch. Lag is now bounded at ~one frame no matter how slow
+                # a decision pass is. Non-frame messages in the drain are re-dispatched
+                # by _loop on the next poll (transport.poll(0) only returns FRAMEs past
+                # the first — see _drain_frames).
+                batch = [message] + self._drain_frames()
+                newest: dict[str, dict] = {}
+                for m in batch:
+                    self.tick = m.get("tick", self.tick)
+                    # v0.44.0: resync on a dropped-frame gap, then expand the delta tile
+                    # layer to the full visible set BEFORE logging or acting.
+                    self._maybe_refresh(m)
+                    p.reassemble_tiles(m, self._tiles_mem, self._visible)
+                    newest[m.get("world", "")] = m
+                for m in newest.values():
+                    # v0.51.0: decide and send before ANY storage write — the whole
+                    # batch is mirrored only after the answers are on the wire.
+                    actions = self.bot.on_frame(m) or []
+                    self.send_actions(actions)
+                for m in batch:
+                    self._mirror("record_frame", m)
+                seen += len(batch)
                 if max_ticks is not None and seen >= max_ticks:
                     self.running = False
             elif mtype == p.ACTION_ERR:

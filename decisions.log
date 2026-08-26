@@ -5713,3 +5713,13 @@ self-heal lever shipped: client._maybe_heal, one re-hello per sustained storm
 (60/600t, hysteresis 2400t, reasons stale_frame+unknown_character only). 4/4 mutants
 killed. Server-side root cause remains Will's (server_bugs.md updated all night:
 batch char deletions + session-poison both filed).
+
+ITER 127 (2026-08-26) — explorer/0.115.2: DECIDE-ON-FRESHEST (the storms' true root cause).
+The wake-up channel caught 0.115.1's self-heal firing twice AND the storm re-emerging
+~600t into each fresh session — reconnects reset the server queue, never the deficit.
+Measured: 10.9 frames/s consumed vs ~16 produced; lag +8.8s over 97.5s, monotone; rivals
+healthy; 0 of our moves landing. Fix: drain the socket backlog, ingest every frame
+(seq/tiles/mirror), decide only on the newest per world — lag bounded at ~1 frame. The
+whole night's cascade (para­lysis -> "vanished" recruits? NO — deletions separately
+confirmed via public API -> session-poison theory -> self-heal) resolves to a client
+throughput deficit + server per-session queue. 4/4 mutants killed; loop wiring test.
