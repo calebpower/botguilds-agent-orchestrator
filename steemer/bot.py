@@ -198,6 +198,7 @@ class GuildBot:
         # definition, so lag measured from here is the server's delivery debt only.
         self._hello_anchor = (self.tick, time.monotonic())
         self._lag_bad_since = None
+        self._record_phase(self.tick, "session hello")
         # v0.79.1: persist the server config. It carries constants we have repeatedly
         # NEEDED and could not answer offline — `ride_max_tiles` blocked the rail analysis
         # for two passes because nothing ever wrote it down; it lives only in this message
@@ -305,12 +306,26 @@ class GuildBot:
                    else f"lag {lag:.1f}s sustained {tick - self._lag_bad_since}t")
             print(f"[bunker] ENTER at t{tick}: {why} — recalling the field, "
                   "holding embarks", flush=True)
+            self._record_phase(tick, why)
         elif self._health == "bunker" and (
                 self._health_bad_at is None
                 or tick - self._health_bad_at >= HEALTH_EXIT_TICKS):
             self._health = "ok"
             print(f"[bunker] EXIT at t{tick}: all signals clean "
                   f"{HEALTH_EXIT_TICKS}t — resuming normal play", flush=True)
+            self._record_phase(tick, f"clean {HEALTH_EXIT_TICKS}t")
+
+    def _record_phase(self, tick: int, why: str) -> None:
+        """Persist the health phase to the DB bus (an events row, kind=bot_anomaly,
+        subtype phase:*) so the dashboard's phase chip reads the bot's actual state
+        instead of re-deriving the machine. Best-effort: a failed write must never
+        block play."""
+        if self.storage is None:
+            return
+        try:
+            self.storage.record_anomaly(tick, f"phase:{self._health}", {"why": why})
+        except Exception as e:
+            print(f"[phase] record failed ({e}) — continuing", flush=True)
 
     def on_frame(self, frame: dict[str, Any]) -> list[dict[str, Any]]:
         self.tick = frame.get("tick", self.tick)

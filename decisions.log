@@ -5759,3 +5759,11 @@ storm 10/300t -> field recalled at 6.0 + embarks held; exit after 2000 all-clean
 re-anchors. Absorbs 0.116.1 (hair-trigger removed: 1 stray rejection no longer benches).
 10 tests, 5/5 mutants killed. Submodule pin -> af2a321 (docs-only). SERVER FULLY DOWN
 since ~12:51 (502) — api.js check + live bunker trial queued for recovery.
+
+ITER 132 (2026-08-26) — explorer/0.117.1: dashboard PHASE chip (operator-directed).
+Five states enumerated: offline / bunker / recall / fielding / mustering. resolve_phase
+pure in ui/server.py; /api/phase from seq-tail queries (honest during cache computes);
+bot persists phase:* rows on transitions + a hello anchor (restart would otherwise leave
+the chip on the dead session's phase). Replaced #livedot with .phasechip (colored per
+state, tooltip = health/fielded/frame-age/reason). 4 tests, 5/5 mutants killed.
+Nuisance badge = noted follow-up. Wishlist item closed same day it was filed.

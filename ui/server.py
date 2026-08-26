@@ -1006,6 +1006,80 @@ TICK_JUMP_MIN = 50   # a tick gap wider than this is a counter LEAP (restart/cat
                      # two frames of a stream that delivers several frames per tick.
 
 
+PHASE_OFFLINE_S = 15    # no frame this long -> OFFLINE (bot down or server down)
+
+PHASES = ("offline", "bunker", "recall", "fielding", "mustering")
+
+
+def resolve_phase(frame_age_s, health: str, fielded: int) -> str:
+    """PURE: the guild's at-a-glance phase (operator wishlist, 2026-08-26).
+
+    offline   — no frames flowing (bot down, or the server is)
+    bunker    — server unhealthy (bot's health machine), roster safe at home
+    recall    — server unhealthy and characters are still walking home
+    fielding  — normal play, characters in the field
+    mustering — normal play, everyone home between stints (rotating/resting)
+    """
+    if frame_age_s is None or frame_age_s > PHASE_OFFLINE_S:
+        return "offline"
+    if health == "bunker":
+        return "recall" if fielded > 0 else "bunker"
+    return "fielding" if fielded > 0 else "mustering"
+
+
+def api_phase(db_path: str) -> dict:
+    """The header chip's data: current phase + the inputs it derives from. Three
+    cheap tail queries (seq-indexed), never the snapshot cache — the chip must be
+    honest even while the cache computes."""
+    if not _db_ready(db_path):
+        return {"ok": True, "phase": "offline", "detail": "no db"}
+    conn = _ro(db_path)
+    try:
+        row = conn.execute(
+            "SELECT tick, received_at FROM frames ORDER BY seq DESC LIMIT 1"
+        ).fetchone()
+        age = (time.time() - row["received_at"]) if row and row["received_at"] else None
+        # BOTH lookups must stay index-bound: `world`/`kind` are UNINDEXED on the
+        # live MariaDB (the tickbar comment's 63-second lesson — the first draft of
+        # this endpoint hung the dashboard on exactly that scan). Phase rows ride
+        # idx_events_tick; the village frame comes from the seq tail in Python.
+        mx = row["tick"] if row else 0
+        ph = conn.execute(
+            "SELECT world, payload_json FROM events WHERE tick > ? "
+            "AND kind='bot_anomaly' AND world LIKE 'phase:%' "
+            "ORDER BY seq DESC LIMIT 1", (mx - 200_000,)).fetchone()
+        health = ph["world"].split(":", 1)[1] if ph else "ok"
+        why = ""
+        if ph:
+            try:
+                why = json.loads(ph["payload_json"]).get("why", "")
+            except (ValueError, TypeError):
+                pass
+        vf = None
+        for r in conn.execute(
+                "SELECT world, json FROM frames ORDER BY seq DESC LIMIT 60"):
+            if r["world"] == "village":
+                vf = r
+                break
+        fielded = 0
+        if vf:
+            try:
+                blob = vf["json"]
+                if isinstance(blob, (bytes, bytearray)):
+                    blob = zlib.decompress(blob)
+                g = json.loads(blob).get("guild", {})
+                fielded = sum(len(v) for v in (g.get("chars_by_world") or {}).values())
+            except (zlib.error, json.JSONDecodeError, TypeError, KeyError):
+                pass
+        phase = resolve_phase(age, health, fielded)
+        return {"ok": True, "phase": phase, "health": health, "fielded": fielded,
+                "frame_age_s": None if age is None else round(age, 1), "why": why}
+    except _db.Error:
+        return {"ok": True, "phase": "offline", "detail": "db error"}
+    finally:
+        conn.close()
+
+
 def api_tickbar(db_path: str, window: int = 500) -> dict:
     """Tick participation, block-explorer style (wishlist item, operator 2026-08-23):
     for the last ``window`` server ticks, which ones did we receive at least one frame
@@ -1706,6 +1780,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"rows": api_findings(), "mtime": mtime})
             elif path == "/api/tickbar":
                 self._json(api_tickbar(self.db_config))
+            elif path == "/api/phase":
+                self._json(api_phase(self.db_config))
             elif path == "/api/observed":
                 self._json(api_observed(self.db_config))
             elif path == "/api/roster":
@@ -1767,8 +1843,14 @@ header{display:flex;align-items:center;gap:16px;padding:10px 16px;
   border-bottom:1px solid var(--border);background:var(--surface);
   position:sticky;top:0;z-index:5;flex-wrap:wrap}
 header h1{font-size:15px;margin:0;font-weight:700;letter-spacing:.2px}
-header .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
-header .dot.live{background:var(--good)}
+header .phasechip{font-size:11px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;padding:2px 10px;border-radius:999px;
+  background:var(--surface);color:var(--muted);border:1px solid var(--border)}
+header .phasechip.fielding{background:#173d24;color:#7fdc9c;border-color:#2e7d4f}
+header .phasechip.mustering{background:#1b2f45;color:#8fc1f0;border-color:#2a5f95}
+header .phasechip.recall{background:#4a3312;color:#f0c060;border-color:#a07020}
+header .phasechip.bunker{background:#5a1d1d;color:#ffb4b4;border-color:#a03030}
+header .phasechip.offline{background:var(--surface);color:var(--muted);border-color:var(--border)}
 header .grow{flex:1}
 nav{display:flex;gap:4px;flex-wrap:wrap}
 nav button{background:transparent;border:1px solid transparent;color:var(--ink2);
@@ -2038,7 +2120,7 @@ mono,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
 </head>
 <body>
 <header>
-  <span class="dot" id="livedot"></span>
+  <span class="phasechip" id="phasechip" title="guild phase">&hellip;</span>
   <h1>steemer &middot; guild dashboard</h1>
   <nav>
     <button data-tab="overview" class="active">Overview</button>
@@ -2324,6 +2406,7 @@ async function loadOverview(){
   const s = await getJSON("/api/snapshot");
   renderOverview(s);
   loadTickbar();   // independent fetch: the bar must work even while the snapshot cache computes
+  loadPhase();     // ditto — the phase chip must be honest during cache computes
   if(s && s.ok && s.version!=null) snapVersion = s.version;
   subscribe();
 }
@@ -2331,6 +2414,20 @@ async function loadOverview(){
 /* v0.108.3 tick-participation bar: one block per server tick (last 500), green =
    a frame landed for that tick, red = dropped. The rate line makes a stalled
    server clock (or a dead bot) visible at a glance. */
+/* v0.117.0 phase chip (operator wishlist): the header shows WHICH PHASE the guild
+   is in — offline / bunker / recall / mustering / fielding — instead of a bare
+   online dot. Tooltip carries the machine's own reason line. */
+async function loadPhase(){
+  const chip = document.getElementById("phasechip"); if(!chip) return;
+  const p = await getJSON("/api/phase");
+  const phase = (p && p.phase) || "offline";
+  chip.className = "phasechip " + phase;
+  chip.textContent = phase;
+  chip.title = !p ? "" :
+    `health: ${p.health||"?"} · fielded: ${p.fielded??"?"} · frame age: ` +
+    `${p.frame_age_s==null?"∞":p.frame_age_s+"s"}` + (p.why ? ` · ${p.why}` : "");
+}
+
 async function loadTickbar(){
   const host = document.getElementById("tickbar"); if(!host) return;
   const t = await getJSON("/api/tickbar");
@@ -2364,13 +2461,11 @@ function renderOverview(s){
       ? "Computing KPIs… the first snapshot is being built in the background; this refreshes automatically."
       : "No data yet — waiting for the bot to write guild_log.db.";
     tiles.appendChild(el("div","empty",msg));
-    $("#livedot").classList.remove("live");
     ["#ov-actions","#ov-decisions","#ov-events","#ov-errors","#ov-explore"]
       .forEach(id=>$(id).innerHTML="");
     $("#ov-roster-card").style.display="none"; $("#ov-roster").innerHTML="";
     return;
   }
-  $("#livedot").classList.add("live");
   const cur = s.current || {}, vol = s.volume || {};
   // The meaningful error number is the CURRENT run's AVOIDABLE rate — the lifetime
   // action_error_rate blends bad old eras, and most errors are the un-fixable
