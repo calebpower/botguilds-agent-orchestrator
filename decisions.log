@@ -5748,3 +5748,14 @@ the clock was already running pre-shelter — test hardened). 3/3 mutants killed
 pass: controlled restart experiment (baseline ~16 -> 75s at 2-5 -> overshoot 26-31; NO
 manual restarts policy; artifact updated for Will 562be78d). Strategy levers stay parked
 until offset <8 sustained.
+
+ITER 131 (2026-08-26) — explorer/0.117.0: SERVER-HEALTH BUNKER (operator-directed) after
+a triple-check of the server-side verdict. Triple-check: born-stale + deletions + tick
+rate re-derived solid; 'rivals unaffected' DOWNGRADED (observation bias via dropped
+frames in deep storms; public-tick-normal is the clean oracle); AMENDED — our retry spam
+plausibly amplified deep phases (post-shelter offsets <=30 vs 332 before). Bunker: lag
+signal (hello-anchored wall-vs-tick, tick_seconds from config) sustained 120t OR poison
+storm 10/300t -> field recalled at 6.0 + embarks held; exit after 2000 all-clean; hello
+re-anchors. Absorbs 0.116.1 (hair-trigger removed: 1 stray rejection no longer benches).
+10 tests, 5/5 mutants killed. Submodule pin -> af2a321 (docs-only). SERVER FULLY DOWN
+since ~12:51 (502) — api.js check + live bunker trial queued for recovery.

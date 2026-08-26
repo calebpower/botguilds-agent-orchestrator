@@ -2175,38 +2175,47 @@ def test_below_field_demand_recruiting_still_happens():
         f"a 9/10 roster below field demand stopped recruiting entirely: {acts}"
 
 
-def test_storm_shelter_holds_embarks_until_the_stream_stays_clean():
-    """v0.116.1: run 229 lost 8 chars — including the last two LEVELED ones — to
-    stranding: fielded during a clean window, paralyzed when the next session-poison
-    storm peaked, killed unable to flee. After a poison rejection the village holds
-    every embark until STORM_SHELTER_TICKS of clean stream. End-to-end: the stamp is
-    written by bot.on_action_error, read by the village routine."""
-    from steemer.strategy.explorer import STORM_SHELTER_TICKS
-    assert STORM_SHELTER_TICKS == 2000        # pinned literal
+def test_a_poison_storm_bunkers_embarks_and_a_clean_window_releases_them():
+    """v0.117.0 (supersedes the 0.116.1 shelter test): a STORM of poison rejections
+    (>= HEALTH_POISON_N within the window) bunkers the village; release needs
+    HEALTH_EXIT_TICKS with every signal clean. End-to-end through on_action_error ->
+    on_frame."""
+    from steemer.bot import HEALTH_POISON_N, HEALTH_POISON_WINDOW, HEALTH_EXIT_TICKS
+    assert (HEALTH_POISON_N, HEALTH_POISON_WINDOW, HEALTH_EXIT_TICKS) == (10, 300, 2000)
     bot = _bot()
     here = [_idle_village_char(f"h{i}") for i in range(5)]
     uids = [c["char_uid"] for c in here]
     # 5 here + 5 fielded = 10 = roster_cap: the recruit branch (which returns before
     # embarks) never preempts; fielded 5 < world_cap 10 so an embark is possible.
     by_world = {"vale": [f"v{i}" for i in range(5)]}
-    # baseline: clean stream -> the bench embarks
     acts = bot.on_frame(_deploy_frame(uids, by_world, here, tick=1000))
     assert any(a.get("action") == "embark" for a in acts), \
-        f"fixture broken: no embark even without a storm: {acts}"
-    # poison error at t=2000 -> shelter holds embarks
+        f"fixture broken: no embark without a storm: {acts}"
     bot2 = _bot()
-    bot2.on_action_error({"tick": 2000, "reason": "stale_frame"})
+    for i in range(12):                          # a storm, not a stray rejection
+        bot2.on_action_error({"tick": 2000 + i, "reason": "stale_frame"})
     held = bot2.on_frame(_deploy_frame(uids, by_world, here, tick=2100))
     assert not any(a.get("action") == "embark" for a in held), \
         f"embarked into the storm: {held}"
-    # 1999 ticks clean: still held (strict window)
-    held2 = bot2.on_frame(_deploy_frame(uids, by_world, here, tick=3999))
-    assert not any(a.get("action") == "embark" for a in held2), \
-        "released one tick early"
-    # a full clean window later: released
-    clear = bot2.on_frame(_deploy_frame(uids, by_world, here, tick=4001))
+    held2 = bot2.on_frame(_deploy_frame(uids, by_world, here, tick=4010))
+    assert not any(a.get("action") == "embark" for a in held2), "released early"
+    clear = bot2.on_frame(_deploy_frame(uids, by_world, here, tick=4012 + 2000))
     assert any(a.get("action") == "embark" for a in clear), \
-        f"the shelter never released: {clear}"
+        f"the bunker never released: {clear}"
+
+
+def test_a_single_stray_rejection_does_not_bunker():
+    """v0.117.0 grace: one stale_frame happens in ordinary play (a chest opened the
+    tick before ours). It must not bench the guild — that was 0.116.1's hair
+    trigger, deliberately removed."""
+    bot = _bot()
+    here = [_idle_village_char(f"h{i}") for i in range(5)]
+    uids = [c["char_uid"] for c in here]
+    by_world = {"vale": [f"v{i}" for i in range(5)]}
+    bot.on_action_error({"tick": 2000, "reason": "stale_frame"})
+    acts = bot.on_frame(_deploy_frame(uids, by_world, here, tick=2100))
+    assert any(a.get("action") == "embark" for a in acts), \
+        f"one stray rejection benched the guild: {acts}"
 
 
 def test_ordinary_errors_do_not_shelter():

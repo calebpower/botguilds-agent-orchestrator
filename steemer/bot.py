@@ -9,11 +9,29 @@ strategy decides; the bot remembers and records.
 from __future__ import annotations
 
 import json
+import time
 
 from typing import Any
 
 from . import nav
 from .anomaly import AnomalyMonitor, KpiMonitor
+
+# --- v0.117.0 SERVER-HEALTH BUNKER (operator-directed): a client-side health state
+# machine. Signals: (1) FRAME LAG — each frame's arrival wall-time vs the tick-implied
+# time from the hello anchor (the same public-clock-offset measurement, computed without
+# the public API); (2) POISON RATE — stale_frame/unknown_character rejections per window.
+# Grace both ways so characters never stutter on a lag spike: entry needs the lag
+# SUSTAINED (or a genuine rejection storm, which is already sustained evidence); exit
+# needs a long clean stretch. While bunkered: no embarks (absorbs the 0.116.1 shelter)
+# and fielded characters walk home (the strategy's bunker-retreat offer).
+HEALTH_LAG_S = 2.5          # ~10 ticks behind the expected clock = a lag signal
+HEALTH_ENTER_TICKS = 120    # the lag must persist this long before bunkering (~30 s —
+                            # a random spike or GC pause never benches the guild)
+HEALTH_POISON_N = 10        # >= this many poison rejections within...
+HEALTH_POISON_WINDOW = 300  # ...this window = a storm (already-sustained evidence:
+                            # normal play sees 0-2 stray stale_frames per window)
+HEALTH_EXIT_TICKS = 2000    # every signal clean this long -> back to work (the same
+                            # bar as 0.116.1's shelter release)
 from .chatter import Chatter
 from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace
@@ -144,6 +162,12 @@ class GuildBot:
         # channel — the 2026-08-26 outage ran 90 min with healthy-looking OUTCOME
         # numbers while the bot could not act; these watch the acting itself.
         self.kpis = KpiMonitor()
+        # v0.117.0 server-health state (see the constants above)
+        self._health = "ok"
+        self._hello_anchor = None       # (tick, wall) re-anchored at every hello
+        self._lag_bad_since = None      # tick the CURRENT continuous lag-run started
+        self._health_bad_at = None      # last tick ANY signal was bad
+        self._poison_ticks = []
         # v0.61.0: does what we predicted actually happen? Derives a checkable claim from
         # each action we send and resolves it against later frames. See expectation.py --
         # the last four passes each shipped a silent belief-vs-reality mismatch past a
@@ -170,6 +194,10 @@ class GuildBot:
         self.config = message.get("config", {}) or {}
         self.guild = message.get("guild", {}) or {}
         self.tick = message.get("tick", 0)
+        # v0.117.0: re-anchor the frame-lag clock. A fresh hello's tick is current by
+        # definition, so lag measured from here is the server's delivery debt only.
+        self._hello_anchor = (self.tick, time.monotonic())
+        self._lag_bad_since = None
         # v0.79.1: persist the server config. It carries constants we have repeatedly
         # NEEDED and could not answer offline — `ride_max_tiles` blocked the rail analysis
         # for two passes because nothing ever wrote it down; it lives only in this message
@@ -236,8 +264,57 @@ class GuildBot:
             print(f"[hints] refresh failed ({e.__class__.__name__}) — keeping last",
                   flush=True)
 
+    def server_health(self) -> str:
+        """'ok' or 'bunker' — the strategy's read of the health state machine."""
+        return self._health
+
+    def _lag_estimate(self, tick: int, now: float | None = None) -> float | None:
+        """Seconds this frame arrived behind the tick-implied clock, from the hello
+        anchor. None before the first hello. Injectable `now` for tests."""
+        if self._hello_anchor is None:
+            return None
+        a_tick, a_wall = self._hello_anchor
+        tick_s = float(self.config.get("tick_seconds", 0.25) or 0.25)
+        if now is None:
+            now = time.monotonic()
+        return (now - a_wall) - (tick - a_tick) * tick_s
+
+    def _health_step(self, tick: int, now: float | None = None) -> None:
+        """Advance the bunker state machine one frame. Grace both directions:
+        enter on SUSTAINED lag (HEALTH_ENTER_TICKS) or a poison storm (>=
+        HEALTH_POISON_N/HEALTH_POISON_WINDOW — a storm is already sustained
+        evidence); exit only after HEALTH_EXIT_TICKS with every signal clean."""
+        lag = self._lag_estimate(tick, now)
+        lag_bad = lag is not None and lag > HEALTH_LAG_S
+        if lag_bad:
+            if self._lag_bad_since is None:
+                self._lag_bad_since = tick
+        else:
+            self._lag_bad_since = None
+        self._poison_ticks = [t for t in self._poison_ticks
+                              if tick - t < HEALTH_POISON_WINDOW]
+        poison_bad = len(self._poison_ticks) >= HEALTH_POISON_N
+        lag_sustained = (self._lag_bad_since is not None
+                         and tick - self._lag_bad_since >= HEALTH_ENTER_TICKS)
+        if poison_bad or lag_bad:
+            self._health_bad_at = tick
+        if self._health == "ok" and (poison_bad or lag_sustained):
+            self._health = "bunker"
+            why = ("poison storm "
+                   f"{len(self._poison_ticks)}/{HEALTH_POISON_WINDOW}t" if poison_bad
+                   else f"lag {lag:.1f}s sustained {tick - self._lag_bad_since}t")
+            print(f"[bunker] ENTER at t{tick}: {why} — recalling the field, "
+                  "holding embarks", flush=True)
+        elif self._health == "bunker" and (
+                self._health_bad_at is None
+                or tick - self._health_bad_at >= HEALTH_EXIT_TICKS):
+            self._health = "ok"
+            print(f"[bunker] EXIT at t{tick}: all signals clean "
+                  f"{HEALTH_EXIT_TICKS}t — resuming normal play", flush=True)
+
     def on_frame(self, frame: dict[str, Any]) -> list[dict[str, Any]]:
         self.tick = frame.get("tick", self.tick)
+        self._health_step(self.tick)
         self._refresh_hints()
         # v0.66.1: learn from events on EVERY frame, village included.
         #
@@ -255,13 +332,10 @@ class GuildBot:
                                          if e.get("kind") == "xp"))
         if frame.get("world") == "village":
             by_world = guild.get("chars_by_world") or {}
-            from .strategy.explorer import STORM_SHELTER_TICKS
-            _storm = getattr(self, "_storm_last", None)
             for a in self.kpis.observe(self.tick,
                                        sum(len(v) for v in by_world.values()),
                                        len(guild.get("chars_here") or []),
-                                       sheltering=(_storm is not None and
-                                                   self.tick - _storm < STORM_SHELTER_TICKS)):
+                                       sheltering=(self._health == "bunker")):
                 self._report_anomaly(a)
             return self.strategy.village(self, frame) or []
         return self._field(frame)
@@ -476,13 +550,11 @@ class GuildBot:
         a = self.anomaly.record(message.get("tick", self.tick), message.get("reason"))
         if a is not None:
             self._report_anomaly(a)
-        # v0.116.1 STORM SHELTER stamp: session-poison rejections mean the server is
-        # not applying our actions — any char we embark now may be STRANDED unable to
-        # flee when the next storm peaks (run 229: 8 deaths including the last two
-        # leveled chars, Recruit-19840 lvl6 among them). The strategy reads this stamp
-        # to hold embarks until the stream has stayed clean for a full shelter window.
+        # v0.117.0: session-poison rejections feed the health machine's storm signal
+        # (run 229: 8 stranding deaths incl. our last two leveled chars). One stray
+        # rejection is normal play; HEALTH_POISON_N within the window is a storm.
         if message.get("reason") in ("stale_frame", "unknown_character"):
-            self._storm_last = message.get("tick", self.tick)
+            self._poison_ticks.append(message.get("tick", self.tick))
 
     # -- anomaly self-reporting ----------------------------------------------
 
