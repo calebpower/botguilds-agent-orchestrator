@@ -714,3 +714,14 @@ one eid/tile over many ticks → add a per-tile give-up)? move_failed not worse?
    we now hold INGOTS — the remaining blocker is ORE.
 
 5. Show the wishlist table; record; commit + push; schedule the next wakeup.
+
+## Session startup: ARM THE ALERT MONITOR (operator directive 2026-08-26)
+The operator requires the bot to interrupt agent sleep on behavioral deviation. At the
+START of every session, arm a persistent Monitor on the alert stream:
+  Monitor(command: "<scratchpad>/alert_monitor.sh", persistent: true)
+The script lives in the session scratchpad (recreate from memory/capability-not-outcome-
+monitoring.md if missing): tail -F steemer-live.log filtered to [anomaly] / [models]
+disabled / Traceback / reconnects, per-family 15-min cooldown, novel families always
+emit. Self-test after arming: append a synthetic '[anomaly] error_spike:selftest...' line
+to the log and confirm the wake-up arrives. Queued widenings: anomaly.py live-KPI
+deviations (fielded/xp-rate collapse), model runtime-failure log line.
