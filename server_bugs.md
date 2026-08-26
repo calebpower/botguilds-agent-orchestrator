@@ -409,3 +409,13 @@ poke at guild state happened, that's a correlation datum, not an accusation.)
 
 EXPOSURE while this stands: ~7 fielded chars cannot flee (permadeath); the guild cannot
 recruit, embark, gather, or bank.
+
+**Addendum (~04:20): the guild now DUTY-CYCLES.** The 0.115.1 self-heal fires at its
+hysteresis floor (~every 2,400t): each re-hello buys a brief clean window (offset ~0-1,
+actions LAND — 8 embarks observed in one window) before the lag rebuilds; windows have
+shrunk from ~6.7k ticks (first fresh session tonight) to ~300 ticks now. Working
+hypothesis FOR WILL: each re-hello may leave a dead session the server keeps preparing
+frames for (we're 213 connects lifetime, dozens tonight) — per-guild frame-production
+cost grows with every reconnect, which fits the monotonically shrinking clean windows.
+Check the server's session GC for our guild. If sessions do GC on a timer, our next
+mitigation is to reconnect LESS (raise heal hysteresis), not more.

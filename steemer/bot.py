@@ -13,7 +13,7 @@ import json
 from typing import Any
 
 from . import nav
-from .anomaly import AnomalyMonitor
+from .anomaly import AnomalyMonitor, KpiMonitor
 from .chatter import Chatter
 from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace
@@ -140,6 +140,10 @@ class GuildBot:
         # Live anomaly self-reporting: watch the action-error stream for a family
         # that spikes (the observable symptom of a desync — see steemer/anomaly.py).
         self.anomaly = AnomalyMonitor()
+        # v0.116.0: capability KPIs (fielded-collapse, xp-stall) through the same
+        # channel — the 2026-08-26 outage ran 90 min with healthy-looking OUTCOME
+        # numbers while the bot could not act; these watch the acting itself.
+        self.kpis = KpiMonitor()
         # v0.61.0: does what we predicted actually happen? Derives a checkable claim from
         # each action we send and resolves it against later frames. See expectation.py --
         # the last four passes each shipped a silent belief-vs-reality mismatch past a
@@ -247,7 +251,14 @@ class GuildBot:
         if "gold" in guild:
             self.guild_gold = guild["gold"]
         self._learn_from_events(frame)
+        self.kpis.note_xp(self.tick, sum(1 for e in (frame.get("events") or [])
+                                         if e.get("kind") == "xp"))
         if frame.get("world") == "village":
+            by_world = guild.get("chars_by_world") or {}
+            for a in self.kpis.observe(self.tick,
+                                       sum(len(v) for v in by_world.values()),
+                                       len(guild.get("chars_here") or [])):
+                self._report_anomaly(a)
             return self.strategy.village(self, frame) or []
         return self._field(frame)
 

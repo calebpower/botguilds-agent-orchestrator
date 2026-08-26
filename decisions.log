@@ -5723,3 +5723,11 @@ healthy; 0 of our moves landing. Fix: drain the socket backlog, ingest every fra
 whole night's cascade (para­lysis -> "vanished" recruits? NO — deletions separately
 confirmed via public API -> session-poison theory -> self-heal) resolves to a client
 throughput deficit + server per-session queue. 4/4 mutants killed; loop wiring test.
+
+ITER 128 (2026-08-26) — explorer/0.116.0: capability-KPI anomalies (operator: "ship the
+anomaly widening"). kpi:fielded_collapse (600t at fielded<=1 w/ bench>=5) + kpi:xp_stall
+(0 xp/3000t after activity) -> [anomaly] channel -> wake-up monitor v2 (kpi dedup family,
+self-tested). Models RUNTIME fail-closed emission already existed — pinned by test
+(poisoned artifact -> '[models] ... scoring failed'). 7 tests, 5/5 mutants killed.
+INCIDENT STANDING: guild duty-cycles ~10% on the self-heal (clean windows shrinking
+6.7k->300t; dead-session accumulation hypothesis filed for Will).
