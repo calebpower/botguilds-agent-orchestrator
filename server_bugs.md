@@ -369,3 +369,15 @@ batch. Of 20 chars recruited across the run, only 10 remained at t2792400 (3 die
 events, ~7 vanished silently). The vanish tax measured this run: ~1.45 chars/1k ticks
 ≈ 22g/1k in replacement clubs — the whole margin of a coin-average band. Pattern:
 batches ~30k ticks apart, always fielded chars, never death events.
+
+**DECISIVE (run #224 late, t≈2,788,000–2,802,900): chars are deleted SERVER-SIDE, and the
+drain went continuous.** 25 chars vanished in ~14k ticks (~1.8/1k, tripled from the early-run
+rate) with zero death events. The public spectate API (`/api/spectate/guilds`) confirms
+roster=15 — matching our frames — so this is genuine server-side deletion, not frame-side
+invisibility/limbo. **7 of the 25 vanished while sitting in the VILLAGE** (c19810, c19813,
+c19817, c19818, c19820, c19823, c19826) — not band danger, not deep-field state. Fresh
+recruits are heavily represented (c19809–c19829 cohort, many gone within 2–5k ticks of
+recruitment), though the roster is mostly fresh recruits by now (confounded). The drain
+began/accelerated mid-run — if a server deploy landed today, a char-cleanup/GC regression
+is a plausible shape. Our recruit spend at this rate: ~30g/1k (clubs), pinning guild gold
+at ~0-11 despite healthy income — the tome/magic pipeline is fully blocked on this bug.
