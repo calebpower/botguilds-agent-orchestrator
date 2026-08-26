@@ -428,3 +428,11 @@ action on our side, then regression) reads like the server intermittently catchi
 and falling behind on our guild's frame pipeline. Our deaths tonight: 4 this run — chars
 stranded mid-field during paralysis windows cannot flee. INT pipeline decapitated a
 3rd time (c19796, INT 4, vanished in the storms; top survivor is INT 2).
+
+**Controlled restart experiment (2026-08-26 11:07-11:12):** baseline offset 9-25 (mean
+~16); restart -> offset 2-5 for ~75 s (clean window) -> climbs 13/17/19/22 -> plateaus
+26-31, WORSE than baseline. A reconnect buys ~1 min and then overshoots — further
+evidence that each session adds persistent per-guild cost server-side (dead-session
+accumulation). Operationally we now avoid manual restarts entirely; the client self-heal
+only fires under deep storms (its error threshold is unreachable while the storm shelter
+keeps the roster benched in mild phases).
