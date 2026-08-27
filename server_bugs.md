@@ -468,3 +468,11 @@ the reset it attaches to the SESSION (a re-hello clears it completely). Either t
 changed the mechanism, or two mechanisms exist. Current-era practical note: re-hello is
 curative now; our client's self-heal handles it. Capture files (healthy control +
 storm-time fresh session) available: capture.jsonl / capture_storm.jsonl.
+
+**Probe results (2026-08-27): two freshness rules, one silent.** Lone aged says accepted
+at K=1..21 ticks (no tight time window). The PAIR experiment (fresh say then tick-5 say,
+same char, same batch, t3125425): fresh RENDERED, aged SILENTLY DROPPED — no event, no
+error. Model: (1) per-char ORDER rule discards out-of-order actions silently
+(stale_order_ticks); (2) a separate envelope-age rule with window >21 ticks produces the
+loud stale_frame — deep-storm frames (100-330 ticks old) always violate it. n=1 on the
+pair; probes continue (K=34/55 pending).
