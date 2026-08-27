@@ -112,3 +112,75 @@ def test_every_hello_prints_the_timing_critical_config(capsys):
                 "guild": {}, "tick": 100})
     out = capsys.readouterr().out
     assert "[config] tick_seconds=0.4 stale_order_ticks=0" in out, out
+
+
+def test_probe_actions_ride_their_own_aged_envelope():
+    """v0.117.3: an action with _probe_age=K goes out in a separate envelope tagged
+    tick-K; the marker never reaches the wire; normal actions are unaffected."""
+    from steemer.client import Client
+    from steemer import protocol as p
+
+    class _T:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, m):
+            self.sent.append(m)
+
+    c = Client.__new__(Client)
+    c.transport = _T()
+    c.verbose = False
+    c.tick = 1000
+    c.storage = None                      # _mirror no-ops (test/replay path)
+    c.send_actions([{"char_uid": "c1", "action": "say", "text": "sync",
+                     "_probe_age": 5},
+                    {"char_uid": "c2", "action": "move", "dir": "N"}])
+    assert len(c.transport.sent) == 2
+    probe_env = next(m for m in c.transport.sent if len(m["actions"]) == 1
+                     and m["actions"][0]["action"] == "say")
+    norm_env = next(m for m in c.transport.sent if m["actions"][0]["action"] == "move")
+    assert probe_env["tick"] == 995, f"probe not aged: {probe_env}"
+    assert norm_env["tick"] == 1000
+    assert "_probe_age" not in probe_env["actions"][0], "marker leaked to the wire"
+
+
+def _probe_village(tick, here):
+    return {"type": "frame", "world": "village", "tick": tick, "events": [],
+            "guild": {"gold": 5, "chars_here": here, "chars_by_world": {}},
+            "shop": {"stock": []}, "chars": []}
+
+
+def test_the_probe_fires_on_cadence_healthy_only_and_cycles_K():
+    from steemer.bot import PROBE_EVERY, PROBE_AGES
+    assert (PROBE_EVERY, PROBE_AGES) == (600, (0, 1, 2, 3, 5, 8))
+    b = _bot()
+    b.on_hello({"config": b.config, "guild": {}, "tick": 400})   # a probe needs a
+    # session baseline — bots that never hello'd (every unit fixture) never probe
+    acts = b.on_frame(_probe_village(1000, ["c1"]))
+    probes = [a for a in acts if a.get("_probe_age") is not None]
+    assert len(probes) == 1 and probes[0]["_probe_age"] == 0, f"first probe: {acts}"
+    # cadence: still inside the probe interval — nothing may fire
+    acts2 = b.on_frame(_probe_village(1300, ["c1"]))
+    assert not [a for a in acts2 if a.get("_probe_age") is not None], "cadence ignored"
+    # next probe cycles to K=1
+    acts3 = b.on_frame(_probe_village(1601, ["c1"]))
+    probes3 = [a for a in acts3 if a.get("_probe_age") is not None]
+    assert len(probes3) == 1 and probes3[0]["_probe_age"] == 1, f"K did not cycle: {acts3}"
+
+
+def test_the_probe_never_fires_while_bunkered():
+    b = _bot()
+    b.on_hello({"config": b.config, "guild": {}, "tick": 400})
+    for i in range(12):
+        b.on_action_error({"tick": 990 + i, "reason": "stale_frame"})
+    acts = b.on_frame(_probe_village(1002, ["c1"]))
+    assert not [a for a in acts if a.get("_probe_age") is not None], \
+        "probed during a storm — measures nothing, adds pressure"
+
+
+def test_a_bot_with_no_session_never_probes():
+    """The anchor gate: every unit fixture in the suite constructs a bot without a
+    hello — none of them may grow probe actions (17 tests broke when they did)."""
+    b = _bot()
+    acts = b.on_frame(_probe_village(9000, ["c1"]))
+    assert not [a for a in acts if a.get("_probe_age") is not None]

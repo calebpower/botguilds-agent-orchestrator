@@ -290,14 +290,29 @@ class Client:
 
     def send_actions(self, actions: list[dict[str, Any]]) -> None:
         clean: list[dict[str, Any]] = []
+        aged: list[tuple[int, dict[str, Any]]] = []
         for a in actions:
             if not a:
                 continue
+            # v0.117.3 STALENESS PROBE: an action carrying ``_probe_age`` K is sent in
+            # its OWN envelope tagged ``tick - K`` — deliberately aged, to map where the
+            # server's freshness window actually rejects (the stale_order_ticks=0
+            # experiment). The marker never reaches the wire.
+            age = a.pop("_probe_age", None)
             reason = p.check_action(a)
             if reason is not None:
                 self._say(f"dropping malformed action ({reason}): {a}")
                 continue
-            clean.append(a)
+            if age is not None:
+                aged.append((int(age), a))
+            else:
+                clean.append(a)
+        try:
+            for age, a in aged:
+                self.transport.send(p.msg(p.ACTIONS, tick=self.tick - age,
+                                          actions=[a]))
+        except (zmq.ZMQError, OSError) as e:
+            self._say(f"probe send failed ({e}) — skipping")
         if not clean:
             return
         try:

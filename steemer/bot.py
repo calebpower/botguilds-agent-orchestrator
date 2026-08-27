@@ -32,6 +32,11 @@ HEALTH_POISON_WINDOW = 300  # ...this window = a storm (already-sustained eviden
                             # normal play sees 0-2 stray stale_frames per window)
 HEALTH_EXIT_TICKS = 2000    # every signal clean this long -> back to work (the same
                             # bar as 0.116.1's shelter release)
+PROBE_EVERY = 600           # v0.117.3: staleness-probe cadence (one aged 'say' per ~2.5
+                            # min, HEALTHY windows only) — maps the server's freshness
+                            # window; accept = the say event renders, reject = a
+                            # stale_frame error for the probe char
+PROBE_AGES = (0, 1, 2, 3, 5, 8)   # the K cycle, in ticks behind the current envelope
 from .chatter import Chatter
 from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace
@@ -354,12 +359,30 @@ class GuildBot:
                                          if e.get("kind") == "xp"))
         if frame.get("world") == "village":
             by_world = guild.get("chars_by_world") or {}
+            # v0.117.3 staleness probe (healthy windows only — a probe during a storm
+            # measures nothing and adds retry pressure)
+            here = guild.get("chars_here") or []
+            if (self._health == "ok" and here
+                    and self._hello_anchor is not None
+                    and self.tick - getattr(self, "_probe_at", -10**9) >= PROBE_EVERY):
+                self._probe_at = self.tick
+                k = PROBE_AGES[getattr(self, "_probe_i", 0) % len(PROBE_AGES)]
+                self._probe_i = getattr(self, "_probe_i", 0) + 1
+                print(f"[probe] K={k} tick={self.tick} char={here[0]} — aged say sent",
+                      flush=True)
+                self._probe_pending = {"char_uid": here[0], "action": "say",
+                                       "text": "sync", "_probe_age": k}
             for a in self.kpis.observe(self.tick,
                                        sum(len(v) for v in by_world.values()),
                                        len(guild.get("chars_here") or []),
                                        sheltering=(self._health == "bunker")):
                 self._report_anomaly(a)
-            return self.strategy.village(self, frame) or []
+            acts = self.strategy.village(self, frame) or []
+            probe = getattr(self, "_probe_pending", None)
+            if probe is not None:
+                self._probe_pending = None
+                acts = list(acts) + [probe]
+            return acts
         return self._field(frame)
 
     def _shadow_observe(self, world: str, frame: dict[str, Any]) -> None:

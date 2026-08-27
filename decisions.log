@@ -5784,3 +5784,12 @@ back to run 220 — Bug B predates the trigger; shared-root confidence -> ~15. (
 0.117.2: every hello prints tick_seconds/stale_order_ticks (the insert-only archive hid
 current values). Next rung queued: the staleness-window probe (deliberately stale-tagged
 'say' during healthy windows, cycle K=1..13) — design needs action-semantics review.
+
+ITER 134 (2026-08-26) — explorer/0.117.3: STALENESS-WINDOW PROBE (the decisive
+experiment for the stale_order_ticks=0 suspect). Healthy windows only, 1 aged 'say' per
+600t, K cycling (0,1,2,3,5,8); client sends probes in their OWN envelope tagged tick-K
+(marker stripped before wire). Two-sided oracle: accept = say event renders, reject =
+stale_frame error for the probe char. Analysis: tabulate per-K accept/reject offline.
+3 probe mutants killed (envelope not aged / healthy-gate deleted / K frozen). Watch3 on
+0.117.2 was 3x CLEAN; config print's first reading: tick_seconds=0.25 NOW (mismatch
+over), stale_order_ticks=0 SURVIVES = prime suspect.
