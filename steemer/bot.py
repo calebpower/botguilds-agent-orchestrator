@@ -24,7 +24,14 @@ from .anomaly import AnomalyMonitor, KpiMonitor
 # SUSTAINED (or a genuine rejection storm, which is already sustained evidence); exit
 # needs a long clean stretch. While bunkered: no embarks (absorbs the 0.116.1 shelter)
 # and fielded characters walk home (the strategy's bunker-retreat offer).
-HEALTH_LAG_S = 2.5          # ~10 ticks behind the expected clock = a lag signal
+HEALTH_LAG_S = 8.0          # v0.117.6: ~32 ticks behind = a lag signal. The first
+                            # tuning (2.5s) was calibrated against deep storms; under
+                            # the chronic-mild era (offset 12-25, measured ~26%
+                            # rejections = playable) it held the guild benched
+                            # INDEFINITELY. 8s still catches a deepening storm well
+                            # before the 80s paralysis zone; the poison arm (10
+                            # rejections/300t) is unchanged and catches genuine
+                            # rejection storms regardless of lag.
 HEALTH_ENTER_TICKS = 120    # the lag must persist this long before bunkering (~30 s —
                             # a random spike or GC pause never benches the guild)
 HEALTH_POISON_N = 10        # >= this many poison rejections within...

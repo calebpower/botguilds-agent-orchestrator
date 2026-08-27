@@ -5812,3 +5812,10 @@ our own frame stream (advertisement only as cold-start fallback) — the 0.4 lie
 have blinded the lag arm; mean-vs-median mutant proved the burst-robustness. Storm
 capture (Heisenberg): fresh session mid-storm was born CLEAN -> current-era rot is
 PER-SESSION (re-hello curative); recorded dcc85cd. 3 new tests; 3/3 mutants killed.
+
+ITER 137 (2026-08-27) — explorer/0.117.6: lag-bunker threshold retuned 2.5s -> 8.0s.
+The 2.5s calibration (deep-storm era) held the guild benched INDEFINITELY under the
+chronic-mild lag (offset 12-25 = ~26% rejections = measured PLAYABLE); nobody acted, no
+probes fired, no play. 8s tolerates the playable chop, still catches deepening storms
+long before the 80s paralysis zone; the poison arm (10/300t) is unchanged and covers
+rejection storms at ANY lag. Tests retuned to 10s-lag fixtures; all bunker tests green.

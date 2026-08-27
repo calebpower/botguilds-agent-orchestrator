@@ -9,7 +9,7 @@ from steemer.bot import (GuildBot, HEALTH_LAG_S, HEALTH_ENTER_TICKS,
 
 def test_pinned_literals():
     assert (HEALTH_LAG_S, HEALTH_ENTER_TICKS, HEALTH_POISON_N,
-            HEALTH_POISON_WINDOW, HEALTH_EXIT_TICKS) == (2.5, 120, 10, 300, 2000)
+            HEALTH_POISON_WINDOW, HEALTH_EXIT_TICKS) == (8.0, 120, 10, 300, 2000)
 
 
 def _bot():
@@ -25,20 +25,20 @@ def test_sustained_lag_bunkers_but_a_spike_does_not():
 
     def true_wall(t):
         return 100.0 + (t - 1000) * 0.25
-    # SPIKE: 60 ticks of 4s delay (under the 120-tick entry grace), then a PHYSICAL
+    # SPIKE: 60 ticks of 10s delay (under the 120-tick entry grace), then a PHYSICAL
     # recovery — the delayed queue flushes in a burst; the arrival clock must stay
     # MONOTONIC (the first draft ran time backwards at the boundary, corrupting the
     # measured slope — a fixture bug, not a sensor bug).
     for t in range(1001, 1061):
-        b._health_step(t, now=true_wall(t) + 4.0)
+        b._health_step(t, now=true_wall(t) + 10.0)
     assert b.server_health() == "ok", "a lag spike under the grace benched the guild"
-    burst_floor = true_wall(1060) + 4.0
+    burst_floor = true_wall(1060) + 10.0
     for t in range(1061, 1200):
         b._health_step(t, now=max(true_wall(t), burst_floor + 0.001 * (t - 1060)))
     assert b.server_health() == "ok"
-    # SUSTAINED: 121 ticks of 4s lag
+    # SUSTAINED: 121 ticks of 10s lag (over the 8s threshold)
     for t in range(1200, 1322):
-        b._health_step(t, now=100.0 + (t - 1000) * 0.25 + 4.0)
+        b._health_step(t, now=true_wall(t) + 10.0)
     assert b.server_health() == "bunker", "sustained lag never bunkered"
 
 
@@ -46,7 +46,7 @@ def test_bunker_exits_only_after_a_full_clean_window():
     b = _bot()
     b._hello_anchor = (1000, 100.0)
     for t in range(1000, 1130):
-        b._health_step(t, now=100.0 + (t - 1000) * 0.25 + 4.0)
+        b._health_step(t, now=100.0 + (t - 1000) * 0.25 + 10.0)
     assert b.server_health() == "bunker"
     # clean, but re-poisoned midway: the exit clock restarts
     for t in range(1130, 2000):
@@ -200,11 +200,11 @@ def test_the_lag_sensor_trusts_measurement_over_advertisement():
     b = _bot()
     b.config["tick_seconds"] = 0.4            # the lie
     b._hello_anchor = (1000, 100.0)
-    # feed 30 frames at the TRUE 0.25 cadence, each arriving 4s late
+    # feed 30 frames at the TRUE 0.25 cadence, each arriving 10s late
     for t in range(1001, 1031):
-        b._health_step(t, now=100.0 + (t - 1000) * 0.25 + 4.0)
-    lag = b._lag_estimate(1030, now=100.0 + 30 * 0.25 + 4.0)
-    assert lag is not None and lag > 3.5, \
+        b._health_step(t, now=100.0 + (t - 1000) * 0.25 + 10.0)
+    lag = b._lag_estimate(1030, now=100.0 + 30 * 0.25 + 10.0)
+    assert lag is not None and lag > 9.5, \
         f"the advertised 0.4 lie blinded the sensor: lag reads {lag}"
 
 
