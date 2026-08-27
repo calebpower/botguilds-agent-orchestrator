@@ -5793,3 +5793,10 @@ stale_frame error for the probe char. Analysis: tabulate per-K accept/reject off
 3 probe mutants killed (envelope not aged / healthy-gate deleted / K frozen). Watch3 on
 0.117.2 was 3x CLEAN; config print's first reading: tick_seconds=0.25 NOW (mismatch
 over), stale_order_ticks=0 SURVIVES = prime suspect.
+
+ITER 135 (2026-08-26/27) — PROBE RESULT + 0.117.4. Tabulation of the first K-cycle:
+K=1,2,3,5 ALL ACCEPTED (say events rendered in-world; nearby stale_frame errors were the
+char's other actions). stale_order_ticks=0 is NOT zero-tolerance (disabled, or window
+>=5) — the storm rejections are therefore the DELIVERY LAG making tags 20-330 ticks old,
+not a tight window. K=0 sample inconclusive (fell in a storm). 0.117.4: K ladder
+extended to (5,8,13,21,34,55), 5 kept as control, to find the actual boundary.

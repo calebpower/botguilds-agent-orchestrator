@@ -36,7 +36,9 @@ PROBE_EVERY = 600           # v0.117.3: staleness-probe cadence (one aged 'say' 
                             # min, HEALTHY windows only) — maps the server's freshness
                             # window; accept = the say event renders, reject = a
                             # stale_frame error for the probe char
-PROBE_AGES = (0, 1, 2, 3, 5, 8)   # the K cycle, in ticks behind the current envelope
+PROBE_AGES = (5, 8, 13, 21, 34, 55)   # v0.117.4: K<=5 measured ACCEPTED (says
+                                      # rendered) — the boundary is higher; climb the
+                                      # Fibonacci ladder with 5 kept as the control
 from .chatter import Chatter
 from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace

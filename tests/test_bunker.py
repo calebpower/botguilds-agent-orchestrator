@@ -152,20 +152,20 @@ def _probe_village(tick, here):
 
 def test_the_probe_fires_on_cadence_healthy_only_and_cycles_K():
     from steemer.bot import PROBE_EVERY, PROBE_AGES
-    assert (PROBE_EVERY, PROBE_AGES) == (600, (0, 1, 2, 3, 5, 8))
+    assert (PROBE_EVERY, PROBE_AGES) == (600, (5, 8, 13, 21, 34, 55))
     b = _bot()
     b.on_hello({"config": b.config, "guild": {}, "tick": 400})   # a probe needs a
     # session baseline — bots that never hello'd (every unit fixture) never probe
     acts = b.on_frame(_probe_village(1000, ["c1"]))
     probes = [a for a in acts if a.get("_probe_age") is not None]
-    assert len(probes) == 1 and probes[0]["_probe_age"] == 0, f"first probe: {acts}"
+    assert len(probes) == 1 and probes[0]["_probe_age"] == 5, f"first probe: {acts}"
     # cadence: still inside the probe interval — nothing may fire
     acts2 = b.on_frame(_probe_village(1300, ["c1"]))
     assert not [a for a in acts2 if a.get("_probe_age") is not None], "cadence ignored"
     # next probe cycles to K=1
     acts3 = b.on_frame(_probe_village(1601, ["c1"]))
     probes3 = [a for a in acts3 if a.get("_probe_age") is not None]
-    assert len(probes3) == 1 and probes3[0]["_probe_age"] == 1, f"K did not cycle: {acts3}"
+    assert len(probes3) == 1 and probes3[0]["_probe_age"] == 8, f"K did not cycle: {acts3}"
 
 
 def test_the_probe_never_fires_while_bunkered():
