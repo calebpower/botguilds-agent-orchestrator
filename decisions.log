@@ -5819,3 +5819,12 @@ chronic-mild lag (offset 12-25 = ~26% rejections = measured PLAYABLE); nobody ac
 probes fired, no play. 8s tolerates the playable chop, still catches deepening storms
 long before the 80s paralysis zone; the poison arm (10/300t) is unchanged and covers
 rejection storms at ANY lag. Tests retuned to 10s-lag fixtures; all bunker tests green.
+
+ITER 138 (2026-08-27) — explorer/0.117.7: DEBT-HEAL (the frozen-debt deadlock, observed
+live). A session carrying a constant sub-threshold delivery debt (7s vs the 8s lag arm)
+never exits the bunker (jitter re-arms the exit clock) AND never heals (the shelter
+prevents the actions whose rejections trigger the poison self-heal) — the shelter starves
+its own cure. Fix: bunkered + poison-quiet + lag>2s (spaced by EXIT_TICKS) -> bot
+requests a re-hello; client honors it under the same spacing ledger as the poison heal
+(they can never flap together). Re-hello is PROVEN curative this era. 2 tests, 2/2
+mutants killed.

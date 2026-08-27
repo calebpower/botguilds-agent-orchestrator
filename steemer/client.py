@@ -437,6 +437,17 @@ class Client:
                     self.send_actions(actions)
                 for m in batch:
                     self._mirror("record_frame", m)
+                # v0.117.7: the bot may request a curative re-hello (frozen-debt
+                # regime — see GuildBot._health_step). Same spacing ledger as the
+                # poison self-heal so the two can never flap together.
+                if getattr(self.bot, "request_rehello", False):
+                    self.bot.request_rehello = False
+                    last = getattr(self, "_heal_last", None)
+                    if last is None or self.tick - last >= HEAL_MIN_SPACING:
+                        self._heal_last = self.tick
+                        self._say("[heal] debt-heal — re-hello to shed the standing "
+                                  "delivery debt")
+                        self._connect()
                 seen += len(batch)
                 if max_ticks is not None and seen >= max_ticks:
                     self.running = False

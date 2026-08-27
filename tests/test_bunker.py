@@ -225,3 +225,81 @@ def test_the_pair_probe_emits_fresh_then_aged_for_the_same_char():
     fresh, aged = pair
     assert "_probe_age" not in fresh and aged.get("_probe_age") == 5
     assert fresh["char_uid"] == aged["char_uid"], "pair split across chars"
+
+
+def test_frozen_debt_requests_a_rehello_and_storms_do_not():
+    """v0.117.7: bunkered + poison-quiet + standing sub-threshold lag = the frozen-debt
+    deadlock (observed live at 7s vs the 8s arm) -> request a curative re-hello. A
+    poison STORM must NOT use this path (the poison self-heal owns storms)."""
+    b = _bot()
+    b._hello_anchor = (1000, 100.0)
+    b._health = "bunker"
+    # frozen debt: constant 5s lag, no poison
+    for t in range(1001, 1030):
+        b._health_step(t, now=100.0 + (t - 1000) * 0.25 + 5.0)
+    assert getattr(b, "request_rehello", False), "the frozen-debt cure never fired"
+    b.request_rehello = False
+    # spacing: no second request inside HEALTH_EXIT_TICKS
+    for t in range(1030, 1200):
+        b._health_step(t, now=100.0 + (t - 1000) * 0.25 + 5.0)
+    assert not getattr(b, "request_rehello", False), "debt-heal flapped inside spacing"
+    # storm: poison present -> the debt path stays quiet (poison heal owns it)
+    b2 = _bot()
+    b2._hello_anchor = (1000, 100.0)
+    b2._health = "bunker"
+    b2._poison_ticks = list(range(990, 1002))
+    b2._health_step(1002, now=100.0 + 2 * 0.25 + 5.0)
+    assert not getattr(b2, "request_rehello", False), \
+        "debt-heal fired during a poison storm"
+
+
+def test_the_client_honors_the_rehello_request_with_spacing():
+    from steemer.client import Client
+    from steemer import protocol as p
+
+    class _T:
+        def __init__(self, frames):
+            self.queued = list(frames)
+            self.sent = []
+            self.connects = 0
+
+        def poll(self, timeout_ms=0):
+            return self.queued.pop(0) if self.queued else None
+
+        def send(self, m):
+            self.sent.append(m)
+
+    c = Client.__new__(Client)
+    frames = [{"type": p.FRAME, "tick": 5000 + i, "world": "village", "seq": i + 1,
+               "visible": {"tiles": []}, "chars": []} for i in range(2)]
+    c.transport = _T(frames)
+    c.verbose = False
+    c.storage = None
+    c.running = True
+    c.connected = True
+    c.tick = 0
+    c._last_seq = None
+    c._refresh_at = 0.0
+    c._tiles_mem = {}
+    c._visible = {}
+    c._pending = None
+    connects = []
+    c._connect = lambda: connects.append(c.tick)
+
+    class _B:
+        request_rehello = True
+        config = {}
+
+        def on_frame(self, f):
+            return []
+    c.bot = _B()
+    c._loop(max_ticks=1)
+    # the drain batches both queued frames, so tick reads 5001 at honor time
+    assert connects == [5001], f"request not honored exactly once: {connects}"
+    # second request inside HEAL_MIN_SPACING is refused
+    c.bot.request_rehello = True
+    c.transport.queued = [{"type": p.FRAME, "tick": 5002, "world": "village",
+                           "seq": 3, "visible": {"tiles": []}, "chars": []}]
+    c.running = True
+    c._loop(max_ticks=1)
+    assert connects == [5001], f"honored inside the spacing guard: {connects}"

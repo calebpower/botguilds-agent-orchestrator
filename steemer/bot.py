@@ -356,6 +356,21 @@ class GuildBot:
                          and tick - self._lag_bad_since >= HEALTH_ENTER_TICKS)
         if poison_bad or lag_bad:
             self._health_bad_at = tick
+        # v0.117.7 DEBT-HEAL: the frozen-debt deadlock, observed live — a session
+        # carrying a constant sub-threshold delivery debt (e.g. 7s vs the 8s arm)
+        # keeps the bunker held via jitter re-arming the exit clock, while the
+        # shelter prevents the very actions whose rejections would trigger the
+        # poison self-heal. A re-hello is PROVEN curative in this era (fresh
+        # sessions are born clean), so when bunkered + poison-quiet + standing
+        # debt, request one proactively. The client honors it with the heal
+        # spacing guard.
+        if (self._health == "bunker" and not self._poison_ticks
+                and lag is not None and lag > 2.0
+                and tick - getattr(self, "_debt_heal_at", -10**9) >= HEALTH_EXIT_TICKS):
+            self._debt_heal_at = tick
+            self.request_rehello = True
+            print(f"[heal] debt-heal requested at t{tick}: bunkered, poison-quiet, "
+                  f"standing lag {lag:.1f}s — a fresh session sheds the debt", flush=True)
         if self._health == "ok" and (poison_bad or lag_sustained):
             self._health = "bunker"
             why = ("poison storm "
