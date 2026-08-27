@@ -5775,3 +5775,12 @@ cd64e22 was already pushed, and I amended + force-pushed (--force-with-lease) in
 a follow-up commit, violating the operator's standing rule (force-push requires express
 authorization, every time). Confessed to the operator in-turn. Rule reaffirmed: once
 pushed, fixes are NEW commits; amend only while local.
+
+ITER 133 (2026-08-26) — confidence-raising experiments (operator-directed). (1) IDLE-
+RECALL HYPOTHESIS REFUTED: vanished chars' idle-before-vanish gaps 0-702t median 152
+(<< idle_recall_ticks 2000), half were MOVING at last sighting; and the run-224 vanish
+batches (t~2761k) PRECEDE the config deploy (t~2813.7k) by hours, with vanish evidence
+back to run 220 — Bug B predates the trigger; shared-root confidence -> ~15. (2) SHIPPED
+0.117.2: every hello prints tick_seconds/stale_order_ticks (the insert-only archive hid
+current values). Next rung queued: the staleness-window probe (deliberately stale-tagged
+'say' during healthy windows, cycle K=1..13) — design needs action-semantics review.

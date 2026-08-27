@@ -199,6 +199,13 @@ class GuildBot:
         self._hello_anchor = (self.tick, time.monotonic())
         self._lag_bad_since = None
         self._record_phase(self.tick, "session hello")
+        # v0.117.2: the config ARCHIVE is insert-only per distinct value, so a key
+        # returning to an old value is invisible there (this hid whether the
+        # tick_seconds=0.4 advertisement was still live during the 08-25/26 incident).
+        # Print the timing-critical keys on EVERY hello — the log carries a timestamped
+        # current-value series the archive cannot.
+        print(f"[config] tick_seconds={self.config.get('tick_seconds')!r} "
+              f"stale_order_ticks={self.config.get('stale_order_ticks')!r}", flush=True)
         # v0.79.1: persist the server config. It carries constants we have repeatedly
         # NEEDED and could not answer offline — `ride_max_tiles` blocked the rail analysis
         # for two passes because nothing ever wrote it down; it lives only in this message

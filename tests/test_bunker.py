@@ -101,3 +101,14 @@ def test_a_fielded_char_walks_home_under_bunker_and_gathers_otherwise():
     mv2 = [a for a in acts2 if a.get("action") == "move"]
     assert mv2 and mv2[0]["dir"] == "S", \
         f"bunkered char did not turn for the village: {acts2}"
+
+
+def test_every_hello_prints_the_timing_critical_config(capsys):
+    """v0.117.2: the insert-only config archive hid whether tick_seconds=0.4 was
+    still advertised during the incident. Every hello must print the current
+    values so the log carries a timestamped series."""
+    b = _bot()
+    b.on_hello({"config": {"tick_seconds": 0.4, "stale_order_ticks": 0},
+                "guild": {}, "tick": 100})
+    out = capsys.readouterr().out
+    assert "[config] tick_seconds=0.4 stale_order_ticks=0" in out, out
