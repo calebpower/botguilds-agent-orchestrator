@@ -436,3 +436,24 @@ evidence that each session adds persistent per-guild cost server-side (dead-sess
 accumulation). Operationally we now avoid manual restarts entirely; the client self-heal
 only fires under deep storms (its error threshold is unreachable while the storm shelter
 keeps the roster benched in mild phases).
+
+## THE TRIGGER FOUND (2026-08-26 ~22:30): config change at storm onset — advertised
+## tick_seconds diverges from the actual tick
+
+Our hello-config archive (every `hello_ok` config is recorded per key) shows two changes
+landing right at the incident's start:
+- `stale_order_ticks=0` — a NEW key, first seen ~23:20 on 08-25
+- `tick_seconds=0.4` — first seen ~23:30 on 08-25 (previously 0.25 since forever)
+The first stale_frame storm in our stream began 23:33 — within minutes.
+
+Meanwhile the MEASURED tick rate never left 0.25 s/tick: 3.998–4.001 ticks/s across runs
+229–230 (hours-long windows), and 4.000 ticks/s RIGHT NOW post-reset. So the server
+ADVERTISES 0.4 s ticks while RUNNING 0.25 s ticks. Any freshness/staleness validation
+derived from the advertised value (or any client pacing itself by it — likely why
+WillMorr's own bot plays fine while every external guild sits in the village post-reset)
+would misjudge by 1.6x, which fits the erratic stale_frame rejections, their sensitivity
+to load, and the guild-selectivity.
+
+Suggested check: grep the deploy that introduced `stale_order_ticks` / the tick_seconds
+override for anywhere the ACTION-freshness window uses configured tick_seconds while the
+game loop runs the old constant.
