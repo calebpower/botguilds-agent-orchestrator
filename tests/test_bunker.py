@@ -22,12 +22,19 @@ def _bot():
 def test_sustained_lag_bunkers_but_a_spike_does_not():
     b = _bot()
     b._hello_anchor = (1000, 100.0)          # tick 1000 anchored at wall 100.0
-    # SPIKE: 60 ticks of 4s lag (under the 120-tick entry grace) then clean again
+
+    def true_wall(t):
+        return 100.0 + (t - 1000) * 0.25
+    # SPIKE: 60 ticks of 4s delay (under the 120-tick entry grace), then a PHYSICAL
+    # recovery — the delayed queue flushes in a burst; the arrival clock must stay
+    # MONOTONIC (the first draft ran time backwards at the boundary, corrupting the
+    # measured slope — a fixture bug, not a sensor bug).
     for t in range(1001, 1061):
-        b._health_step(t, now=100.0 + (t - 1000) * 0.25 + 4.0)
+        b._health_step(t, now=true_wall(t) + 4.0)
     assert b.server_health() == "ok", "a lag spike under the grace benched the guild"
+    burst_floor = true_wall(1060) + 4.0
     for t in range(1061, 1200):
-        b._health_step(t, now=100.0 + (t - 1000) * 0.25)     # clean
+        b._health_step(t, now=max(true_wall(t), burst_floor + 0.001 * (t - 1060)))
     assert b.server_health() == "ok"
     # SUSTAINED: 121 ticks of 4s lag
     for t in range(1200, 1322):
@@ -184,3 +191,37 @@ def test_a_bot_with_no_session_never_probes():
     b = _bot()
     acts = b.on_frame(_probe_village(9000, ["c1"]))
     assert not [a for a in acts if a.get("_probe_age") is not None]
+
+
+def test_the_lag_sensor_trusts_measurement_over_advertisement():
+    """v0.117.5: the 08-25 server advertised tick_seconds=0.4 while running 0.25 —
+    a detector trusting the advertisement computes real 4-second lag as EARLY and
+    never alarms. With measured samples present, the advertisement is ignored."""
+    b = _bot()
+    b.config["tick_seconds"] = 0.4            # the lie
+    b._hello_anchor = (1000, 100.0)
+    # feed 30 frames at the TRUE 0.25 cadence, each arriving 4s late
+    for t in range(1001, 1031):
+        b._health_step(t, now=100.0 + (t - 1000) * 0.25 + 4.0)
+    lag = b._lag_estimate(1030, now=100.0 + 30 * 0.25 + 4.0)
+    assert lag is not None and lag > 3.5, \
+        f"the advertised 0.4 lie blinded the sensor: lag reads {lag}"
+
+
+def test_the_pair_probe_emits_fresh_then_aged_for_the_same_char():
+    """v0.117.5 order discriminator: every 4th probe is (fresh say, K=5 aged say),
+    same char, same batch — a time-window validator accepts both, an order
+    validator rejects the aged one."""
+    b = _bot()
+    b.on_hello({"config": b.config, "guild": {}, "tick": 400})
+    pair = None
+    for i in range(5):
+        acts = b.on_frame(_probe_village(1000 + i * 700, ["c1"]))
+        says = [a for a in acts if a.get("action") == "say"]
+        if len(says) == 2:
+            pair = says
+            break
+    assert pair is not None, "the pair probe never fired in 5 cycles"
+    fresh, aged = pair
+    assert "_probe_age" not in fresh and aged.get("_probe_age") == 5
+    assert fresh["char_uid"] == aged["char_uid"], "pair split across chars"

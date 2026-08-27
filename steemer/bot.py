@@ -175,6 +175,7 @@ class GuildBot:
         self._lag_bad_since = None      # tick the CURRENT continuous lag-run started
         self._health_bad_at = None      # last tick ANY signal was bad
         self._poison_ticks = []
+        self._rate_samples = []          # (tick, wall) pairs for the measured s/tick
         # v0.61.0: does what we predicted actually happen? Derives a checkable claim from
         # each action we send and resolves it against later frames. See expectation.py --
         # the last four passes each shipped a silent belief-vs-reality mismatch past a
@@ -283,18 +284,53 @@ class GuildBot:
         """'ok' or 'bunker' — the strategy's read of the health state machine."""
         return self._health
 
+    def _measured_tick_s(self) -> float | None:
+        """s/tick measured from our own frame stream (median of the last ~200
+        inter-frame slopes). v0.117.5: the 08-25 incident advertised tick_seconds=0.4
+        while running 0.25 — a lag detector trusting the advertisement computes
+        frames as EARLY and never alarms. Sensors trust measurements."""
+        s = self._rate_samples
+        if len(s) < 20:
+            return None
+        # MEDIAN of strided pairwise slopes, not the endpoint slope: a catch-up
+        # burst (frames flushed near-instantly after a stall) contributes near-zero
+        # slopes that an endpoint estimate absorbs — and with a fixed anchor, a
+        # small rate error INTEGRATES into unbounded phantom lag. The median treats
+        # the burst as the outlier it is.
+        stride = 5
+        slopes = []
+        for i in range(len(s) - stride):
+            (t0, w0), (t1, w1) = s[i], s[i + stride]
+            if t1 > t0 and w1 > w0:
+                slopes.append((w1 - w0) / (t1 - t0))
+        if not slopes:
+            return None
+        slopes.sort()
+        return slopes[len(slopes) // 2]
+
+    def _note_rate(self, tick: int, now: float) -> None:
+        s = self._rate_samples
+        if not s or tick > s[-1][0]:
+            s.append((tick, now))
+            if len(s) > 200:
+                del s[:len(s) - 200]
+
     def _lag_estimate(self, tick: int, now: float | None = None) -> float | None:
         """Seconds this frame arrived behind the tick-implied clock, from the hello
-        anchor. None before the first hello. Injectable `now` for tests."""
+        anchor. None before the first hello. Injectable `now` for tests. Uses the
+        MEASURED tick rate when available; the advertised value only as the
+        cold-start fallback."""
         if self._hello_anchor is None:
             return None
         a_tick, a_wall = self._hello_anchor
-        tick_s = float(self.config.get("tick_seconds", 0.25) or 0.25)
+        tick_s = (self._measured_tick_s()
+                  or float(self.config.get("tick_seconds", 0.25) or 0.25))
         if now is None:
             now = time.monotonic()
         return (now - a_wall) - (tick - a_tick) * tick_s
 
     def _health_step(self, tick: int, now: float | None = None) -> None:
+        self._note_rate(tick, time.monotonic() if now is None else now)
         """Advance the bunker state machine one frame. Grace both directions:
         enter on SUSTAINED lag (HEALTH_ENTER_TICKS) or a poison storm (>=
         HEALTH_POISON_N/HEALTH_POISON_WINDOW — a storm is already sustained
@@ -368,12 +404,27 @@ class GuildBot:
                     and self._hello_anchor is not None
                     and self.tick - getattr(self, "_probe_at", -10**9) >= PROBE_EVERY):
                 self._probe_at = self.tick
-                k = PROBE_AGES[getattr(self, "_probe_i", 0) % len(PROBE_AGES)]
-                self._probe_i = getattr(self, "_probe_i", 0) + 1
-                print(f"[probe] K={k} tick={self.tick} char={here[0]} — aged say sent",
-                      flush=True)
-                self._probe_pending = {"char_uid": here[0], "action": "say",
-                                       "text": "sync", "_probe_age": k}
+                i = getattr(self, "_probe_i", 0)
+                self._probe_i = i + 1
+                if i % 4 == 3:
+                    # v0.117.5 ORDER DISCRIMINATOR: a fresh say THEN an aged say for
+                    # the SAME char in the same batch. A time-window validator accepts
+                    # both; an order validator (the reading of `stale_order_ticks`
+                    # that fits all data) rejects the aged one because the fresh one
+                    # just advanced the char's last-accepted tick.
+                    print(f"[probe] PAIR tick={self.tick} char={here[0]} — fresh say "
+                          "+ K=5 aged say", flush=True)
+                    self._probe_pending = [
+                        {"char_uid": here[0], "action": "say", "text": "sync-a"},
+                        {"char_uid": here[0], "action": "say", "text": "sync-b",
+                         "_probe_age": 5},
+                    ]
+                else:
+                    k = PROBE_AGES[i % len(PROBE_AGES)]
+                    print(f"[probe] K={k} tick={self.tick} char={here[0]} — aged say "
+                          "sent", flush=True)
+                    self._probe_pending = [{"char_uid": here[0], "action": "say",
+                                            "text": "sync", "_probe_age": k}]
             for a in self.kpis.observe(self.tick,
                                        sum(len(v) for v in by_world.values()),
                                        len(guild.get("chars_here") or []),
@@ -383,7 +434,7 @@ class GuildBot:
             probe = getattr(self, "_probe_pending", None)
             if probe is not None:
                 self._probe_pending = None
-                acts = list(acts) + [probe]
+                acts = list(acts) + list(probe)
             return acts
         return self._field(frame)
 
