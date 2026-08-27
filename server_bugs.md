@@ -457,3 +457,14 @@ to load, and the guild-selectivity.
 Suggested check: grep the deploy that introduced `stale_order_ticks` / the tick_seconds
 override for anywhere the ACTION-freshness window uses configured tick_seconds while the
 game loop runs the old constant.
+
+**Storm-time capture (2026-08-27 ~00:45) — a Heisenberg result that localizes the
+current era's fault.** While the standing session drowned (5.09 stale_frame/frame, 100%
+move-prediction violations), we swapped in a fresh listener session mid-storm: it was
+born FRESH (first frame = hello tick + 1) and received 119 metronomic frames at lag
+-0.2s. Contrast with the 08-26 02:55 deep phase, where a fresh session was born 22 ticks
+stale. So: BEFORE the reset the backlog attached to the GUILD (survived re-hello); AFTER
+the reset it attaches to the SESSION (a re-hello clears it completely). Either the reset
+changed the mechanism, or two mechanisms exist. Current-era practical note: re-hello is
+curative now; our client's self-heal handles it. Capture files (healthy control +
+storm-time fresh session) available: capture.jsonl / capture_storm.jsonl.
