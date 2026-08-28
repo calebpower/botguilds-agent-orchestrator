@@ -55,6 +55,9 @@ EMBARK_STAGES = ((300, 2), (600, 4), (900, 8))
                             # v0.119.0 staged exit: (clean ticks since bunker EXIT,
                             # max chars afield). Past the last window: unlimited.
                             # Sessions that never bunkered are never staged.
+STAMP_OFFSET_MAX = 300      # v0.120.0: cap on the forward stamp correction (ticks).
+                            # The breathing debt peaked ~271; anything larger is a
+                            # suspect sample, not a bigger correction.
 from .chatter import Chatter
 from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace
@@ -492,6 +495,21 @@ class GuildBot:
             {"char_uid": here[1], "action": "say", "text": "fwd-b",
              "_probe_age": -off},
         ]
+
+    def stamp_offset(self) -> int:
+        """v0.120.0 LAG-CORRECTED ACTION STAMPS: ticks the client should ADD to
+        outgoing envelope ticks. The staged-exit experiment proved burst size
+        irrelevant — even a 4-char release stormed within 94 ticks, because under
+        breathing delivery debt any action stamped with our newest FRAME tick is
+        already old whenever the server breathes in. Stamping at the estimated
+        CURRENT server tick (frame tick + differential offset) is order-safe
+        (monotonically increasing per char) and avoids the loud staleness window.
+        0 whenever the sample is absent, stale, or negative; capped — a huge
+        offset is a suspect sample, not a bigger correction."""
+        samp = getattr(self, "_offset_sample", None)
+        if samp is None or not (0 <= self.tick - samp[0] <= OFFSET_SAMPLE_TTL):
+            return 0
+        return max(0, min(int(samp[1]), STAMP_OFFSET_MAX))
 
     def _record_phase(self, tick: int, why: str) -> None:
         """Persist the health phase to the DB bus (an events row, kind=bot_anomaly,

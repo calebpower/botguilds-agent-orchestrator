@@ -595,3 +595,77 @@ def test_exit_holds_while_lag_is_bad_right_now():
     for t in range(3302, 3413):
         step(t, 240)
     assert b.server_health() == "bunker"
+
+
+# ---------------------------------------------------------------------------
+# v0.120.0 lag-corrected action stamps: even a 4-char staged release stormed in
+# 94 ticks — burst size was never the trigger; the FRAME-tick stamp was. The
+# client adds the differential offset to outgoing envelopes.
+
+def test_stamp_offset_pins_fresh_stale_negative_and_the_cap():
+    from steemer.bot import STAMP_OFFSET_MAX
+    assert STAMP_OFFSET_MAX == 300
+    b = _bot()
+    b.tick = 1000
+    b._offset_sample = (1000, 20)
+    assert b.stamp_offset() == 20
+    b._offset_sample = (599, 20)            # 401 ticks old: one past the TTL
+    assert b.stamp_offset() == 0, "a stale sample still corrected the stamp"
+    b._offset_sample = (600, 20)            # exactly the TTL: still authoritative
+    assert b.stamp_offset() == 20
+    b._offset_sample = (1000, -5)
+    assert b.stamp_offset() == 0, "a negative sample must never stamp BACKWARD"
+    b._offset_sample = (1000, 999)
+    assert b.stamp_offset() == 300, "a suspect huge sample must be capped, not obeyed"
+    b2 = _bot()
+    b2.tick = 1000
+    assert b2.stamp_offset() == 0, "no sample must mean no correction"
+
+
+def test_the_clean_envelope_carries_the_corrected_stamp_and_probes_do_not():
+    from steemer.client import Client
+
+    class _T:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, m):
+            self.sent.append(m)
+
+    b = _bot()
+    b.tick = 1000
+    b._offset_sample = (1000, 20)
+    c = Client.__new__(Client)
+    c.transport = _T()
+    c.verbose = False
+    c.tick = 1000
+    c.storage = None
+    c.bot = b
+    c.send_actions([{"char_uid": "c1", "action": "move", "dir": "N"},
+                    {"char_uid": "c2", "action": "say", "text": "sync",
+                     "_probe_age": 5}])
+    envs = c.transport.sent
+    clean = next(m for m in envs if m["actions"][0].get("action") == "move")
+    probe = next(m for m in envs if m["actions"][0].get("action") == "say")
+    assert clean["tick"] == 1020, f"clean envelope not lag-corrected: {clean}"
+    assert probe["tick"] == 995, \
+        f"the probe's deliberate aging must stay UNcorrected: {probe}"
+
+
+def test_a_botless_client_stamps_raw():
+    from steemer.client import Client
+
+    class _T:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, m):
+            self.sent.append(m)
+
+    c = Client.__new__(Client)
+    c.transport = _T()
+    c.verbose = False
+    c.tick = 1000
+    c.storage = None
+    c.send_actions([{"char_uid": "c1", "action": "move", "dir": "N"}])
+    assert c.transport.sent[0]["tick"] == 1000

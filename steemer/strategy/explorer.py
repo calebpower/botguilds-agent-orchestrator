@@ -1313,7 +1313,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.119.2"
+    version = "explorer/0.120.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2313,6 +2313,13 @@ class Explorer:
                         target = min(g_opts, key=lambda m: (threat(m), by_world.get(m, 0)))
                     break
                 if uid is None:
+                    return []
+                # v0.120.0: a PAIR adds TWO chars — the first live staged exit
+                # overshot its budget ("afield 4/2", two pairs through a cap of 2).
+                # A pair that would exceed the ramp waits for the next stage; it
+                # never splits (the escort rule outranks the commute).
+                if (pair_with is not None
+                        and fielded + len(inflight) + 2 > _afield_cap):
                     return []
                 self._embark_at[uid] = tick
                 self._scout_sent[target] = tick   # v0.106.1: this world has eyes en route

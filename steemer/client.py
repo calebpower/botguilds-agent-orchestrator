@@ -315,8 +315,20 @@ class Client:
             self._say(f"probe send failed ({e}) — skipping")
         if not clean:
             return
+        # v0.120.0: lag-corrected stamp — the bot's differential debt sample says
+        # how far behind the server clock our newest frame is; stamping the
+        # envelope AT the estimated current server tick keeps actions out of the
+        # staleness window while the delivery breathes. 0 when no fresh sample.
+        corr = 0
+        b = getattr(self, "bot", None)
+        if b is not None:
+            try:
+                corr = int(getattr(b, "stamp_offset", lambda: 0)())
+            except Exception:
+                corr = 0
         try:
-            self.transport.send(p.msg(p.ACTIONS, tick=self.tick, actions=clean))
+            self.transport.send(p.msg(p.ACTIONS, tick=self.tick + corr,
+                                      actions=clean))
         except (zmq.ZMQError, OSError) as e:
             # A hiccup on the way up costs one tick; the next frame is a tick
             # away and unsent actions cost nothing. The read path notices if the

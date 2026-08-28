@@ -307,3 +307,27 @@ def test_a_fielded_wizard_LEAVES_when_the_band_turns_dangerous():
     mine = _act_for(acts, "wiz")
     assert mine and mine[0]["action"] == "move" and mine[0]["dir"] == "S", \
         f"wizard stayed out in a dangerous band: {mine}"
+
+
+def test_a_pair_waits_for_a_stage_budget_it_would_overshoot():
+    """v0.120.0: the first live staged exit went 'afield 4/2' — a pair adds TWO
+    chars, so a pair that would exceed the ramp waits (never splits)."""
+    bot = _bot()
+    bot.config["roster_cap"] = 3            # 1 afield + 2 here = at cap: no recruit
+    bot._health = "ok"
+    frame = _village([_char("wiz", ["int"]), _char("guard", ["vit"], level=5)],
+                     {"mines": ["v0"]})     # 1 afield < budget 2: the OUTER gate
+    bot._exit_at = frame["tick"] - 10       # passes; only the pair guard can hold
+    held = bot.on_frame(frame)
+    assert not [a for a in held if a.get("action") == "embark"], \
+        f"a pair overshot the stage budget (1 afield + 2 > cap 2): {held}"
+    bot2 = _bot()
+    bot2.config["roster_cap"] = 9
+    bot2._health = "ok"
+    frame2 = _village([_char("wiz", ["int"]), _char("guard", ["vit"], level=5)],
+                      {"mines": [f"v{i}" for i in range(7)]})
+    bot2._exit_at = frame2["tick"] - 1000   # ramp matured -> the pair ships
+    acts = bot2.on_frame(frame2)
+    emb = [a for a in acts if a.get("action") == "embark"]
+    assert emb and sorted(emb[0]["char_uids"]) == ["guard", "wiz"], \
+        f"matured ramp still holding the pair: {acts}"
