@@ -2200,8 +2200,16 @@ def test_a_poison_storm_bunkers_embarks_and_a_clean_window_releases_them():
     held2 = bot2.on_frame(_deploy_frame(uids, by_world, here, tick=4010))
     assert not any(a.get("action") == "embark" for a in held2), "released early"
     clear = bot2.on_frame(_deploy_frame(uids, by_world, here, tick=4012 + 2000))
-    assert any(a.get("action") == "embark" for a in clear), \
-        f"the bunker never released: {clear}"
+    # v0.119.0: the EXIT is STAGED — with 5 already afield and the ramp fresh
+    # (budget 2), the release holds embarks instead of re-bursting the bench
+    # (the all-at-once release re-blew the delivery debt 8/8 on 2026-08-28).
+    assert bot2.server_health() == "ok", "the bunker itself never released"
+    assert not any(a.get("action") == "embark" for a in clear), \
+        f"a fresh exit re-burst the bench past the stage budget: {clear}"
+    ramped = bot2.on_frame(_deploy_frame(uids, by_world, here,
+                                         tick=6012 + 900))
+    assert any(a.get("action") == "embark" for a in ramped), \
+        f"the matured ramp never released: {ramped}"
 
 
 def test_a_single_stray_rejection_does_not_bunker():
@@ -2230,3 +2238,24 @@ def test_ordinary_errors_do_not_shelter():
     acts = bot.on_frame(_deploy_frame(uids, by_world, here, tick=1200))
     assert any(a.get("action") == "embark" for a in acts), \
         f"a stamina storm benched the guild: {acts}"
+
+
+def test_a_staged_exit_holds_embarks_at_the_budget_then_releases():
+    """v0.119.0: after a bunker EXIT the afield budget ramps (2 early on) — with 2
+    already fielded, the third embark waits; once the ramp matures the same frame
+    embarks. The all-18 release re-blew the delivery debt 8/8 times on 2026-08-28."""
+    bot = _bot()
+    by_world = {"vale": [f"v{i}" for i in range(9)]}   # 9 afield, roster at cap
+    frame = _deploy_frame(["c1"], by_world, [_idle_village_char("c1")], tick=100)
+    bot._health = "ok"
+    bot._exit_at = 90                          # 10 ticks into the ramp -> budget 2
+    held = bot.on_frame(frame)
+    assert all(a.get("action") != "embark" for a in held), \
+        f"embarked past the stage budget: {held}"
+    bot2 = _bot()
+    bot2._health = "ok"
+    bot2._exit_at = 100 - 1000                 # ramp matured -> unlimited
+    released = bot2.on_frame(_deploy_frame(["c1"], by_world,
+                                           [_idle_village_char("c1")], tick=100))
+    assert released and released[0]["action"] == "embark", \
+        f"matured ramp still holding: {released}"

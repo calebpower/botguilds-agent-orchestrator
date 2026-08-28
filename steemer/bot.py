@@ -51,6 +51,10 @@ FWD_PROBE_MIN_TICKS = 4     # v0.118.0: below this the debt estimate is inside t
 OFFSET_SAMPLE_TTL = 400     # v0.118.1: ticks a differential debt sample (public tick
                             # minus ours, via the track feed) stays authoritative
                             # before lag falls back to anchor integration
+EMBARK_STAGES = ((300, 2), (600, 4), (900, 8))
+                            # v0.119.0 staged exit: (clean ticks since bunker EXIT,
+                            # max chars afield). Past the last window: unlimited.
+                            # Sessions that never bunkered are never staged.
 from .chatter import Chatter
 from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace
@@ -406,9 +410,29 @@ class GuildBot:
                 self._health_bad_at is None
                 or tick - self._health_bad_at >= HEALTH_EXIT_TICKS):
             self._health = "ok"
+            self._exit_at = tick        # v0.119.0: starts the staged-exit ramp
             print(f"[bunker] EXIT at t{tick}: all signals clean "
-                  f"{HEALTH_EXIT_TICKS}t — resuming normal play", flush=True)
+                  f"{HEALTH_EXIT_TICKS}t — resuming normal play (staged)", flush=True)
             self._record_phase(tick, f"clean {HEALTH_EXIT_TICKS}t")
+
+    def embark_budget(self) -> int:
+        """v0.119.0 STAGED EXIT: max chars afield right now. Unhealthy = 0. A
+        session that has never exited a bunker is unlimited — the ramp exists for
+        the measured failure mode (a full-bench release re-blowing the delivery
+        debt: 8/8 exits on 2026-08-28 stormed within ~65 ticks), not for healthy
+        play. After an EXIT the budget climbs 2 -> 4 -> 8 -> all as the clean
+        window grows; re-entering the bunker zeroes it and the next EXIT restarts
+        the ramp."""
+        if self._health != "ok":
+            return 0
+        exit_at = getattr(self, "_exit_at", None)
+        if exit_at is None:
+            return 10**9
+        since = self.tick - exit_at
+        for window, cap in EMBARK_STAGES:
+            if since < window:
+                return cap
+        return 10**9
 
     def _maybe_fwd_probe(self, here: list[str]) -> None:
         """v0.118.0 FORWARD-STAMP probe. The field-time blocker is

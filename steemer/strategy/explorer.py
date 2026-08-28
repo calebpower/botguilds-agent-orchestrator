@@ -1313,7 +1313,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.118.1"
+    version = "explorer/0.119.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2107,7 +2107,23 @@ class Explorer:
                 self._shelter_said = tick
                 print(f"[shelter] holding {len(here_avail)} embarks — server "
                       "health: bunker", flush=True)
-        if here_avail and not _sheltering and fielded + len(inflight) < world_cap:
+        # v0.119.0 STAGED EXIT: a bunker exit that releases the whole bench at once
+        # blew the delivery debt to 236 ticks within ~65t and re-storming — eight of
+        # eight exits on 2026-08-28 died that way. After an EXIT, the bot grants an
+        # afield budget that ramps 2 -> 4 -> 8 -> all as the clean window grows; a
+        # re-storm recalls as before, having risked 2 chars instead of 18. Sessions
+        # that never bunkered are unlimited (the ramp targets the measured failure,
+        # not healthy play).
+        _afield_cap = min(world_cap, getattr(bot, "embark_budget", lambda: 10**9)())
+        if (here_avail and not _sheltering
+                and fielded + len(inflight) >= _afield_cap
+                and fielded + len(inflight) < world_cap
+                and tick - getattr(self, "_stage_said", -10**9) >= 300):
+            self._stage_said = tick
+            print(f"[stage] afield {fielded + len(inflight)}/{_afield_cap} — "
+                  "holding further embarks while the exit ramp proves clean",
+                  flush=True)
+        if here_avail and not _sheltering and fielded + len(inflight) < _afield_cap:
             maps = [m["id"] for m in cfg.get("maps", [])] or list(DEFAULT_MAPS)
             party_cap = cfg.get("party_cap", 5)
             # v0.26.0: SAFE-WORLD routing — field into the world with the lowest

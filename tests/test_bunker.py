@@ -465,3 +465,50 @@ def test_the_fwd_probe_stamps_from_the_differential_not_the_phantom():
     pair = _fwd_says(acts)
     assert len(pair) == 2 and pair[1]["_probe_age"] == -20, \
         f"the probe must stamp the TRUE 20-tick debt, not the 600s phantom: {pair}"
+
+
+# ---------------------------------------------------------------------------
+# v0.119.0 staged exit: a full-bench release re-blows the delivery debt (8/8
+# exits on 2026-08-28 stormed within ~65 ticks, offset 236). After an EXIT the
+# afield budget ramps 2 -> 4 -> 8 -> all; unhealthy = 0; a session that never
+# bunkered is unlimited.
+
+def test_embark_stages_pin_their_literals():
+    from steemer.bot import EMBARK_STAGES
+    assert EMBARK_STAGES == ((300, 2), (600, 4), (900, 8))
+
+
+def test_embark_budget_ramps_from_the_exit_with_exact_boundaries():
+    b = _bot()
+    b._health = "ok"
+    b._exit_at = 1000
+    for tick, want in ((1000, 2), (1299, 2), (1300, 4), (1599, 4),
+                       (1600, 8), (1899, 8), (1900, 10**9)):
+        b.tick = tick
+        assert b.embark_budget() == want, f"t{tick}: {b.embark_budget()} != {want}"
+
+
+def test_embark_budget_is_zero_unhealthy_and_unlimited_before_any_exit():
+    b = _bot()
+    b._health = "bunker"
+    b._exit_at = 1000
+    b.tick = 5000
+    assert b.embark_budget() == 0, "bunkered but budget granted"
+    b2 = _bot()
+    b2._health = "ok"
+    b2.tick = 5000
+    assert b2.embark_budget() == 10**9, "a never-bunkered session was staged"
+
+
+def test_the_exit_transition_stamps_the_ramp_anchor():
+    b = _bot()
+    b._hello_anchor = (1000, 100.0)
+    for i in range(12):
+        b.on_action_error({"tick": 1000 + i, "reason": "stale_frame"})
+    b._health_step(1012, now=100.0 + 12 * 0.25)
+    assert b.server_health() == "bunker"
+    for t in range(1013, 3400):
+        b._health_step(t, now=100.0 + (t - 1000) * 0.25)
+    assert b.server_health() == "ok", "never exited in the fixture"
+    assert getattr(b, "_exit_at", None) is not None and 3300 <= b._exit_at <= 3400, \
+        f"EXIT did not stamp the ramp anchor: {getattr(b, '_exit_at', None)}"
