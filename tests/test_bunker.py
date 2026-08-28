@@ -322,7 +322,8 @@ def _debt_bot(debt_s):
     b = _bot()
     b.on_hello({"config": b.config, "guild": {}, "tick": 1000})
     b._health = "bunker"
-    b._health_bad_at = 1000       # keep the exit clock from firing mid-frame
+    b._health_bad_at = 1000
+    b._poison_bad_at = 1000       # keep the exit clock from firing mid-frame
     b._hello_anchor = (1000, time.monotonic() - debt_s)
     return b
 
@@ -425,6 +426,7 @@ def _phantom_bot(track_tick):
     b.storage = st
     b._health = "bunker"
     b._health_bad_at = 1000
+    b._poison_bad_at = 1000
     b._hello_anchor = (1000, time.monotonic() - 600.0)     # 600s of phantom
     return b
 
@@ -532,8 +534,64 @@ def test_the_spectate_feed_covers_a_quiet_track_feed():
     b.storage = st
     b._health = "bunker"
     b._health_bad_at = 1000
+    b._poison_bad_at = 1000
     b._hello_anchor = (1000, time.monotonic() - 600.0)
     b.on_frame(_probe_village(1000, ["c1", "c2"]))
     lag = b._lag_estimate(1000)
     assert lag is not None and abs(lag - 5.0) < 0.01, \
         f"a quiet track feed must not blind the sensor to the spectate clock: {lag}"
+
+
+def test_exit_runs_on_poison_alone_while_lag_breathes():
+    """v0.119.2: the server's delivery BREATHES (true offset 10<->271 in minutes),
+    so a lag-windowed exit clock starves the bunker forever with zero rejections.
+    Exit = poison clean for the window AND lag small NOW. Driven via the
+    differential sample so every lag value is exact."""
+    b = _bot()
+    b._hello_anchor = (1000, 100.0)
+    for i in range(12):
+        b.on_action_error({"tick": 1000 + i, "reason": "stale_frame"})
+
+    def step(t, offset_ticks):
+        b._offset_sample = (t, offset_ticks)
+        b._health_step(t, now=100.0 + (t - 1000) * 0.25)
+    step(1012, 2)
+    assert b.server_health() == "bunker"
+    # poison-clean, lag breathing 2 <-> 240 ticks (0.5s <-> 60s): the spikes must
+    # not re-arm the exit clock. The storm entries stay inside their 300t window
+    # until ~t1301, so the poison stamp refreshes until then -> earliest exit
+    # ~3301. A calm moment at t3300 must still be held by the POISON clock.
+    for t in range(1013, 3300):
+        step(t, 240 if (t // 200) % 2 else 2)
+    step(3300, 2)
+    assert b.server_health() == "bunker", "exited before the poison window elapsed"
+    # past the window: the first CALM step exits; a spiking step must not
+    step(3305, 240)
+    assert b.server_health() == "bunker", "exited INTO a 60s breath-in"
+    step(3306, 2)
+    assert b.server_health() == "ok", "poison-clean window + calm water never exited"
+
+
+def test_exit_holds_while_lag_is_bad_right_now():
+    b = _bot()
+    b._hello_anchor = (1000, 100.0)
+    for i in range(12):
+        b.on_action_error({"tick": 1000 + i, "reason": "stale_frame"})
+
+    def step(t, offset_ticks):
+        b._offset_sample = (t, offset_ticks)
+        b._health_step(t, now=100.0 + (t - 1000) * 0.25)
+    step(1012, 2)
+    assert b.server_health() == "bunker"
+    for t in range(1013, 3301):
+        step(t, 240)          # poison clean but lag CURRENTLY deep
+    # t3301 is the FIRST poison-eligible tick (last stamp ~1301 + 2000). Probe
+    # health exactly here: a missing instantaneous gate exits on this very step
+    # (the immediate lag-sustained re-entry one step later would mask it from an
+    # end-state assertion).
+    step(3301, 240)
+    assert b.server_health() == "bunker", \
+        "exited into deep standing lag — the instantaneous gate is dead"
+    for t in range(3302, 3413):
+        step(t, 240)
+    assert b.server_health() == "bunker"

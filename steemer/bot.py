@@ -399,6 +399,13 @@ class GuildBot:
                          and tick - self._lag_bad_since >= HEALTH_ENTER_TICKS)
         if poison_bad or lag_bad:
             self._health_bad_at = tick
+        if poison_bad:
+            # v0.119.2: the exit clock runs on POISON alone. The server's delivery
+            # BREATHES (true offset 10 <-> 271 within minutes, tick rate 3.4-6.1
+            # t/s in segments), so "lag clean for a full window" almost never
+            # happens and the bunker starved even with zero rejections. Lag still
+            # ENTERS (sustained) and still gates the exit instantaneously below.
+            self._poison_bad_at = tick
         # v0.117.7 DEBT-HEAL: the frozen-debt deadlock, observed live — a session
         # carrying a constant sub-threshold delivery debt (e.g. 7s vs the 8s arm)
         # keeps the bunker held via jitter re-arming the exit clock, while the
@@ -422,9 +429,13 @@ class GuildBot:
             print(f"[bunker] ENTER at t{tick}: {why} — recalling the field, "
                   "holding embarks", flush=True)
             self._record_phase(tick, why)
-        elif self._health == "bunker" and (
-                self._health_bad_at is None
-                or tick - self._health_bad_at >= HEALTH_EXIT_TICKS):
+        elif self._health == "bunker" and not lag_bad and (
+                getattr(self, "_poison_bad_at", None) is None
+                or tick - self._poison_bad_at >= HEALTH_EXIT_TICKS):
+            # v0.119.2: "storm over + water currently calm" — poison clean for the
+            # full window AND lag small RIGHT NOW (instantaneous, not windowed).
+            # The staged ramp is the safety: a wrong release risks 2 chars, and a
+            # re-storm recalls them.
             self._health = "ok"
             self._exit_at = tick        # v0.119.0: starts the staged-exit ramp
             print(f"[bunker] EXIT at t{tick}: all signals clean "
