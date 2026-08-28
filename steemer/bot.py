@@ -274,22 +274,38 @@ class GuildBot:
         self._hints_at = self.tick
         try:
             import json as _json
-            row = self.storage.conn.execute(
-                "SELECT tick, payload_json FROM intel WHERE kind='track' "
-                "ORDER BY seq DESC LIMIT 1").fetchone()
-            if row is None:
+            rows = self.storage.conn.execute(
+                "SELECT kind, tick, payload_json FROM intel "
+                "ORDER BY seq DESC LIMIT 40").fetchall()
+            if not rows:
                 return
-            # v0.118.1: the track row's tick IS the public server clock — a
+
+            def _col(r, name, i):
+                return r[name] if hasattr(r, "keys") else r[i]
+            # v0.118.1: a public-clock intel tick IS the server clock — a
             # DIFFERENTIAL delivery-debt measurement (server tick minus our newest
             # frame tick). The anchor-based integral read a phantom 649s while the
-            # true debt was 6 ticks (2026-08-28, oscillating server tick rate) —
-            # it fired a spurious debt-heal and fed the FWD probe a +73 stamp.
-            # Trust the sample only when the feed is AHEAD of our stream: a dead
-            # or quiet sidecar falls behind and disqualifies itself.
-            row_tick = row["tick"] if hasattr(row, "keys") else row[0]
-            if isinstance(row_tick, int) and row_tick >= self.tick:
-                self._offset_sample = (self.tick, row_tick - self.tick)
-            payload = row["payload_json"] if hasattr(row, "keys") else row[1]
+            # true debt was 6 ticks (2026-08-28, oscillating server tick rate).
+            # v0.119.1: draw the sample from BOTH feeds. The track feed only
+            # advances while rivals act; when they went quiet the sample expired
+            # and the integral's phantom lag (41s vs a true ~1s) re-armed the
+            # bunker's bad-signal clock and STARVED the exit. The spectate poll
+            # ticks every second regardless. Trust the sample only when the feed
+            # is AHEAD of our stream: a dead sidecar falls behind and disqualifies
+            # itself.
+            best = None
+            for r in rows:
+                if _col(r, "kind", 0) in ("track", "spectate"):
+                    rt = _col(r, "tick", 1)
+                    if isinstance(rt, (int, float)) and rt == rt:
+                        rt = int(rt)
+                        best = rt if best is None else max(best, rt)
+            if best is not None and best >= self.tick:
+                self._offset_sample = (self.tick, best - self.tick)
+            row = next((r for r in rows if _col(r, "kind", 0) == "track"), None)
+            if row is None:
+                return
+            payload = _col(row, "payload_json", 2)
             d = _json.loads(payload)
             by_world: dict[str, list] = {}
             world = d.get("map")

@@ -512,3 +512,28 @@ def test_the_exit_transition_stamps_the_ramp_anchor():
     assert b.server_health() == "ok", "never exited in the fixture"
     assert getattr(b, "_exit_at", None) is not None and 3300 <= b._exit_at <= 3400, \
         f"EXIT did not stamp the ramp anchor: {getattr(b, '_exit_at', None)}"
+
+
+def test_the_spectate_feed_covers_a_quiet_track_feed():
+    """v0.119.1: rivals going quiet stalls the track feed; the phantom integral
+    then re-arms the bunker clock and starves the exit (observed live: probe read
+    the true ~4t while the debt-heal read 41s, t3607630). The spectate poll ticks
+    every second regardless — the sample must come from the freshest of BOTH."""
+    import time
+    from steemer.storage import Storage
+    from steemer import intel
+    st = Storage(":memory:", commit_every=1)
+    st.begin_run("sha", "test/bunker")
+    intel.record(st.conn, "track", 995, 999.0, {"map": "vale", "rivals": []})
+    intel.record(st.conn, "spectate", 1020, 1000.0, {"guild_count": 2})
+    st.flush()
+    b = _bot()
+    b.on_hello({"config": b.config, "guild": {}, "tick": 1000})
+    b.storage = st
+    b._health = "bunker"
+    b._health_bad_at = 1000
+    b._hello_anchor = (1000, time.monotonic() - 600.0)
+    b.on_frame(_probe_village(1000, ["c1", "c2"]))
+    lag = b._lag_estimate(1000)
+    assert lag is not None and abs(lag - 5.0) < 0.01, \
+        f"a quiet track feed must not blind the sensor to the spectate clock: {lag}"
