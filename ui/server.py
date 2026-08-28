@@ -1027,10 +1027,30 @@ def resolve_phase(frame_age_s, health: str, fielded: int) -> str:
     return "fielding" if fielded > 0 else "mustering"
 
 
+_phase_cache = {"at": 0.0, "data": None}
+_phase_lock = threading.Lock()
+
+
 def api_phase(db_path: str) -> dict:
     """The header chip's data: current phase + the inputs it derives from. Three
     cheap tail queries (seq-indexed), never the snapshot cache — the chip must be
-    honest even while the cache computes."""
+    honest even while the cache computes.
+
+    SINGLE-FLIGHT + 3s cache (2026-08-28): during server storms the live DB crawls;
+    with every open tab polling this endpoint, concurrent requests stacked 147
+    connections and exhausted MariaDB (1040). One query serves everyone for 3s."""
+    now = time.time()
+    with _phase_lock:
+        if _phase_cache["data"] is not None and now - _phase_cache["at"] < 3.0:
+            return dict(_phase_cache["data"])
+    data = _api_phase_uncached(db_path)
+    with _phase_lock:
+        _phase_cache["at"] = time.time()
+        _phase_cache["data"] = dict(data)
+    return data
+
+
+def _api_phase_uncached(db_path: str) -> dict:
     if not _db_ready(db_path):
         return {"ok": True, "phase": "offline", "detail": "no db"}
     conn = _ro(db_path)

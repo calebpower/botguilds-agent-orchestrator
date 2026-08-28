@@ -56,3 +56,19 @@ def test_the_bot_persists_phase_on_transition_and_on_hello():
     bot._health_step(1012)
     assert [s for _, s, _ in bot.storage.rows][-1] == "phase:bunker", \
         f"the bunker transition never reached the bus: {bot.storage.rows}"
+
+
+def test_api_phase_is_cached_single_flight(monkeypatch, tmp_path):
+    """2026-08-28: storm-slow DB + per-tab 5s polling stacked 147 concurrent
+    connections and exhausted MariaDB (1040). Rapid calls must share one query."""
+    from ui import server
+    calls = []
+    monkeypatch.setattr(server, "_api_phase_uncached",
+                        lambda db: calls.append(1) or {"ok": True, "phase": "offline"})
+    server._phase_cache["data"] = None
+    server._phase_cache["at"] = 0.0
+    a = server.api_phase("x")
+    b = server.api_phase("x")
+    c = server.api_phase("x")
+    assert a["phase"] == b["phase"] == c["phase"] == "offline"
+    assert len(calls) == 1, f"cache miss on rapid repeat: {len(calls)} queries"

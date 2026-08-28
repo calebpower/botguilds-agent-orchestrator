@@ -5828,3 +5828,10 @@ its own cure. Fix: bunkered + poison-quiet + lag>2s (spaced by EXIT_TICKS) -> bo
 requests a re-hello; client honors it under the same spacing ledger as the poison heal
 (they can never flap together). Re-hello is PROVEN curative this era. 2 tests, 2/2
 mutants killed.
+
+ITER 139 (2026-08-28) — dashboard /api/phase single-flight cache. The storm-slow DB +
+per-tab 5s phase polling + threaded request handling stacked 147 concurrent connections
+on the dash pid and exhausted MariaDB (1040 Too many connections — batteries erroring).
+Restarted dash (151 -> 5 conns) + 3s single-flight cache on api_phase (one query serves
+all pollers). Test + mutant. Note: MariaDB contention was ALSO slowing gates (54-min
+suite) — this should ease it.
