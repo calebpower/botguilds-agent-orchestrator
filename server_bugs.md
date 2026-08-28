@@ -476,3 +476,16 @@ error. Model: (1) per-char ORDER rule discards out-of-order actions silently
 (stale_order_ticks); (2) a separate envelope-age rule with window >21 ticks produces the
 loud stale_frame — deep-storm frames (100-330 ticks old) always violate it. n=1 on the
 pair; probes continue (K=34/55 pending).
+
+## 2026-08-28 — endpoint baseline (recorded after the fact)
+
+Operator reports Will moved the server. We did NOT catch the move directly: the bot
+connects by hostname, and no battery ever recorded the resolved address. Baseline as of
+2026-08-28 ~13:4x local: bot.willmorrison.net -> 137.184.223.114 (DigitalOcean), live
+ZMQ socket confirmed to that address; TLS cert notBefore 2026-08-16 22:24 GMT (Let's
+Encrypt — either a renewal or the new box's provision date); HTTPS connect RTT 17-33ms
+(same class as during the storm era, so no latency-class change observable). What we DID
+catch: server_pause shutdown/restart trail, the 4h maintenance window, the
+tick_seconds 0.4->0.25 + stale_order_ticks=0 config changes, and the offset regime
+change (300-1000 -> 8-25) afterwards. Future moves: the hourly battery now compares the
+resolved IP against this baseline.
