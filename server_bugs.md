@@ -506,3 +506,19 @@ stale_order_ticks=0 that debt = blanket rejection: 6/6 bunker exits poisoned wit
 7-84 ticks, 22,749 stale rejections in run 288, ~0% field time. VERDICT: slow network
 was the AMPLIFIER, not the root cause. Highest-leverage server fix: restore
 stale_order_ticks tolerance. Artifact updated (migration section).
+
+## 2026-08-28 — NEW divergence: action validation vs rendered char state (not_in_village)
+
+With truthful debt sensing (0.118.1 differential sensor), the FWD stamp probe returned
+its first clean samples — and surfaced a different bug: BOTH the normal-stamped and the
+forward-stamped village `say` were rejected `not_in_village` (probes @3577754, @3578354,
+chars c19871/c20048/c20050), while (a) the same tick's frames list those chars in
+guild.chars_here, (b) the public spectate aggregate says worlds {village: 18}, and
+(c) the public roster endpoint gives world=village per char. Earlier the same day a
+not_in_village STORM rejected ~1,000 village MOVES in ~300 ticks (run 289,
+~3573100-3573400) under identical all-home conditions. So the ACTION VALIDATOR holds a
+different world for our chars than every READABLE server view — same shape as Bug B's
+"deleted but still rendering" split-state. FWD-stamp verdict: INCONCLUSIVE so far (the
+niv rejection masks any staleness verdict; stamp made no difference to it).
+Watcher live: scratchpad niv_watch pairs future rejections with a same-second public
+roster snapshot for an airtight simultaneous contradiction.
