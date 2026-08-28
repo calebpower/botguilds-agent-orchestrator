@@ -303,3 +303,100 @@ def test_the_client_honors_the_rehello_request_with_spacing():
     c.running = True
     c._loop(max_ticks=1)
     assert connects == [5001], f"honored inside the spacing guard: {connects}"
+
+
+# ---------------------------------------------------------------------------
+# v0.118.0 forward-stamp probe: stale_order_ticks=0 x standing session debt kills
+# every bunker exit within ticks (six-for-six, 2026-08-28). Measure whether a say
+# stamped at the ESTIMATED CURRENT server tick renders while a normal-stamped one
+# is rejected — different chars, same batch, so the per-char order rule can't
+# confound the reading.
+
+def test_fwd_probe_pins_its_literal():
+    from steemer.bot import FWD_PROBE_MIN_TICKS
+    assert FWD_PROBE_MIN_TICKS == 4
+
+
+def _debt_bot(debt_s):
+    import time
+    b = _bot()
+    b.on_hello({"config": b.config, "guild": {}, "tick": 1000})
+    b._health = "bunker"
+    b._health_bad_at = 1000       # keep the exit clock from firing mid-frame
+    b._hello_anchor = (1000, time.monotonic() - debt_s)
+    return b
+
+
+def _fwd_says(acts):
+    return [a for a in acts if str(a.get("text", "")).startswith("fwd")]
+
+
+def test_fwd_probe_fires_bunkered_normal_plus_forward_on_DIFFERENT_chars():
+    b = _debt_bot(5.0)
+    acts = b.on_frame(_probe_village(1000, ["c1", "c2"]))
+    pair = _fwd_says(acts)
+    assert len(pair) == 2, f"fwd pair missing: {acts}"
+    normal, fwd = pair
+    assert "_probe_age" not in normal and normal["char_uid"] == "c1"
+    assert fwd["char_uid"] == "c2", "pair on ONE char — the order rule confounds it"
+    assert fwd["_probe_age"] == -20, \
+        f"5.0s debt at 0.25s/tick must stamp +20 ticks: {fwd}"
+
+
+def test_fwd_probe_fires_at_the_exact_noise_floor():
+    b = _debt_bot(1.0)            # 4 ticks — the FWD_PROBE_MIN_TICKS boundary
+    pair = _fwd_says(b.on_frame(_probe_village(1000, ["c1", "c2"])))
+    assert len(pair) == 2 and pair[1]["_probe_age"] == -4, f"boundary held out: {pair}"
+
+
+def test_fwd_probe_holds_healthy_shallow_alone_and_on_cadence():
+    import time
+    # healthy: nothing to measure (the regular probe may fire; it says 'sync')
+    b = _bot()
+    b.on_hello({"config": b.config, "guild": {}, "tick": 1000})
+    b._hello_anchor = (1000, time.monotonic() - 5.0)
+    assert not _fwd_says(b.on_frame(_probe_village(1000, ["c1", "c2"]))), \
+        "fwd probe fired while healthy"
+    # shallow: 0.75s = 3 ticks, under the noise floor
+    b = _debt_bot(0.75)
+    assert not _fwd_says(b.on_frame(_probe_village(1000, ["c1", "c2"]))), \
+        "fwd probe fired inside the estimator's noise"
+    # alone: the discriminator needs two chars
+    b = _debt_bot(5.0)
+    assert not _fwd_says(b.on_frame(_probe_village(1000, ["c1"]))), \
+        "fwd probe fired with one char — order rule confounds"
+    # cadence: a second pair inside PROBE_EVERY is retry pressure, not measurement
+    b = _debt_bot(5.0)
+    assert len(_fwd_says(b.on_frame(_probe_village(1000, ["c1", "c2"])))) == 2
+    b._hello_anchor = (1300, b._hello_anchor[1] + 75.0)   # keep the debt standing
+    assert not _fwd_says(b.on_frame(_probe_village(1300, ["c1", "c2"]))), \
+        "fwd probe ignored its cadence"
+
+
+def test_a_negative_probe_age_rides_a_FORWARD_envelope():
+    """The client's aged-envelope path is the transport: age -20 must stamp
+    tick+20, and the marker must never reach the wire."""
+    from steemer.client import Client
+
+    class _T:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, m):
+            self.sent.append(m)
+
+    c = Client.__new__(Client)
+    c.transport = _T()
+    c.verbose = False
+    c.tick = 1000
+    c.storage = None
+    c.send_actions([{"char_uid": "c1", "action": "say", "text": "fwd-a"},
+                    {"char_uid": "c2", "action": "say", "text": "fwd-b",
+                     "_probe_age": -20}])
+    envs = c.transport.sent
+    assert len(envs) == 2
+    fwd_env = next(m for m in envs if m["actions"][0].get("text") == "fwd-b")
+    norm_env = next(m for m in envs if m["actions"][0].get("text") == "fwd-a")
+    assert fwd_env["tick"] == 1020, f"forward stamp missing: {fwd_env}"
+    assert norm_env["tick"] == 1000
+    assert "_probe_age" not in fwd_env["actions"][0], "marker leaked to the wire"

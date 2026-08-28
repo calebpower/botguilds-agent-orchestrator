@@ -46,6 +46,8 @@ PROBE_EVERY = 600           # v0.117.3: staleness-probe cadence (one aged 'say' 
 PROBE_AGES = (5, 8, 13, 21, 34, 55)   # v0.117.4: K<=5 measured ACCEPTED (says
                                       # rendered) — the boundary is higher; climb the
                                       # Fibonacci ladder with 5 kept as the control
+FWD_PROBE_MIN_TICKS = 4     # v0.118.0: below this the debt estimate is inside the
+                            # estimator's own noise — a forward stamp proves nothing
 from .chatter import Chatter
 from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace
@@ -387,6 +389,38 @@ class GuildBot:
                   f"{HEALTH_EXIT_TICKS}t — resuming normal play", flush=True)
             self._record_phase(tick, f"clean {HEALTH_EXIT_TICKS}t")
 
+    def _maybe_fwd_probe(self, here: list[str]) -> None:
+        """v0.118.0 FORWARD-STAMP probe. The field-time blocker is
+        stale_order_ticks=0 meeting a standing per-session delivery debt: every
+        envelope we send is stamped with a frame tick the server already considers
+        old, so play dies within ticks of each bunker exit (six-for-six on
+        2026-08-28). Discriminator: one normal say + one say stamped at the
+        ESTIMATED CURRENT server tick (frame tick + measured debt), on DIFFERENT
+        chars (the proven per-char order rule must not confound), same batch.
+        Forward renders while normal is dropped/errored => lag-corrected stamping
+        buys back field time with no server fix. Runs only while unhealthy — the
+        healthy regime has nothing to measure."""
+        if (self._health == "ok" or len(here) < 2
+                or self._hello_anchor is None
+                or self.tick - getattr(self, "_fwd_probe_at", -10**9) < PROBE_EVERY):
+            return
+        lag = self._lag_estimate(self.tick)
+        if lag is None or lag <= 0:
+            return
+        tick_s = (self._measured_tick_s()
+                  or float(self.config.get("tick_seconds", 0.25) or 0.25))
+        off = round(lag / tick_s)
+        if off < FWD_PROBE_MIN_TICKS:
+            return
+        self._fwd_probe_at = self.tick
+        print(f"[probe] FWD tick={self.tick} offset~{off}t "
+              f"chars={here[0]},{here[1]} — normal + forward-stamped say", flush=True)
+        self._probe_pending = (getattr(self, "_probe_pending", None) or []) + [
+            {"char_uid": here[0], "action": "say", "text": "fwd-a"},
+            {"char_uid": here[1], "action": "say", "text": "fwd-b",
+             "_probe_age": -off},
+        ]
+
     def _record_phase(self, tick: int, why: str) -> None:
         """Persist the health phase to the DB bus (an events row, kind=bot_anomaly,
         subtype phase:*) so the dashboard's phase chip reads the bot's actual state
@@ -447,6 +481,7 @@ class GuildBot:
                           "sent", flush=True)
                     self._probe_pending = [{"char_uid": here[0], "action": "say",
                                             "text": "sync", "_probe_age": k}]
+            self._maybe_fwd_probe(here)
             for a in self.kpis.observe(self.tick,
                                        sum(len(v) for v in by_world.values()),
                                        len(guild.get("chars_here") or []),
