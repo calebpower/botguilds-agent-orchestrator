@@ -489,3 +489,20 @@ catch: server_pause shutdown/restart trail, the 4h maintenance window, the
 tick_seconds 0.4->0.25 + stale_order_ticks=0 config changes, and the offset regime
 change (300-1000 -> 8-25) afterwards. Future moves: the hourly battery now compares the
 resolved IP against this baseline.
+
+## 2026-08-28 — post-migration measurements: the natural experiment
+
+Host swap (new DO box) with software held constant separates network causes from
+server causes. FIXED by the move (=> the old network owned these): delivery debt
+300-1023 -> 8-25 ticks; born-stale sessions gone (fresh sessions born clean);
+restart-overshoot not reproduced; no outages; no Bug-B deletions observed (1 day, weak).
+SURVIVES the move (=> not the network): (1) NEW: tick-rate shortfall — measured 3.62 t/s
+vs advertised 4.0 (tick_seconds=0.25), whole-run mean 3.615 over 53k ticks; the old box
+held exactly 4.000 through the worst storms. A slow network cannot slow the sim's tick
+counter -> compute ceiling on the new host; also the advertise-vs-run mismatch pattern
+again (was 0.4-adv/0.25-run, now 0.25-adv/0.276-run). (2) Standing per-session delivery
+debt ~16-25 ticks, re-accumulated within minutes of a fresh hello. (3) With
+stale_order_ticks=0 that debt = blanket rejection: 6/6 bunker exits poisoned within
+7-84 ticks, 22,749 stale rejections in run 288, ~0% field time. VERDICT: slow network
+was the AMPLIFIER, not the root cause. Highest-leverage server fix: restore
+stale_order_ticks tolerance. Artifact updated (migration section).
