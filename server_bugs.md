@@ -522,3 +522,16 @@ different world for our chars than every READABLE server view — same shape as 
 niv rejection masks any staleness verdict; stamp made no difference to it).
 Watcher live: scratchpad niv_watch pairs future rejections with a same-second public
 roster snapshot for an airtight simultaneous contradiction.
+
+## 2026-08-28 ~16:00 — niv divergence PROVEN (25/25 pairs) + Bug B survives migration
+
+niv_watch paired every not_in_village rejection with a same-second public-roster read:
+25/25 show world=village at rejection time (tightest 12 ticks apart). Repeat offender
+c19871 NEVER left the village -> divergent state is likely SESSION-level (active-world
+route entry stuck on a field world after re-hello/embark bursts), not char-level.
+BUG B POST-MOVE: c20055 embarked t3581852 and t3585717, then vanished from the public
+roster with NO death event, verified after full stream catch-up (offset 16, poison 0);
+c20054 died normally in the same window and its event arrived -> event delivery works,
+so this is a deletion sweep hitting transit chars OR death-event loss on the embark
+path. FWD stamp verdict still INCONCLUSIVE (all clean samples masked by niv).
+Artifact updated (post-migration probe results section + Bug B row revised).
