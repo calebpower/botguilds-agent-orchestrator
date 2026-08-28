@@ -669,3 +669,40 @@ def test_a_botless_client_stamps_raw():
     c.storage = None
     c.send_actions([{"char_uid": "c1", "action": "move", "dir": "N"}])
     assert c.transport.sent[0]["tick"] == 1000
+
+
+def test_envelope_ticks_are_monotonic_when_the_correction_recedes():
+    """v0.120.1: run 294 — three chars locked out at ~1 stale_frame/tick after
+    the differential correction receded below an earlier slightly-ahead stamp
+    (the per-char order rule ratchets). Envelope ticks never go backward."""
+    from steemer.client import Client
+
+    class _T:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, m):
+            self.sent.append(m)
+
+    b = _bot()
+    b.tick = 1000
+    b._offset_sample = (1000, 20)
+    c = Client.__new__(Client)
+    c.transport = _T()
+    c.verbose = False
+    c.tick = 1000
+    c.storage = None
+    c.bot = b
+    c.send_actions([{"char_uid": "c1", "action": "move", "dir": "N"}])
+    assert c.transport.sent[-1]["tick"] == 1020
+    # the sample expires; our tick has only advanced 5 — a raw stamp of 1005
+    # would be BELOW the char's last-accepted 1020 and ratchet the lockout
+    b.tick = c.tick = 1005
+    b._offset_sample = None
+    c.send_actions([{"char_uid": "c1", "action": "move", "dir": "N"}])
+    assert c.transport.sent[-1]["tick"] == 1020, \
+        f"envelope tick went backward: {c.transport.sent[-1]}"
+    # once the raw clock passes the high-water mark, stamps track it again
+    b.tick = c.tick = 1030
+    c.send_actions([{"char_uid": "c1", "action": "move", "dir": "N"}])
+    assert c.transport.sent[-1]["tick"] == 1030

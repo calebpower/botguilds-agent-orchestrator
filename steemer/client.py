@@ -326,8 +326,16 @@ class Client:
                 corr = int(getattr(b, "stamp_offset", lambda: 0)())
             except Exception:
                 corr = 0
+        # v0.120.1 MONOTONIC envelope ticks: run 294 played clean for ~490 ticks
+        # under corrected stamps, then exactly THREE chars locked out at ~1
+        # stale_frame/tick each — the per-char ORDER rule ratcheting after a
+        # correction receded below an earlier (slightly-ahead) stamp. An envelope
+        # tick never goes backward again; the high-water mark carries across
+        # re-hellos (the server clock is continuous).
+        stamp = max(self.tick + corr, getattr(self, "_stamp_hw", 0))
+        self._stamp_hw = stamp
         try:
-            self.transport.send(p.msg(p.ACTIONS, tick=self.tick + corr,
+            self.transport.send(p.msg(p.ACTIONS, tick=stamp,
                                       actions=clean))
         except (zmq.ZMQError, OSError) as e:
             # A hiccup on the way up costs one tick; the next frame is a tick
