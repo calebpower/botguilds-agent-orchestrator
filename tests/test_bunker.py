@@ -400,3 +400,68 @@ def test_a_negative_probe_age_rides_a_FORWARD_envelope():
     assert fwd_env["tick"] == 1020, f"forward stamp missing: {fwd_env}"
     assert norm_env["tick"] == 1000
     assert "_probe_age" not in fwd_env["actions"][0], "marker leaked to the wire"
+
+
+# ---------------------------------------------------------------------------
+# v0.118.1 differential debt sensor: the anchor INTEGRAL read a phantom 649s while
+# the true debt was 6 ticks (2026-08-28, server tick rate oscillating 3.4-6.1 t/s)
+# — it fired a spurious debt-heal and fed the FWD probe a +73 stamp. The sidecar's
+# track rows carry the public server tick: (track_tick - our_tick) is a direct
+# differential measurement, trusted only while the feed is AHEAD of our stream.
+
+def _phantom_bot(track_tick):
+    """A REAL-storage bot whose anchor integral would read minutes of phantom
+    lag, with one genuine intel track row at the given public tick."""
+    import time
+    from steemer.storage import Storage
+    from steemer import intel
+    st = Storage(":memory:", commit_every=1)
+    st.begin_run("sha", "test/bunker")
+    intel.record(st.conn, "track", track_tick, 1000.0,
+                 {"map": "vale", "rivals": []})
+    st.flush()
+    b = _bot()
+    b.on_hello({"config": b.config, "guild": {}, "tick": 1000})
+    b.storage = st
+    b._health = "bunker"
+    b._health_bad_at = 1000
+    b._hello_anchor = (1000, time.monotonic() - 600.0)     # 600s of phantom
+    return b
+
+
+def test_the_differential_sample_overrides_the_phantom_integral():
+    b = _phantom_bot(1020)   # true debt: 20 ticks
+    b.on_frame(_probe_village(1000, ["c1", "c2"]))              # refreshes hints
+    lag = b._lag_estimate(1000)
+    assert lag is not None and abs(lag - 5.0) < 0.01, \
+        f"20-tick true debt at 0.25 s/t must read 5.0s, not the integral: {lag}"
+
+
+def test_a_track_feed_BEHIND_our_stream_disqualifies_itself():
+    b = _phantom_bot(995)    # sidecar is stale
+    b.on_frame(_probe_village(1000, ["c1", "c2"]))
+    assert getattr(b, "_offset_sample", None) is None, \
+        "a behind-the-stream track row must never become a debt sample"
+    lag = b._lag_estimate(1000)
+    assert lag is not None and lag > 400, "fallback to the anchor integral missing"
+
+
+def test_the_sample_expires_at_its_TTL_boundary():
+    from steemer.bot import OFFSET_SAMPLE_TTL
+    assert OFFSET_SAMPLE_TTL == 400
+    b = _phantom_bot(1020)
+    b.on_frame(_probe_village(1000, ["c1", "c2"]))
+    at_ttl = b._lag_estimate(1400)          # exactly the 400-tick TTL
+    assert at_ttl is not None and abs(at_ttl - 5.0) < 0.01, \
+        f"the sample must hold AT the TTL boundary: {at_ttl}"
+    past_ttl = b._lag_estimate(1401)        # one past it
+    assert past_ttl is not None and past_ttl > 400, \
+        f"one past the TTL must fall back to the integral: {past_ttl}"
+
+
+def test_the_fwd_probe_stamps_from_the_differential_not_the_phantom():
+    b = _phantom_bot(1020)
+    acts = b.on_frame(_probe_village(1000, ["c1", "c2"]))
+    pair = _fwd_says(acts)
+    assert len(pair) == 2 and pair[1]["_probe_age"] == -20, \
+        f"the probe must stamp the TRUE 20-tick debt, not the 600s phantom: {pair}"

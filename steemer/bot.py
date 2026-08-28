@@ -48,6 +48,9 @@ PROBE_AGES = (5, 8, 13, 21, 34, 55)   # v0.117.4: K<=5 measured ACCEPTED (says
                                       # Fibonacci ladder with 5 kept as the control
 FWD_PROBE_MIN_TICKS = 4     # v0.118.0: below this the debt estimate is inside the
                             # estimator's own noise — a forward stamp proves nothing
+OFFSET_SAMPLE_TTL = 400     # v0.118.1: ticks a differential debt sample (public tick
+                            # minus ours, via the track feed) stays authoritative
+                            # before lag falls back to anchor integration
 from .chatter import Chatter
 from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace
@@ -272,6 +275,16 @@ class GuildBot:
                 "ORDER BY seq DESC LIMIT 1").fetchone()
             if row is None:
                 return
+            # v0.118.1: the track row's tick IS the public server clock — a
+            # DIFFERENTIAL delivery-debt measurement (server tick minus our newest
+            # frame tick). The anchor-based integral read a phantom 649s while the
+            # true debt was 6 ticks (2026-08-28, oscillating server tick rate) —
+            # it fired a spurious debt-heal and fed the FWD probe a +73 stamp.
+            # Trust the sample only when the feed is AHEAD of our stream: a dead
+            # or quiet sidecar falls behind and disqualifies itself.
+            row_tick = row["tick"] if hasattr(row, "keys") else row[0]
+            if isinstance(row_tick, int) and row_tick >= self.tick:
+                self._offset_sample = (self.tick, row_tick - self.tick)
             payload = row["payload_json"] if hasattr(row, "keys") else row[1]
             d = _json.loads(payload)
             by_world: dict[str, list] = {}
@@ -331,9 +344,17 @@ class GuildBot:
         cold-start fallback."""
         if self._hello_anchor is None:
             return None
-        a_tick, a_wall = self._hello_anchor
         tick_s = (self._measured_tick_s()
                   or float(self.config.get("tick_seconds", 0.25) or 0.25))
+        # v0.118.1: prefer the DIFFERENTIAL debt sample (public tick minus our
+        # tick, via the sidecar track feed) over anchor integration. The integral
+        # form accumulates phantom lag whenever the server's tick RATE oscillates
+        # (measured 3.4->6.1 t/s within minutes on 2026-08-28: anchor said 649s,
+        # truth was 6 ticks). Sample-and-hold with a TTL; past it, fall back.
+        samp = getattr(self, "_offset_sample", None)
+        if samp is not None and 0 <= tick - samp[0] <= OFFSET_SAMPLE_TTL:
+            return samp[1] * tick_s
+        a_tick, a_wall = self._hello_anchor
         if now is None:
             now = time.monotonic()
         return (now - a_wall) - (tick - a_tick) * tick_s
