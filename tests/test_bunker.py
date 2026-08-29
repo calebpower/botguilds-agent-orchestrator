@@ -569,11 +569,16 @@ def test_exit_runs_on_poison_alone_while_lag_breathes():
         step(t, 240 if (t // 200) % 2 else 2)
     step(3100, 2)
     assert b.server_health() == "bunker", "exited before the poison window elapsed"
-    # past the window (storm stamps end ~1119 -> eligible ~3119): the first CALM
-    # step exits; a spiking step must not
+    # past the window (storm stamps end ~1119 -> eligible ~3119): a spiking step
+    # must not exit, and (v0.121.2) neither may the first calm step — the exit
+    # needs EXIT_LAG_CALM_TICKS of calm so a one-frame dip can't flap the bunker
     step(3118, 240)
     assert b.server_health() == "bunker", "exited INTO a 60s breath-in"
-    step(3120, 2)
+    for t in range(3120, 3178):
+        step(t, 2)
+    assert b.server_health() == "bunker", \
+        "exited before the lag-calm window elapsed (one-tick flap returns)"
+    step(3178, 2)
     assert b.server_health() == "ok", "poison-clean window + calm water never exited"
 
 
@@ -806,3 +811,43 @@ def test_resume_stragglers_do_not_merge_with_the_spent_burst():
     b._health_step(1176, now=100.0 + 160 * 0.25)
     assert b.server_health() == "ok", \
         f"three stragglers after a passed squall escalated to {b.server_health()}"
+
+
+def test_a_lag_dip_cannot_flap_a_one_tick_bunker_cycle(capsys):
+    """v0.121.2 (live t3655454->56): enter needs 120 SUSTAINED bad ticks, but exit
+    was instantaneous — one breathing dip flapped ENTER->EXIT in a tick. Exit now
+    needs EXIT_LAG_CALM_TICKS of calm. Also pins the escalation why-string."""
+    from steemer.bot import EXIT_LAG_CALM_TICKS
+    assert EXIT_LAG_CALM_TICKS == 60
+    b = _bot()
+    b._hello_anchor = (1000, 100.0)
+
+    def step(t, off):
+        b._offset_sample = (t, off)
+        b._health_step(t, now=100.0 + (t - 1000) * 0.25)
+    for t in range(1000, 1125):
+        step(t, 240)                     # sustained deep lag -> bunker
+    assert b.server_health() == "bunker"
+    step(1125, 2)                        # one-frame dip
+    assert b.server_health() == "bunker", "a single calm frame flapped the exit"
+    for t in range(1126, 1184):
+        step(t, 2)
+    assert b.server_health() == "bunker", "exited inside the calm window"
+    step(1184, 2)                        # last bad frame was 1124: exactly 60 calm
+    assert b.server_health() == "ok", "never exited after 60 calm ticks"
+
+
+def test_the_escalation_names_itself_not_a_poison_storm(capsys):
+    b = _bot()
+    t0 = 1000
+    for n in range(3):
+        for i in range(8):
+            b.on_action_error({"tick": t0 + i, "reason": "stale_frame"})
+        b._health_step(t0 + 8, now=100.0 + n)
+        if n < 2:
+            for t in range(t0 + 9, t0 + 8 + 155):
+                b._health_step(t, now=100.0 + n + (t - t0) * 0.01)
+            t0 += 300
+    out = capsys.readouterr().out
+    assert "squalls/1000t — persistent weather" in out, \
+        f"the escalation still blames a poison storm: {out[-200:]}"
