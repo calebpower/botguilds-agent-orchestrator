@@ -912,3 +912,39 @@ def test_quarantine_expires_and_uidless_errors_still_count():
     b2 = _bot()
     b2.on_action_error({"tick": 500, "reason": "stale_frame"})   # no char_uid
     assert b2._poison_ticks == [500], "uidless poison must still count"
+
+
+def test_a_breathing_wave_still_counts_as_sustained_lag():
+    """v0.123.1 (live t3889261-3890088): 1-tick dips in a deep breathing wave
+    reset the sustained clock, so the lag arm never entered while 184 embarks
+    poured into a deep-silent server. Dips shorter than the calm window must not
+    reset; a genuine calm window still must."""
+    b = _bot()
+    b._hello_anchor = (1000, 100.0)
+
+    def step(t, off):
+        b._offset_sample = (t, off)
+        b._health_step(t, now=100.0 + (t - 1000) * 0.25)
+    # 100 bad / 1 dip, repeating — never 120 consecutive
+    for t in range(1000, 1400):
+        step(t, 2 if t % 101 == 100 else 240)
+    assert b.server_health() == "bunker", \
+        "a breathing wave never bunkered — the dip reset the sustained clock"
+    # ...and a REAL calm stretch still clears the clock: exit then no re-enter
+    for t in range(1400, 3700):
+        step(t, 2)
+    assert b.server_health() == "ok", "true calm never released the bunker"
+    b2 = _bot()
+    b2._hello_anchor = (1000, 100.0)
+
+    def step2(t, off):
+        b2._offset_sample = (t, off)
+        b2._health_step(t, now=100.0 + (t - 1000) * 0.25)
+    for t in range(1000, 1100):
+        step2(t, 240)                    # 100 bad
+    for t in range(1100, 1180):
+        step2(t, 2)                      # 80 calm >= the 60t window: clock resets
+    for t in range(1180, 1280):
+        step2(t, 240)                    # 100 more bad — NOT sustained (fresh clock)
+    assert b2.server_health() == "ok", \
+        "a full calm window did not reset the sustained clock"

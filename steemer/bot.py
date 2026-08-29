@@ -424,7 +424,14 @@ class GuildBot:
             if self._lag_bad_since is None:
                 self._lag_bad_since = tick
             self._lag_bad_last = tick
-        else:
+        elif (tick - getattr(self, "_lag_bad_last", -10**9)
+                >= EXIT_LAG_CALM_TICKS):
+            # v0.123.1: symmetric hysteresis. A breathing wave (100t bad, 1t dip,
+            # repeat) never accumulated 120 CONSECUTIVE bad ticks, so the lag arm
+            # could not enter while an exited bot sent 184 embarks/800t into a
+            # deep-silent server (offset 421, nothing applied OR rejected — the
+            # poison arm blind too). The sustained clock now survives dips and
+            # resets only after a full calm window, mirroring the exit gate.
             self._lag_bad_since = None
         self._poison_ticks = [t for t in self._poison_ticks
                               if tick - t < HEALTH_POISON_WINDOW]
