@@ -785,3 +785,24 @@ def test_field_chars_stand_still_through_a_squall_and_retreat_in_a_bunker():
     acts = bot.on_frame(frame)
     assert any(a.get("action") == "move" for a in acts), \
         f"the bunker retreat vanished: {acts}"
+
+
+def test_resume_stragglers_do_not_merge_with_the_spent_burst():
+    """v0.121.1 (observed live t3646930): a few rejections at squall-resume merged
+    with the original burst still inside the 300t window and read as a >150t
+    "sustained" storm — bunkering four ticks after the squall passed. A passed
+    squall clears the ledger; stragglers start fresh."""
+    b = _bot()
+    for i in range(60):
+        b.on_action_error({"tick": 1000 + (i % 16), "reason": "stale_frame"})
+    b._health_step(1016, now=100.0)
+    assert b.server_health() == "squall"
+    for t in range(1017, 1167):
+        b._health_step(t, now=100.0 + (t - 1016) * 0.25)
+    b._health_step(1170, now=100.0 + 154 * 0.25)
+    assert b.server_health() == "ok", "fixture: the squall never passed"
+    for t in (1171, 1173, 1175):              # stragglers at resume
+        b.on_action_error({"tick": t, "reason": "stale_frame"})
+    b._health_step(1176, now=100.0 + 160 * 0.25)
+    assert b.server_health() == "ok", \
+        f"three stragglers after a passed squall escalated to {b.server_health()}"

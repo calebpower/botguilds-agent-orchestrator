@@ -428,6 +428,13 @@ class GuildBot:
                                          self._poison_ticks[-1] + SQUALL_HOLD)
             if tick >= getattr(self, "_squall_until", 0):
                 self._health = "ok"
+                # v0.121.1: the burst is ACCOUNTED FOR — clear the ledger so the
+                # storm detector measures only fresh weather. Without this, a few
+                # stragglers at resume merge with the old burst still inside the
+                # 300t window and read as "spread 157t" -> a bunker on what should
+                # be squall #2 (observed live t3646930, four ticks after the first
+                # squall passed). Persistence is the escalation counter's job.
+                self._poison_ticks = []
                 print(f"[squall] passed at t{tick}: {SQUALL_HOLD}t quiet — resuming",
                       flush=True)
                 self._record_phase(tick, "squall passed")
