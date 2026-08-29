@@ -123,6 +123,19 @@ class GuildBot:
             except Exception as e:      # pragma: no cover - exercised by the None path
                 print(f"[map] could not hydrate known tiles ({e}) — starting map-blind",
                       flush=True)
+        # v0.123.0 danger corridor: per-world death-history weights for routing.
+        # Best-effort like the map — a bot without them just routes cost-blind.
+        self.danger: dict[str, dict[tuple[int, int], int]] = {}
+        if storage is not None:
+            try:
+                self.danger = storage.load_danger_map()
+                n = sum(len(g) for g in self.danger.values())
+                if n:
+                    print(f"[danger] hydrated {n} weighted tiles across "
+                          f"{len(self.danger)} worlds", flush=True)
+            except Exception as e:
+                print(f"[danger] could not hydrate ({e}) — routing cost-blind",
+                      flush=True)
         # Per-world tiles a move_failed event says we could not enter, with the tick
         # it last bounced (expired after STUCK_BLOCK_TTL). v0.50.0 removed the
         # position-inference that used to feed this: see on_frame.
@@ -1022,7 +1035,7 @@ class GuildBot:
         bounds = (b[0], b[1]) if isinstance(b, (list, tuple)) and len(b) == 2 else None
         ctx = FieldContext(world=world, known=known, enemies=enemies, loot=loot,
                            gold=gold, bodies=bodies, containers=containers, bounds=bounds,
-                           fresh=seen_now)
+                           fresh=seen_now, danger=self.danger.get(world) or None)
 
         # Resolve outstanding predictions BEFORE deciding: this frame is the evidence for
         # what we did last time, and a prediction must be judged against the world as it

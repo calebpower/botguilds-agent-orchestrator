@@ -184,6 +184,7 @@ def weighted_step(
     max_cost: int | None = None,
     fresh: "set[tuple[int, int]] | None" = None,
     avoid: Iterable[tuple[int, int]] = (),
+    danger: "dict[tuple[int, int], int] | None" = None,
 ) -> tuple[int, int] | None:
     """Dijkstra over remembered tiles; return the next tile toward the CHEAPEST goal.
 
@@ -222,6 +223,11 @@ def weighted_step(
                     step_cost += AVOID_COST
             else:
                 continue
+            # v0.123.0 DANGER CORRIDOR: death-history tiles cost more to ENTER but
+            # never wall (the operator's "danger as cost, not wall"). A tile that
+            # has killed is worth a detour of its weight in steps.
+            if danger is not None:
+                step_cost += danger.get(nxt, 0)
             nd = d + step_cost
             if nd < dist.get(nxt, 10 ** 9):
                 dist[nxt] = nd

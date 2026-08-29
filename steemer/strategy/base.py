@@ -31,6 +31,9 @@ class FieldContext:
     # unexplored from the edge of the map. Optional: without it nav keeps its old,
     # edge-blind behaviour.
     bounds: tuple[int, int] | None = None
+    # v0.123.0: per-tile danger weights from recent death history (all guilds' deaths
+    # mark the map). None = no data; routing is unaffected.
+    danger: dict[tuple[int, int], int] | None = None
 
 
 @runtime_checkable

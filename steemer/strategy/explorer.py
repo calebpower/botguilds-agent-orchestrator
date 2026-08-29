@@ -1078,6 +1078,9 @@ VEIN_SEEK_SCORE = 2.7
 # seen, and re-planned every tick from a frame that may already be stale. The map should
 # tell a character where the ground is, not send it on a pilgrimage.
 FIELD_GOAL_RANGE = 20
+DANGER_DETOUR_BUDGET = 12   # v0.123.0: extra path-cost headroom for routing around
+                            # death-history tiles (a corridor is only useful if the
+                            # detour it buys fits in the search budget)
 
 
 # PREMISE(2026-08-22, frame staleness still makes a bare-cost move fail): shown-stamina at
@@ -1313,7 +1316,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.122.0"
+    version = "explorer/0.123.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2549,7 +2552,8 @@ class Explorer:
             # Bodies and learned walls stay absolute. Scored 8.2: above the one-step
             # desperation (8.0), below the clean retreat (8.5) — a safe route still wins.
             esc_step = nav.weighted_step(pos, lambda p: p[1] == 0, ctx.known,
-                                         blocked - strike, fresh=ctx.fresh, avoid=strike)
+                                         blocked - strike, fresh=ctx.fresh, avoid=strike,
+                                         danger=ctx.danger)
             if esc_step is not None:
                 offer({"char_uid": uid, "action": "move",
                        "dir": nav.step_dir(pos, esc_step)}, 8.2,
@@ -4429,13 +4433,22 @@ class Explorer:
         # and never removes one, so reachability — the stuck-death constraint — is intact,
         # and the only-stale-route case has a test.
         step = nav.weighted_step(pos, lambda p: p[1] == 0, ctx.known, blocked,
-                                 fresh=ctx.fresh)
+                                 fresh=ctx.fresh,
+                                 danger=ctx.danger)
         if step:
             offer({"char_uid": uid, "action": "move", "dir": nav.step_dir(pos, step)},
                   score, why, urgent=urgent)
 
     @staticmethod
     def _step(pos, is_goal, ctx: FieldContext, blocked, max_depth: int | None = FIELD_GOAL_RANGE):
+        # v0.123.0 DANGER CORRIDOR: with death-history weights present, every seek
+        # routes by COST (fresh=None keeps non-danger tiles at unit cost, so the
+        # ONLY delta vs bfs is the corridor). Budgeted headroom lets a route
+        # detour around a kill-alley without losing reach.
+        if ctx.danger:
+            budget = None if max_depth is None else max_depth + DANGER_DETOUR_BUDGET
+            return nav.weighted_step(pos, is_goal, ctx.known, blocked,
+                                     max_cost=budget, danger=ctx.danger)
         return nav.bfs_step(pos, is_goal, ctx.known, blocked, max_depth=max_depth)
 
     @staticmethod

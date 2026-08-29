@@ -106,6 +106,45 @@ class Storage:
             )
         self._tick_commit()
 
+    # v0.123.0 danger corridor: how a death marks the map for routing.
+    DANGER_HIT = 2       # cost added to the death tile itself
+    DANGER_NEAR = 1      # cost added to each 4-neighbour
+    DANGER_CAP = 6       # per-tile ceiling (never a wall, always a cost)
+    DANGER_WINDOW_TICKS = 500_000   # ~recent days; older corpses stop steering
+
+    def load_danger_map(self) -> dict[str, dict[tuple[int, int], int]]:
+        """Per-world per-tile danger weights from recent death positions — ALL
+        guilds' deaths mark the map (a rival dying there is the same evidence).
+        Tick-bounded (the events table is only indexed by tick; an unbounded
+        kind-scan is the 17-second codex mistake). Smoothed one tile out, capped;
+        returns costs for nav.weighted_step's ``danger`` term."""
+        out: dict[str, dict[tuple[int, int], int]] = {}
+        row = self.conn.execute("SELECT MAX(tick) FROM events").fetchone()
+        top = row[0] if row and row[0] is not None else None
+        if top is None:
+            return out
+        cur = self.conn.execute(
+            "SELECT world, payload_json FROM events WHERE kind = 'death' "
+            "AND tick > ?", (top - self.DANGER_WINDOW_TICKS,))
+        for world, payload in cur.fetchall():
+            if not world:
+                continue
+            try:
+                p = json.loads(payload) if isinstance(payload, str) else payload
+            except (TypeError, ValueError):
+                continue
+            pos = (p or {}).get("pos")
+            if not pos:
+                continue
+            grid = out.setdefault(world, {})
+            x, y = int(pos[0]), int(pos[1])
+            grid[(x, y)] = min(self.DANGER_CAP,
+                               grid.get((x, y), 0) + self.DANGER_HIT)
+            for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                grid[(nx, ny)] = min(self.DANGER_CAP,
+                                     grid.get((nx, ny), 0) + self.DANGER_NEAR)
+        return out
+
     def load_known_tiles(self) -> dict[str, dict[tuple[int, int], str]]:
         """Every tile we have ever seen, as ``{world: {(x, y): kind}}``.
 
