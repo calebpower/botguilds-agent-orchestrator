@@ -535,3 +535,12 @@ c20054 died normally in the same window and its event arrived -> event delivery 
 so this is a deletion sweep hitting transit chars OR death-event loss on the embark
 path. FWD stamp verdict still INCONCLUSIVE (all clean samples masked by niv).
 Artifact updated (post-migration probe results section + Bug B row revised).
+
+## 2026-08-28 ~23:00 — Bug B instance #2 post-move: c20079
+
+c20079 vanished from the public roster with NO death event (stream current; c20056 and
+c20059 died in the same window and BOTH their death events arrived — delivery works).
+Same shape as c20055 (2026-08-28 ~15:15). Post-move Bug B rate so far: 2 chars/day vs
+~100/day pre-move — reduced ~50x but alive. Also: c20066 entered the divergent-validator
+state (unknown_character spam while the roster lists it) — first live catch for the
+0.122.0 scope quarantine (3 chars attributed and excluded at t3680781).
