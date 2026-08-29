@@ -851,3 +851,64 @@ def test_the_escalation_names_itself_not_a_poison_storm(capsys):
     out = capsys.readouterr().out
     assert "squalls/1000t — persistent weather" in out, \
         f"the escalation still blames a poison storm: {out[-200:]}"
+
+
+# ---------------------------------------------------------------------------
+# v0.122.0 scope quarantine: a LONE sick char (the dead c20054 solo-spammed 95
+# rejections; per-char niv divergence does the same) must not bench the guild.
+# A global burst (others also rejecting) is squall weather and never quarantines.
+
+def _perr(b, tick, uid):
+    b.on_action_error({"tick": tick, "reason": "stale_frame", "char_uid": uid})
+
+
+def test_a_lone_spammer_is_quarantined_at_exactly_the_threshold(capsys):
+    from steemer.bot import CHAR_QUAR_N, CHAR_QUAR_WINDOW, CHAR_QUAR_TTL
+    assert (CHAR_QUAR_N, CHAR_QUAR_WINDOW, CHAR_QUAR_TTL) == (5, 200, 600)
+    b = _bot()
+    for i in range(4):
+        _perr(b, 1000 + i * 20, "sick")
+    assert "sick" not in getattr(b, "_quarantine", {}), "quarantined below threshold"
+    _perr(b, 1080, "sick")                    # the 5th within 200t
+    assert getattr(b, "_quarantine", {}).get("sick") == 1080 + CHAR_QUAR_TTL, \
+        "the 5th lone rejection did not quarantine"
+    assert b._poison_ticks == [], "the spammer's ticks were not scrubbed"
+    # two oracles: further spam neither counts nor re-prints
+    for i in range(30):
+        _perr(b, 1100 + i, "sick")
+    assert b._poison_ticks == [], "quarantined errors still fed the guild signal"
+    b._health_step(1140, now=100.0)
+    assert b.server_health() == "ok", \
+        f"a lone quarantined spammer benched the guild: {b.server_health()}"
+    assert b._quarantine["sick"] == 1080 + CHAR_QUAR_TTL, \
+        "quarantined errors re-entered the ledger (the TTL advanced)"
+    out = capsys.readouterr().out
+    assert out.count("[quarantine] sick") == 1, \
+        f"re-quarantine churn: {out.count('[quarantine] sick')} prints"
+
+
+def test_a_global_burst_never_quarantines():
+    b = _bot()
+    # one char crosses 5 while THREE others are also bursting inside 50t
+    for i, uid in enumerate(["a", "b", "c"] * 3):
+        _perr(b, 1000 + i, uid)
+    for i in range(5):
+        _perr(b, 1010 + i, "x")
+    assert "x" not in getattr(b, "_quarantine", {}), \
+        "quarantined during a global burst — squall weather misattributed"
+    assert len(b._poison_ticks) == 14, \
+        f"global-burst errors must all count: {len(b._poison_ticks)}"
+
+
+def test_quarantine_expires_and_uidless_errors_still_count():
+    from steemer.bot import CHAR_QUAR_TTL
+    b = _bot()
+    for i in range(5):
+        _perr(b, 1000 + i, "sick")
+    until = b._quarantine["sick"]
+    _perr(b, until + 1, "sick")               # past the TTL: counts again
+    assert b._poison_ticks == [until + 1], \
+        f"post-TTL error did not count: {b._poison_ticks}"
+    b2 = _bot()
+    b2.on_action_error({"tick": 500, "reason": "stale_frame"})   # no char_uid
+    assert b2._poison_ticks == [500], "uidless poison must still count"

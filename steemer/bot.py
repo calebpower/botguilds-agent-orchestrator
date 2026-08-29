@@ -68,6 +68,9 @@ SQUALL_HOLD = 150           # quiet ticks after the last rejection before resumi
                             # spanning longer than this goes straight to the bunker
 SQUALL_ESCALATE_N = 3       # this many squalls within...
 SQUALL_ESCALATE_WINDOW = 1000   # ...this window = persistent weather -> bunker
+CHAR_QUAR_N = 5             # v0.122.0 scope quarantine: a char drawing this many
+CHAR_QUAR_WINDOW = 200      # poison rejections in this window, alone (guild quiet),
+CHAR_QUAR_TTL = 600         # stops counting toward the health machine this long
 EXIT_LAG_CALM_TICKS = 60    # v0.121.2: the exit's lag gate needs THIS long calm —
                             # an instantaneous gate flapped one-tick bunker cycles
                             # (ENTER lag-sustained t3655454 -> EXIT t3655456) every
@@ -863,7 +866,40 @@ class GuildBot:
         # v0.117.0: session-poison rejections feed the health machine's storm signal
         # (run 229: 8 stranding deaths incl. our last two leveled chars). One stray
         # rejection is normal play; HEALTH_POISON_N within the window is a storm.
+        # v0.122.0 SCOPE QUARANTINE: a LONE sick char must not bench the guild.
+        # The dead c20054 solo-spammed 95 unknown_character rejections into these
+        # counters; per-char divergence (the niv family) does the same. A char
+        # drawing CHAR_QUAR_N poison rejections in its window while the REST of
+        # the guild is quiet gets quarantined: its recent ticks are scrubbed and
+        # its further rejections don't count for CHAR_QUAR_TTL. A GLOBAL burst
+        # (others also rejecting) never quarantines — that's squall weather.
         if message.get("reason") in ("stale_frame", "unknown_character"):
+            tick = message.get("tick", self.tick)
+            uid = message.get("char_uid")
+            if uid is not None:
+                quar = getattr(self, "_quarantine", None)
+                if quar is None:
+                    quar = self._quarantine = {}
+                if tick < quar.get(uid, -10**9):
+                    return                          # quarantined: not a guild signal
+                ce = getattr(self, "_char_errs", None)
+                if ce is None:
+                    ce = self._char_errs = {}
+                lst = [t for t in ce.get(uid, []) if tick - t < CHAR_QUAR_WINDOW]
+                lst.append(tick)
+                ce[uid] = lst
+                others_sharp = sum(
+                    1 for u, ts in ce.items() if u != uid
+                    for t in ts if tick - t < SQUALL_TRIGGER_WINDOW)
+                if (len(lst) >= CHAR_QUAR_N
+                        and others_sharp < SQUALL_TRIGGER_N):
+                    quar[uid] = tick + CHAR_QUAR_TTL
+                    self._poison_ticks = [t for t in self._poison_ticks
+                                          if t not in set(lst)]
+                    print(f"[quarantine] {uid} at t{tick}: {len(lst)} rejections/"
+                          f"{CHAR_QUAR_WINDOW}t while the guild is quiet — its "
+                          f"errors stop counting for {CHAR_QUAR_TTL}t", flush=True)
+                    return
             self._poison_ticks.append(message.get("tick", self.tick))
 
     # -- anomaly self-reporting ----------------------------------------------
