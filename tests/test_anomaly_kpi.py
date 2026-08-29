@@ -132,8 +132,8 @@ def test_the_shelter_flag_reaches_the_kpi_monitor_through_the_real_bot(capsys):
     bot = GuildBot(strategy="explorer")
     bot.config = {"party_cap": 5, "world_cap": 10, "roster_cap": 10,
                   "maps": [{"id": "vale"}]}
-    for i in range(12):                       # v0.117.0: a STORM bunkers, not a stray
-        bot.on_action_error({"tick": 4980 + i, "reason": "stale_frame"})
+    for i in range(12):    # v0.121.0: SPREAD past the squall hold — a true storm
+        bot.on_action_error({"tick": 4760 + i * 20, "reason": "stale_frame"})
     for t in range(5000, 5700, 10):
         bot.on_frame(_village(t, {}, 8))
     out = capsys.readouterr().out

@@ -58,6 +58,16 @@ EMBARK_STAGES = ((300, 2), (600, 4), (900, 8))
 STAMP_OFFSET_MAX = 300      # v0.120.0: cap on the forward stamp correction (ticks).
                             # The breathing debt peaked ~271; anything larger is a
                             # suspect sample, not a bigger correction.
+# v0.121.0 SQUALL SHELTER (measured, run 295: 4 bursts of width 0-72t, gaps
+# 871-3900t, zero lockouts): a sharp global rejection burst gets a stand-still
+# hold, not a recall — the full bunker is for weather that PERSISTS.
+SQUALL_TRIGGER_N = 6        # >= this many poison rejections within...
+SQUALL_TRIGGER_WINDOW = 50  # ...this window = a squall (sharp burst)
+SQUALL_HOLD = 150           # quiet ticks after the last rejection before resuming;
+                            # also the max burst SPREAD a squall absorbs — a storm
+                            # spanning longer than this goes straight to the bunker
+SQUALL_ESCALATE_N = 3       # this many squalls within...
+SQUALL_ESCALATE_WINDOW = 1000   # ...this window = persistent weather -> bunker
 from .chatter import Chatter
 from .expectation import ExpectationMonitor
 from .reasoning import DecisionTrace
@@ -398,10 +408,44 @@ class GuildBot:
         self._poison_ticks = [t for t in self._poison_ticks
                               if tick - t < HEALTH_POISON_WINDOW]
         poison_bad = len(self._poison_ticks) >= HEALTH_POISON_N
+        # v0.121.0: a poison storm only BUNKERS when its rejections SPAN longer
+        # than a squall can absorb — a 60-error burst 16 ticks wide is a squall,
+        # not weather. (poison_bad alone still stamps the exit clock below: while
+        # bunkered, any storm-strength burst proves the weather persists.)
+        poison_spread = (self._poison_ticks[-1] - self._poison_ticks[0]
+                         if self._poison_ticks else 0)
+        poison_storm = poison_bad and poison_spread > SQUALL_HOLD
         lag_sustained = (self._lag_bad_since is not None
                          and tick - self._lag_bad_since >= HEALTH_ENTER_TICKS)
         if poison_bad or lag_bad:
             self._health_bad_at = tick
+        # squall detection + lifecycle (only meaningful while otherwise "ok")
+        sharp = sum(1 for t in self._poison_ticks
+                    if tick - t < SQUALL_TRIGGER_WINDOW) >= SQUALL_TRIGGER_N
+        if self._health == "squall":
+            if self._poison_ticks:
+                self._squall_until = max(getattr(self, "_squall_until", 0),
+                                         self._poison_ticks[-1] + SQUALL_HOLD)
+            if tick >= getattr(self, "_squall_until", 0):
+                self._health = "ok"
+                print(f"[squall] passed at t{tick}: {SQUALL_HOLD}t quiet — resuming",
+                      flush=True)
+                self._record_phase(tick, "squall passed")
+        elif self._health == "ok" and sharp and not (poison_storm or lag_sustained):
+            self._health = "squall"
+            self._squall_until = tick + SQUALL_HOLD
+            sq = getattr(self, "_squalls", None)
+            if sq is None:
+                sq = self._squalls = []
+            sq[:] = [t for t in sq if tick - t < SQUALL_ESCALATE_WINDOW]
+            sq.append(tick)
+            print(f"[squall] HOLD at t{tick}: sharp burst "
+                  f"({SQUALL_TRIGGER_N}+/{SQUALL_TRIGGER_WINDOW}t) — standing "
+                  f"still while it passes ({len(sq)}/{SQUALL_ESCALATE_N} in "
+                  f"{SQUALL_ESCALATE_WINDOW}t)", flush=True)
+            self._record_phase(tick, "squall hold")
+            if len(sq) >= SQUALL_ESCALATE_N:
+                poison_storm = True     # persistent weather — fall through to bunker
         if poison_bad:
             # v0.119.2: the exit clock runs on POISON alone. The server's delivery
             # BREATHES (true offset 10 <-> 271 within minutes, tick rate 3.4-6.1
@@ -424,10 +468,10 @@ class GuildBot:
             self.request_rehello = True
             print(f"[heal] debt-heal requested at t{tick}: bunkered, poison-quiet, "
                   f"standing lag {lag:.1f}s — a fresh session sheds the debt", flush=True)
-        if self._health == "ok" and (poison_bad or lag_sustained):
+        if self._health in ("ok", "squall") and (poison_storm or lag_sustained):
             self._health = "bunker"
-            why = ("poison storm "
-                   f"{len(self._poison_ticks)}/{HEALTH_POISON_WINDOW}t" if poison_bad
+            why = (f"poison storm {len(self._poison_ticks)}/"
+                   f"{HEALTH_POISON_WINDOW}t spread {poison_spread}t" if poison_storm
                    else f"lag {lag:.1f}s sustained {tick - self._lag_bad_since}t")
             print(f"[bunker] ENTER at t{tick}: {why} — recalling the field, "
                   "holding embarks", flush=True)

@@ -19,6 +19,14 @@ def _bot():
     return b
 
 
+
+
+def _sustained_storm(b, t0=1000, n=12, step=20):
+    """Errors SPREAD over n*step ticks (> SQUALL_HOLD): a storm the squall
+    shelter must NOT absorb — the fixtures' road into the full bunker."""
+    for i in range(n):
+        b.on_action_error({"tick": t0 + i * step, "reason": "stale_frame"})
+
 def test_sustained_lag_bunkers_but_a_spike_does_not():
     b = _bot()
     b._hello_anchor = (1000, 100.0)          # tick 1000 anchored at wall 100.0
@@ -51,14 +59,14 @@ def test_bunker_exits_only_after_a_full_clean_window():
     # clean, but re-poisoned midway: the exit clock restarts
     for t in range(1130, 2000):
         b._health_step(t, now=100.0 + (t - 1000) * 0.25)
-    b._poison_ticks.extend(range(2000, 2012))
-    b._health_step(2012, now=100.0 + 1012 * 0.25)
-    # the poison entries stay inside their 300t window until ~t2311, so the clean
-    # clock starts THERE; exit lands at ~4311, and 4300 must still be bunkered.
+    b._poison_ticks.extend(range(2000, 2240, 20))   # v0.121.0: SPREAD past the
+    b._health_step(2012, now=100.0 + 1012 * 0.25)   # squall hold -> a true storm
+    # the spread entries stay storm-strength until ~t2359, so the clean clock
+    # starts THERE; exit lands at ~4359, and 4300 must still be bunkered.
     for t in range(2013, 4300):
         b._health_step(t, now=100.0 + (t - 1000) * 0.25)
     assert b.server_health() == "bunker", "exited before a FULL clean window post-storm"
-    for t in range(4300, 4330):
+    for t in range(4300, 4360):
         b._health_step(t, now=100.0 + (t - 1000) * 0.25)
     assert b.server_health() == "ok", "never exited after the clean window"
 
@@ -100,8 +108,7 @@ def test_a_fielded_char_walks_home_under_bunker_and_gathers_otherwise():
     assert mv and mv[0]["dir"] == "N", f"healthy char did not chase the coin: {acts}"
 
     bunkered = _bot()
-    for i in range(12):
-        bunkered.on_action_error({"tick": 2990 + i, "reason": "stale_frame"})
+    _sustained_storm(bunkered, 2770)      # spread 220 > SQUALL_HOLD: a real storm
     frame2 = _field_frame(3000, dict(char))
     frame2["visible"]["gold"] = [{"pos": [12, 10], "amount": 2}]
     acts2 = bunkered.on_frame(frame2)
@@ -178,8 +185,7 @@ def test_the_probe_fires_on_cadence_healthy_only_and_cycles_K():
 def test_the_probe_never_fires_while_bunkered():
     b = _bot()
     b.on_hello({"config": b.config, "guild": {}, "tick": 400})
-    for i in range(12):
-        b.on_action_error({"tick": 990 + i, "reason": "stale_frame"})
+    _sustained_storm(b, 760)
     acts = b.on_frame(_probe_village(1002, ["c1"]))
     assert not [a for a in acts if a.get("_probe_age") is not None], \
         "probed during a storm — measures nothing, adds pressure"
@@ -505,14 +511,13 @@ def test_embark_budget_is_zero_unhealthy_and_unlimited_before_any_exit():
 def test_the_exit_transition_stamps_the_ramp_anchor():
     b = _bot()
     b._hello_anchor = (1000, 100.0)
-    for i in range(12):
-        b.on_action_error({"tick": 1000 + i, "reason": "stale_frame"})
+    _sustained_storm(b, 780)
     b._health_step(1012, now=100.0 + 12 * 0.25)
     assert b.server_health() == "bunker"
     for t in range(1013, 3400):
         b._health_step(t, now=100.0 + (t - 1000) * 0.25)
     assert b.server_health() == "ok", "never exited in the fixture"
-    assert getattr(b, "_exit_at", None) is not None and 3300 <= b._exit_at <= 3400, \
+    assert getattr(b, "_exit_at", None) is not None and 3100 <= b._exit_at <= 3200, \
         f"EXIT did not stamp the ramp anchor: {getattr(b, '_exit_at', None)}"
 
 
@@ -549,8 +554,7 @@ def test_exit_runs_on_poison_alone_while_lag_breathes():
     differential sample so every lag value is exact."""
     b = _bot()
     b._hello_anchor = (1000, 100.0)
-    for i in range(12):
-        b.on_action_error({"tick": 1000 + i, "reason": "stale_frame"})
+    _sustained_storm(b, 780)
 
     def step(t, offset_ticks):
         b._offset_sample = (t, offset_ticks)
@@ -561,35 +565,35 @@ def test_exit_runs_on_poison_alone_while_lag_breathes():
     # not re-arm the exit clock. The storm entries stay inside their 300t window
     # until ~t1301, so the poison stamp refreshes until then -> earliest exit
     # ~3301. A calm moment at t3300 must still be held by the POISON clock.
-    for t in range(1013, 3300):
+    for t in range(1013, 3100):
         step(t, 240 if (t // 200) % 2 else 2)
-    step(3300, 2)
+    step(3100, 2)
     assert b.server_health() == "bunker", "exited before the poison window elapsed"
-    # past the window: the first CALM step exits; a spiking step must not
-    step(3305, 240)
+    # past the window (storm stamps end ~1119 -> eligible ~3119): the first CALM
+    # step exits; a spiking step must not
+    step(3118, 240)
     assert b.server_health() == "bunker", "exited INTO a 60s breath-in"
-    step(3306, 2)
+    step(3120, 2)
     assert b.server_health() == "ok", "poison-clean window + calm water never exited"
 
 
 def test_exit_holds_while_lag_is_bad_right_now():
     b = _bot()
     b._hello_anchor = (1000, 100.0)
-    for i in range(12):
-        b.on_action_error({"tick": 1000 + i, "reason": "stale_frame"})
+    _sustained_storm(b, 780)
 
     def step(t, offset_ticks):
         b._offset_sample = (t, offset_ticks)
         b._health_step(t, now=100.0 + (t - 1000) * 0.25)
     step(1012, 2)
     assert b.server_health() == "bunker"
-    for t in range(1013, 3301):
+    for t in range(1013, 3119):
         step(t, 240)          # poison clean but lag CURRENTLY deep
-    # t3301 is the FIRST poison-eligible tick (last stamp ~1301 + 2000). Probe
+    # t3119 is the FIRST poison-eligible tick (last stamp ~1119 + 2000). Probe
     # health exactly here: a missing instantaneous gate exits on this very step
     # (the immediate lag-sustained re-entry one step later would mask it from an
     # end-state assertion).
-    step(3301, 240)
+    step(3119, 240)
     assert b.server_health() == "bunker", \
         "exited into deep standing lag — the instantaneous gate is dead"
     for t in range(3302, 3413):
@@ -706,3 +710,78 @@ def test_envelope_ticks_are_monotonic_when_the_correction_recedes():
     b.tick = c.tick = 1030
     c.send_actions([{"char_uid": "c1", "action": "move", "dir": "N"}])
     assert c.transport.sent[-1]["tick"] == 1030
+
+
+# ---------------------------------------------------------------------------
+# v0.121.0 squall shelter: run 295 measured 4 rejection bursts of width 0-72t
+# with gaps 871-3900t — each cost a full recall + 2000t exit. A sharp burst now
+# gets a stand-still hold; the bunker is reserved for weather that PERSISTS
+# (spread > SQUALL_HOLD or squalls clustering).
+
+def test_squall_literals_are_pinned():
+    from steemer.bot import (SQUALL_TRIGGER_N, SQUALL_TRIGGER_WINDOW, SQUALL_HOLD,
+                             SQUALL_ESCALATE_N, SQUALL_ESCALATE_WINDOW)
+    assert (SQUALL_TRIGGER_N, SQUALL_TRIGGER_WINDOW, SQUALL_HOLD,
+            SQUALL_ESCALATE_N, SQUALL_ESCALATE_WINDOW) == (6, 50, 150, 3, 1000)
+
+
+def test_a_tight_burst_squalls_and_passes_without_the_bunker_tax():
+    """The run-295 shape: 60 rejections 16 ticks wide. Squall, hold, resume after
+    150 quiet ticks — no recall, no 2000t exit window."""
+    b = _bot()
+    for i in range(60):
+        b.on_action_error({"tick": 1000 + (i % 16), "reason": "stale_frame"})
+    b._health_step(1016, now=100.0)
+    assert b.server_health() == "squall", \
+        f"a 16t burst must squall, not {b.server_health()}"
+    assert b.embark_budget() == 0, "embarks flowed during a squall"
+    for t in range(1017, 1166):
+        b._health_step(t, now=100.0 + (t - 1016) * 0.25)
+    assert b.server_health() == "squall", "resumed before the quiet hold elapsed"
+    b._health_step(1170, now=100.0 + 154 * 0.25)
+    assert b.server_health() == "ok", "the squall never passed"
+
+
+def test_a_storm_spanning_past_the_hold_still_bunkers():
+    b = _bot()
+    _sustained_storm(b, 780)                      # spread 220 > SQUALL_HOLD
+    b._health_step(1012, now=100.0)
+    assert b.server_health() == "bunker", \
+        f"a 220t-spread storm must bunker, not {b.server_health()}"
+
+
+def test_three_squalls_inside_the_window_escalate_to_the_bunker():
+    b = _bot()
+    t0 = 1000
+    for n in range(3):
+        for i in range(8):
+            b.on_action_error({"tick": t0 + i, "reason": "stale_frame"})
+        b._health_step(t0 + 8, now=100.0 + n)
+        if n < 2:
+            assert b.server_health() == "squall", f"squall {n+1} did not hold"
+            # let it pass before the next one
+            for t in range(t0 + 9, t0 + 8 + 155):
+                b._health_step(t, now=100.0 + n + (t - t0) * 0.01)
+            assert b.server_health() == "ok"
+            t0 += 300
+    assert b.server_health() == "bunker", \
+        "the third squall in 1000t did not escalate to the bunker"
+
+
+def test_field_chars_stand_still_through_a_squall_and_retreat_in_a_bunker():
+    """Two oracles on the field branch: a squall issues NO actions for a fielded
+    char; a bunker still offers the retreat."""
+    from tests.test_decision_engine import _bot as _debot, _world_field_frame
+    bot = _debot()
+    corridor = [[0, y, "floor"] for y in range(0, 8)]
+    frame = _world_field_frame("vale", corridor, [])
+    bot.on_frame(frame)                     # baseline: sees the world
+    bot._health = "squall"
+    bot._squall_until = frame["tick"] + 150   # mid-squall, not yet passed
+    held = bot.on_frame(frame)
+    assert not held, f"a fielded char acted through a squall: {held}"
+    bot._health = "bunker"
+    bot._poison_bad_at = frame["tick"]        # standing storm: the exit clock holds
+    acts = bot.on_frame(frame)
+    assert any(a.get("action") == "move" for a in acts), \
+        f"the bunker retreat vanished: {acts}"

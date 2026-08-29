@@ -2192,8 +2192,10 @@ def test_a_poison_storm_bunkers_embarks_and_a_clean_window_releases_them():
     assert any(a.get("action") == "embark" for a in acts), \
         f"fixture broken: no embark without a storm: {acts}"
     bot2 = _bot()
-    for i in range(12):                          # a storm, not a stray rejection
-        bot2.on_action_error({"tick": 2000 + i, "reason": "stale_frame"})
+    # v0.121.0: a SUSTAINED storm (spread > SQUALL_HOLD) — a tight burst is now a
+    # squall and holds in place instead of bunkering
+    for i in range(12):
+        bot2.on_action_error({"tick": 1780 + i * 20, "reason": "stale_frame"})
     held = bot2.on_frame(_deploy_frame(uids, by_world, here, tick=2100))
     assert not any(a.get("action") == "embark" for a in held), \
         f"embarked into the storm: {held}"

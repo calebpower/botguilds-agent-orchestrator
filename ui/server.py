@@ -1008,7 +1008,7 @@ TICK_JUMP_MIN = 50   # a tick gap wider than this is a counter LEAP (restart/cat
 
 PHASE_OFFLINE_S = 15    # no frame this long -> OFFLINE (bot down or server down)
 
-PHASES = ("offline", "bunker", "recall", "fielding", "mustering")
+PHASES = ("offline", "bunker", "recall", "squall", "fielding", "mustering")
 
 
 def resolve_phase(frame_age_s, health: str, fielded: int) -> str:
@@ -1017,6 +1017,7 @@ def resolve_phase(frame_age_s, health: str, fielded: int) -> str:
     offline   — no frames flowing (bot down, or the server is)
     bunker    — server unhealthy (bot's health machine), roster safe at home
     recall    — server unhealthy and characters are still walking home
+    squall    — brief rejection burst: everyone HOLDS in place while it passes
     fielding  — normal play, characters in the field
     mustering — normal play, everyone home between stints (rotating/resting)
     """
@@ -1024,6 +1025,8 @@ def resolve_phase(frame_age_s, health: str, fielded: int) -> str:
         return "offline"
     if health == "bunker":
         return "recall" if fielded > 0 else "bunker"
+    if health == "squall":
+        return "squall"
     return "fielding" if fielded > 0 else "mustering"
 
 
@@ -1870,6 +1873,7 @@ header .phasechip.fielding{background:#173d24;color:#7fdc9c;border-color:#2e7d4f
 header .phasechip.mustering{background:#1b2f45;color:#8fc1f0;border-color:#2a5f95}
 header .phasechip.recall{background:#4a3312;color:#f0c060;border-color:#a07020}
 header .phasechip.bunker{background:#5a1d1d;color:#ffb4b4;border-color:#a03030}
+header .phasechip.squall{background:#3c3550;color:#c9b8f0;border-color:#6a5aa0}
 header .phasechip.offline{background:var(--surface);color:var(--muted);border-color:var(--border)}
 header .grow{flex:1}
 nav{display:flex;gap:4px;flex-wrap:wrap}

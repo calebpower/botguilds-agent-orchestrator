@@ -10,7 +10,7 @@ from steemer.bot import GuildBot
 
 
 def test_the_enumeration_is_pinned():
-    assert PHASES == ("offline", "bunker", "recall", "fielding", "mustering")
+    assert PHASES == ("offline", "bunker", "recall", "squall", "fielding", "mustering")
     assert PHASE_OFFLINE_S == 15
 
 
@@ -20,12 +20,13 @@ def test_every_state_is_reachable_and_distinct():
         ("offline", 2): resolve_phase(60.0, "ok", 5),          # frames stopped
         ("bunker",):    resolve_phase(1.0, "bunker", 0),       # unhealthy, all home
         ("recall",):    resolve_phase(1.0, "bunker", 3),       # unhealthy, walking home
+        ("squall",):    resolve_phase(1.0, "squall", 7),       # burst hold, in place
         ("fielding",):  resolve_phase(1.0, "ok", 7),           # normal play afield
         ("mustering",): resolve_phase(1.0, "ok", 0),           # normal play, all home
     }
     assert list(cases.values()) == ["offline", "offline", "bunker", "recall",
-                                    "fielding", "mustering"]
-    assert set(cases.values()) == set(PHASES) - {""} - (set(PHASES) - set(cases.values()))
+                                    "squall", "fielding", "mustering"]
+    assert set(cases.values()) == set(PHASES)
 
 
 def test_the_offline_boundary_is_strict():
@@ -52,7 +53,7 @@ def test_the_bot_persists_phase_on_transition_and_on_hello():
     assert [s for _, s, _ in bot.storage.rows] == ["phase:ok"], \
         "the hello did not anchor the phase row"
     for i in range(12):
-        bot.on_action_error({"tick": 1000 + i, "reason": "stale_frame"})
+        bot.on_action_error({"tick": 780 + i * 20, "reason": "stale_frame"})
     bot._health_step(1012)
     assert [s for _, s, _ in bot.storage.rows][-1] == "phase:bunker", \
         f"the bunker transition never reached the bus: {bot.storage.rows}"

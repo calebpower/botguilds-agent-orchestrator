@@ -1313,7 +1313,7 @@ def role_of(char: dict[str, Any], wizard_uids: "set | None" = None,
 
 
 class Explorer:
-    version = "explorer/0.120.1"
+    version = "explorer/0.121.0"
 
     def __init__(self) -> None:
         # Equip-slot learning (persists across frames): slots a kind has been
@@ -2756,7 +2756,15 @@ class Explorer:
         # above every gather/seek (gold beeline 5.0) so income never delays the
         # recall, below the survival ladder (dodge 7.3 / develop-attack 7.6 / hurt
         # retreat 8.5) so getting home never overrides staying alive on the way.
-        if getattr(bot, "server_health", lambda: "ok")() != "ok":
+        _health = getattr(bot, "server_health", lambda: "ok")()
+        if _health == "squall":
+            # v0.121.0: a squall is a ~16-72t global rejection burst (measured, run
+            # 295: 4 bursts, gaps 871-3900t). Every action sent into it is a
+            # guaranteed rejection that feeds the storm counters — STAND STILL and
+            # let it pass; the bunker (recall) is for weather that persists.
+            trace.observe("squall: holding in place while the burst passes")
+            return
+        if _health != "ok":
             self._retreat(uid, pos, ctx, blocked, offer, 6.0,
                           "bunker: server unhealthy — returning to the village")
 
