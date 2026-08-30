@@ -544,3 +544,13 @@ Same shape as c20055 (2026-08-28 ~15:15). Post-move Bug B rate so far: 2 chars/d
 ~100/day pre-move — reduced ~50x but alive. Also: c20066 entered the divergent-validator
 state (unknown_character spam while the roster lists it) — first live catch for the
 0.122.0 scope quarantine (3 chars attributed and excluded at t3680781).
+
+## 2026-08-29 ~20:25 — NEW: not_authenticated on re-hello mid-wave
+
+During a deep wave (offset ~259), a poison-heal re-hello was rejected
+`auth failed: not_authenticated` — the server refused credentials it had accepted all
+day. Runner exited cleanly by design; the svc.sh watch supervisor restarted it and the
+fresh process authenticated immediately (connected t3949338). Net cost: one restart
+cycle, zero manual intervention. First occurrence; if this recurs it suggests the wave
+also corrupts/evicts session-auth state server-side (a third divergence flavor after
+world-state and char-state). Watch frequency before engineering a retry-in-place.
