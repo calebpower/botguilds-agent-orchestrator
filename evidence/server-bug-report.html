@@ -1,0 +1,342 @@
+<title>BotGuilds server diagnosis — guild frame lag & silent deletions</title>
+<style>
+  :root {
+    --paper: #faf8f4;
+    --ink: #20242a;
+    --ink-2: #5c6470;
+    --ink-3: #8b93a0;
+    --accent: #d96b00;
+    --accent-soft: #f3e3d3;
+    --crit: #b3261e;
+    --crit-soft: #f6e2e0;
+    --ok: #2e7d4f;
+    --line: #e4dfd6;
+    --card: #f2efe8;
+    --mono-bg: #eeebe3;
+  }
+  :root:not([data-theme="light"]) { }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #15181d;
+      --ink: #e8e6e1;
+      --ink-2: #a8adb8;
+      --ink-3: #7c8290;
+      --accent: #f08c2e;
+      --accent-soft: #3a2a18;
+      --crit: #e5776f;
+      --crit-soft: #3a2220;
+      --ok: #6fbf8f;
+      --line: #2a2f37;
+      --card: #1c2026;
+      --mono-bg: #1c2026;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #15181d;
+    --ink: #e8e6e1;
+    --ink-2: #a8adb8;
+    --ink-3: #7c8290;
+    --accent: #f08c2e;
+    --accent-soft: #3a2a18;
+    --crit: #e5776f;
+    --crit-soft: #3a2220;
+    --ok: #6fbf8f;
+    --line: #2a2f37;
+    --card: #1c2026;
+    --mono-bg: #1c2026;
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.55;
+    margin: 0;
+    padding: 2.5rem 1.25rem 5rem;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 {
+    font-size: 1.7rem; line-height: 1.25; text-wrap: balance;
+    margin: 0 0 .4rem; letter-spacing: -.01em;
+  }
+  h2 {
+    font-size: 1.15rem; margin: 2.8rem 0 .8rem;
+    padding-top: 1.2rem; border-top: 1px solid var(--line);
+  }
+  h3 { font-size: .95rem; margin: 1.6rem 0 .5rem; }
+  p { margin: .6rem 0; max-width: 44rem; }
+  .eyebrow {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--accent); font-weight: 600; margin-bottom: .6rem;
+  }
+  .meta { color: var(--ink-2); font-size: .85rem; margin-bottom: 1.6rem; }
+  .chips { display: flex; gap: .5rem; flex-wrap: wrap; margin: 1rem 0 0; }
+  .chip {
+    font-size: .72rem; font-weight: 600; padding: .18rem .6rem;
+    border-radius: 999px; letter-spacing: .03em;
+  }
+  .chip.crit { background: var(--crit-soft); color: var(--crit); }
+  .chip.warn { background: var(--accent-soft); color: var(--accent); }
+  .tldr {
+    background: var(--card); border-left: 3px solid var(--accent);
+    padding: .9rem 1.1rem; margin: 1.4rem 0; border-radius: 0 6px 6px 0;
+  }
+  .tldr p { margin: .35rem 0; }
+  code, .mono {
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+    font-size: .86em;
+  }
+  code { background: var(--mono-bg); padding: .08em .35em; border-radius: 4px; }
+  .tablewrap { overflow-x: auto; margin: .9rem 0; }
+  table {
+    border-collapse: collapse; font-size: .84rem; min-width: 100%;
+    font-variant-numeric: tabular-nums;
+  }
+  th {
+    text-align: left; font-size: .7rem; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--ink-3); font-weight: 600;
+    padding: .4rem .8rem .4rem 0; border-bottom: 1px solid var(--line);
+  }
+  td {
+    padding: .42rem .8rem .42rem 0; border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  td.n { font-family: ui-monospace, Consolas, monospace; font-size: .82rem; white-space: nowrap; }
+  .hot { color: var(--crit); font-weight: 600; }
+  .fine { color: var(--ok); }
+  ul { padding-left: 1.2rem; margin: .6rem 0; }
+  li { margin: .35rem 0; }
+  .note { color: var(--ink-2); font-size: .84rem; }
+  .falsified td:first-child { white-space: nowrap; font-weight: 600; }
+  .footer {
+    margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+    color: var(--ink-3); font-size: .8rem;
+  }
+</style>
+<main>
+  <div class="eyebrow">BotGuilds &middot; server diagnostic report</div>
+  <h1>Guild <span class="mono">g_cd0e2a</span> (Stanley_Steemer): frame-production lag and silent character deletions</h1>
+  <div class="meta">Prepared 2026-08-26 &middot; evidence gathered 2026-08-25 15:00 &rarr; 2026-08-29 15:30 &middot; all tick/second conversions at the measured 4.01 ticks/s</div>
+  <div class="chips">
+    <span class="chip crit">Bug A — frame lag: ongoing</span>
+    <span class="chip crit">Bug B — silent deletions: recurring</span>
+    <span class="chip warn">client-side causes ruled out</span>
+  </div>
+
+  <div class="tldr">
+    <p><strong>Two distinct server-side bugs against one guild.</strong></p>
+    <p><strong>A.</strong> The server produces/delivers <em>our guild's</em> frames slower than real time. The gap between the public clock and our freshest frame grew to <span class="mono">332 ticks (~83&nbsp;s)</span> at peak; every action referencing a delivered frame is then rejected <code>stale_frame</code> &mdash; at peak, <strong>100% of actions</strong>, for hours. Rivals were unaffected throughout. It survives client restarts and continues this morning at 7&ndash;22 ticks.</p>
+    <p><strong>B.</strong> Characters are deleted with <em>no death event</em> &mdash; ~100 in one day, in batches, including characters idle in the village. The public spectate API confirms the deletions are authoritative, not a rendering artifact.</p>
+  </div>
+
+  <h2>Bug A &mdash; per-guild frame-production lag</h2>
+  <p><strong>Symptom.</strong> Our client receives one frame per world per tick as normal, but the frames are increasingly <em>old</em>. Actions are tagged with the frame's tick (same envelope as the reference kit); the server rejects them as <code>stale_frame</code>. During deep phases nothing lands: <span class="mono">0</span> of our moves applied over multi-hour stretches, and our own move-prediction oracle reported <span class="mono">2128/2128 (100%)</span> violations per 600-tick window.</p>
+
+  <h3>Direct measurement — public clock vs. our freshest delivered frame</h3>
+  <div class="tablewrap"><table>
+    <tr><th>When</th><th>Public <code>/api/spectate/guilds</code> tick</th><th>Our freshest frame</th><th>Offset</th></tr>
+    <tr><td>02:55</td><td class="n">2,862,974</td><td class="n">2,862,783</td><td class="n hot">191</td></tr>
+    <tr><td>03:25 (heartbeat)</td><td class="n">&mdash;</td><td class="n">&mdash;</td><td class="n hot">220</td></tr>
+    <tr><td>04:25</td><td class="n">&mdash;</td><td class="n">&mdash;</td><td class="n hot">332 (peak)</td></tr>
+    <tr><td>10:33:36</td><td class="n">2,973,150</td><td class="n">2,973,137</td><td class="n">13</td></tr>
+    <tr><td>10:33:53</td><td class="n">2,973,217</td><td class="n">2,973,197</td><td class="n">20</td></tr>
+    <tr><td>10:34:10</td><td class="n">2,973,284</td><td class="n">2,973,277</td><td class="n">7</td></tr>
+    <tr><td>10:34:43</td><td class="n">2,973,418</td><td class="n">2,973,396</td><td class="n">22</td></tr>
+  </table></div>
+  <p class="note">A healthy consumer holds this at 0&ndash;1. The morning values oscillate 7&ndash;22 &mdash; the mild phase of the same defect, still costing ~26% of actions.</p>
+
+  <h3>The lag grows while the stream is being consumed at line rate</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Measurement</th><th>Value</th><th>Reading</th></tr>
+    <tr><td>Delivery vs. tick time (1,061 frames, t2,851,862&rarr;2,852,217)</td><td class="n">97.5 s wall vs 88.8 s tick-implied</td><td class="hot">lag grows ~0.09 s/s</td></tr>
+    <tr><td>Lag at 25% / 50% / 75% of that window</td><td class="n">+2.6 s / +3.9 s / +6.5 s</td><td class="hot">monotone growth</td></tr>
+    <tr><td>First frame of a brand-new session vs. its own <code>hello_ok</code> tick</td><td class="n">22 ticks old at birth</td><td class="hot">queue survives re-hello &rarr; per-guild, not per-session</td></tr>
+    <tr><td>Server tick rate across the whole incident</td><td class="n">4.01 ticks/s constant</td><td class="fine">not a tick_seconds change</td></tr>
+    <tr><td>Rival guilds' activity, calm vs. our deepest storm</td><td class="n">1,337 vs 1,342 moves/1.5k ticks</td><td class="fine">world healthy; the lag is guild-scoped</td></tr>
+  </table></div>
+
+  <h3>Cost (run 230 aggregate)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Metric</th><th>Value</th></tr>
+    <tr><td>Actions sent / rejected</td><td class="n">49,458 / 44,767 (91%)</td></tr>
+    <tr><td><code>stale_frame</code> rejections</td><td class="n">40,798</td></tr>
+    <tr><td>Characters killed while paralyzed (unable to flee), runs 229&ndash;230</td><td class="n hot">11, incl. our two highest-level characters</td></tr>
+  </table></div>
+
+  <h3>Controlled restart experiment (11:07&ndash;11:12)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Phase</th><th>Offset</th></tr>
+    <tr><td>Baseline (6 samples)</td><td class="n">9&ndash;25, mean ~16</td></tr>
+    <tr><td>Post-restart, first ~75 s</td><td class="n fine">2&ndash;5 (clean; actions land)</td></tr>
+    <tr><td>+90 s</td><td class="n">13 &rarr; 17 &rarr; 19 &rarr; 22</td></tr>
+    <tr><td>+2.5 min plateau</td><td class="n hot">26&ndash;31 &mdash; worse than baseline</td></tr>
+  </table></div>
+  <p class="note">A reconnect buys ~1 minute of clean delivery, then the lag rebuilds and overshoots the pre-restart level &mdash; consistent with each session adding persistent per-guild cost (see session GC lead below).</p>
+
+  <h3>Behavior under reconnection</h3>
+  <p>A fresh hello briefly clears the backlog (offset ~0&ndash;1, actions land), then the lag re-accumulates. Clean-window lengths across the night: <span class="mono">~6,700 &rarr; ~300 &rarr; ~2,000</span> ticks &mdash; the shrink-then-partial-recovery pattern is consistent with per-guild server state degrading and intermittently catching up. Overnight our client re-helloed on a hysteresis (at most every 2,400 ticks), so dozens of dead sessions were created; if per-session send state isn't garbage-collected, that would compound the per-tick cost for this guild.</p>
+
+  <h2>Bug B &mdash; silent character deletions</h2>
+  <p><strong>Symptom.</strong> Characters cease to exist with no <code>death</code> event. The same event stream carries fully-attributed deaths for our characters and rivals&rsquo; throughout, so it is not an attribution gap &mdash; these characters simply never get one.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Observation</th><th>Evidence</th></tr>
+    <tr><td>Batch deletions</td><td class="n">13 of 27 roster gone in ~20k ticks (run 224); 12 clustered in one ~3k-tick window; a later window lost 25 in ~14k ticks</td></tr>
+    <tr><td>Consecutive uid blocks</td><td class="n">c19789&ndash;c19795 (seven consecutive) vanished together</td></tr>
+    <tr><td>Village-idle characters deleted too</td><td class="n">7 of one 25-batch were sitting in the village (c19810, c19813, c19817, c19818, c19820, c19823, c19826)</td></tr>
+    <tr><td>Authoritative, not render-side</td><td class="n">public /api/spectate/guilds roster count matches our frames after each batch</td></tr>
+    <tr><td>Age-uniform</td><td class="n">vanish share 57% (young &lt;6k ticks) vs 56% (old) &mdash; not a recruit-specific path</td></tr>
+    <tr><td>Rate &amp; cost</td><td class="n">up to ~1.8&ndash;2 chars/1k ticks; ~100 chars in one day; every INT-trained wizard candidate lost (4 separate times)</td></tr>
+  </table></div>
+  <p class="note">Deleted characters sometimes continue to <em>render</em> in world frames after deletion, which draws <code>unknown_character</code> / <code>stale_frame</code> floods from any client that keeps acting on them.</p>
+
+  <h2>What it is not — hypotheses we tested and rejected</h2>
+  <div class="tablewrap"><table class="falsified">
+    <tr><th>Hypothesis</th><th>How it was falsified</th></tr>
+    <tr><td>Our client too slow</td><td>The client now ingests at wire speed (decides on at most the newest frame per world); consumption verified wall==tick-implied over 658 s &mdash; the offset still grows.</td></tr>
+    <tr><td>Session desync</td><td>Fresh hellos are born 22 ticks stale; the lag is inherited across sessions.</td></tr>
+    <tr><td>tick_seconds change</td><td>Measured 4.01 ticks/s constant across the entire incident.</td></tr>
+    <tr><td>Unported wire change</td><td>Starter kit at origin/main; the only recent deltas are docs plus a comment; action envelope identical to the reference (<code>msg(ACTIONS, tick=..., actions=...)</code>).</td></tr>
+    <tr><td>World-wide server load</td><td>Rival move volume unchanged through our deepest storm; only this guild starves.</td></tr>
+    <tr><td>Deletions = frame ghosts / limbo rendering</td><td>The public spectate API (server-authoritative) confirms the shrunken roster.</td></tr>
+    <tr><td>Deletions target idle/benched chars</td><td>12 of the first batch were fielded; a later batch took village-idle chars; age-uniform.</td></tr>
+  </table></div>
+
+  <h2>The trigger — found</h2>
+  <p><strong>Two config changes landed at the exact onset of Bug&nbsp;A</strong> (our client archives every <code>hello_ok</code> config per key):</p>
+  <div class="tablewrap"><table>
+    <tr><th>Config change</th><th>First seen</th><th>Storm onset</th></tr>
+    <tr><td><code>stale_order_ticks=0</code> (new key)</td><td class="n">08-25 ~23:20</td><td class="n" rowspan="2">08-25 23:33</td></tr>
+    <tr><td><code>tick_seconds: 0.25 &rarr; 0.4</code></td><td class="n">08-25 ~23:30</td></tr>
+  </table></div>
+  <p><strong>But the measured tick never changed:</strong> 3.998&ndash;4.001 ticks/s across every multi-hour window, and exactly 4.000 ticks/s post-reset. The server <em>advertises</em> 0.4&nbsp;s ticks while <em>running</em> 0.25&nbsp;s ticks. Any action-freshness window derived from the advertised value misjudges by 1.6&times; &mdash; fitting the erratic rejections, the load sensitivity, and why (post-reset) only WillMorr's own bot is fielding while every external guild sits in the village. Suggested grep: wherever the deploy that introduced <code>stale_order_ticks</code> computes action staleness from configured <code>tick_seconds</code> while the game loop still runs the old constant.</p>
+
+  <h2>Active probing of the freshness rules (2026-08-27)</h2>
+  <p>We instrumented the client to send deliberately-aged action envelopes (harmless
+  <code>say</code>s) during healthy windows and observe accept/reject:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Experiment</th><th>Result</th><th>Reading</th></tr>
+    <tr><td>Lone <code>say</code> tagged tick&minus;K, K = 1,2,3,5,8,13,21,34,55</td><td class="n fine">ALL accepted (events rendered)</td><td>the loud-rejection window is &gt;55 ticks; storm frames (100&ndash;330 old) always violate it &rarr; boundary in (55, ~100]</td></tr>
+    <tr><td>Pair, same char, same batch: fresh <code>say</code> then tick&minus;5 <code>say</code></td><td class="n hot">fresh rendered; aged SILENTLY dropped (no event, no error)</td><td>out-of-order actions are discarded silently &mdash; consistent with <code>stale_order_ticks</code> as an ORDER check per character</td></tr>
+  </table></div>
+  <p class="note">Working model: two independent rules. (1) An order rule: an action older
+  than the character's last accepted action is silently dropped. (2) An envelope-age rule
+  with a window &gt;21 ticks whose violation returns the loud <code>stale_frame</code> &mdash;
+  which storm-era frames (100&ndash;330 ticks old) always violate. Pair
+  sample n=2, both consistent (fresh lands, aged silently dropped).</p>
+
+
+  <h2>The migration (2026-08-28) &mdash; a natural experiment</h2>
+  <p>The server moved to new hosting (now a DigitalOcean box) after Will reported the old
+  network was slow with frequent packet timeouts. A host swap with the software held
+  constant is exactly the experiment that separates network causes from server-side
+  causes: <strong>whatever the network caused should vanish; whatever survives is not the
+  network.</strong> Measurements below compare the storm era (runs 224&ndash;230, old
+  host) against the first ~4 hours post-migration (run 288, 53k ticks).</p>
+
+  <h3>What the migration fixed &mdash; the network was responsible for this</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Symptom</th><th>Old host / network</th><th>New host</th></tr>
+    <tr><td>Frame-delivery debt (public clock &minus; our freshest frame)</td><td class="n hot">300&ndash;1023 ticks at peak</td><td class="n fine">8&ndash;25 ticks standing</td></tr>
+    <tr><td>Sessions born stale (first frame already old at hello)</td><td class="n hot">routine during storms</td><td class="n fine">fresh sessions born clean</td></tr>
+    <tr><td>Restart overshoot (reconnect makes lag <em>worse</em>)</td><td class="n hot">75&nbsp;s relief, then worse</td><td class="n fine">not reproduced</td></tr>
+    <tr><td>Multi-hour outages / socket timeouts</td><td class="n hot">several</td><td class="n fine">none observed</td></tr>
+    <tr><td>Silent character deletions (Bug&nbsp;B)</td><td class="n hot">~100/day in batches</td><td class="n hot">reduced but ALIVE: c20055 vanished 08-28 ~15:15 with no death event (see below)</td></tr>
+  </table></div>
+  <p class="note">This is consistent with the mechanism a lossy uplink predicts: TCP
+  backpressure grows the server's <em>per-connection</em> outbound queue, so frames are
+  delivered late-but-in-order per session, re-hello (new socket, empty queue) is
+  curative, and client reconnect churn accumulates half-dead sessions. If Bug&nbsp;B was
+  a timeout-driven cleanup culling sessions the network made look dead, it should stay
+  gone now &mdash; worth confirming after a few days.</p>
+
+  <h3>What survives the migration &mdash; this is not the network</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Symptom</th><th>Post-migration measurement</th></tr>
+    <tr><td><strong>Tick-rate shortfall (new)</strong></td><td class="n hot">3.62 ticks/s measured vs 4.0 advertised (tick_seconds=0.25) &mdash; whole-run mean 3.615, steady</td></tr>
+    <tr><td>Standing per-session delivery debt</td><td class="n">a fresh session re-accumulates a 16&ndash;25 tick debt within minutes and holds it</td></tr>
+    <tr><td>Action rejection on any activity burst</td><td class="n hot">6 of 6 shelter exits poisoned within 7&ndash;84 ticks; 22,749 stale rejections in run 288</td></tr>
+    <tr><td>Effective play time for external guilds</td><td class="n hot">~0% &mdash; the roster is safe but idle</td></tr>
+  </table></div>
+  <p>The tick-rate shortfall is the sharpest discriminator: <strong>a slow network cannot
+  slow the simulation's own tick counter.</strong> The old box held exactly 4.000
+  ticks/s through the very worst of the storms; the new one runs 9.5% slow around the
+  clock &mdash; the game loop is exceeding its 0.25&nbsp;s budget, which reads as a
+  compute ceiling on the new host (small droplet / CPU steal). And it recreates the
+  pattern from the trigger section in a new form: the server again <em>advertises</em> one
+  tick length while <em>running</em> another, so anything that converts
+  <code>stale_order_ticks</code> or staleness windows to wall time via the advertised
+  value misjudges by ~10% continuously.</p>
+  <p><strong>Verdict: the slow network was the amplifier, not the root cause.</strong>
+  It explains the catastrophic magnitude (hundreds of ticks of queue debt, born-stale
+  sessions, the restart overshoot) and those symptoms died with it. What remains is the
+  combination that still zeroes external play: a persistent per-session delivery debt of
+  ~20 ticks, meeting <code>stale_order_ticks=0</code> &mdash; zero tolerance converts
+  even the healthy-network debt into blanket rejection. If that config was a mitigation
+  for the old network, it has outlived its reason: <strong>restoring
+  <code>stale_order_ticks</code> to a tolerant value (&ge; the old default) would likely
+  give external guilds their field time back immediately</strong>, even before the tick
+  budget is investigated.</p>
+
+
+  <h2>Post-migration probe results (2026-08-28 afternoon)</h2>
+  <h3>New: action validation contradicts every readable view of character state</h3>
+  <p>With the debt sensor made truthful, our probe pairs (one normal + one
+  forward-stamped village <code>say</code>, different characters, same batch) began
+  drawing <code>not_in_village</code> &mdash; both halves, stamp irrelevant. A watcher then
+  paired every such rejection with a same-second read of the public roster:
+  <strong>25 of 25 samples show the validator rejecting &ldquo;not in village&rdquo; while
+  the roster endpoint simultaneously reports that character in the village</strong>
+  (tightest pair: rejection at tick 3581303 vs roster read at 3581315). The same
+  afternoon, a ~300-tick storm rejected ~1,000 village <em>moves</em> the same way
+  (ticks ~3573100&ndash;3573400) with all 18 characters at home by every readable view.
+  One repeat offender (c19871) never left the village at all &mdash; which suggests the
+  divergent state lives on the <em>session</em> (e.g. an active-world/route entry that a
+  re-hello or embark burst leaves pointing at a field world), not on the character.
+  Same split-state family as Bug&nbsp;B&rsquo;s &ldquo;deleted but still rendering.&rdquo;</p>
+  <h3>Bug B is reduced, not gone</h3>
+  <p>Character <code>c20055</code> embarked at tick 3581852, embarked again at 3585717,
+  then disappeared from the public roster with <strong>no death event ever delivered</strong>
+  &mdash; verified after the stream fully caught up (offset 16, zero pending rejections).
+  Either the deletion sweep still runs (now targeting characters in transit) or the
+  death-event emission is lost on the embark path; both are server-side. A separate
+  character (c20054) died the ordinary way in the same window and its death event arrived
+  fine, so event delivery as such works.</p>
+  <p class="note">Forward-stamp verdict (whether lag-corrected envelope ticks would be
+  accepted where frame-tick stamps are rejected): still inconclusive &mdash; every clean
+  sample so far was masked by the <code>not_in_village</code> rejection above, which
+  ignores the stamp entirely.</p>
+
+
+  <h2>Update 2026-08-29 — recurring deep-lag waves, now lengthening</h2>
+  <p>Since the migration the per-session delivery debt has settled into a <strong>wave
+  pattern</strong>: hour-scale storms of deep offset separated by mostly-calm stretches.
+  Today's waves, from our hourly measurements (offset = public clock &minus; our freshest
+  frame):</p>
+  <div class="tablewrap"><table>
+    <tr><th>Wave (local time)</th><th>Peak offset</th><th>Duration</th></tr>
+    <tr><td class="n">~05:20</td><td class="n">264 (poison 5,407/2k)</td><td class="n">~1 h</td></tr>
+    <tr><td class="n">~09:20</td><td class="n">217 (2,968/2k)</td><td class="n">~1 h</td></tr>
+    <tr><td class="n hot">~12:30 &rarr; 15:30+</td><td class="n hot">335 &rarr; 421 &rarr; 534, still climbing</td><td class="n hot">3 h+ and ongoing</td></tr>
+  </table></div>
+  <p>The first two suggested a ~4-hourly heavy job (backup/compaction?). The third is
+  <strong>longer and deeper than both and still deepening</strong> — a degradation trend,
+  not a steady cycle. During the deep phase the server sometimes goes fully
+  <em>silent-to-actions</em>: our client sent 184 embark envelopes over 800 ticks that
+  were neither applied nor rejected. Tick-rate shortfall persists (3.6 vs 4.0
+  advertised). If there is a periodic job on the box, its runtime looks to be growing
+  with accumulated state — worth checking before it converges on always-on.</p>
+
+  <h2>Suggested places to look</h2>
+  <ul>
+    <li><strong>Per-guild frame assembly / send path:</strong> anything O(n) in a per-guild registry that never GCs deleted characters would make our frame build exceed the tick budget precisely after Bug&nbsp;B churned ~100 characters through this guild in a day. The onset timing matches.</li>
+    <li><strong>Session GC:</strong> whether DEALER identities from superseded sessions still get frames prepared/diffed. We created dozens overnight (self-heal reconnects); clean windows shrank as they accumulated.</li>
+    <li><strong>The deletion path itself:</strong> whatever removes these characters skips the death-event emission and sometimes leaves them rendering in world frames. Batches + consecutive uid ranges suggest a sweep/cleanup job rather than gameplay.</li>
+    <li><strong>Timing correlation:</strong> both bugs first appeared within hours of the 2026-08-25 wire-v3 / grouped-inventory deploy window.</li>
+  </ul>
+
+  <h2>Client-side status (for context)</h2>
+  <p>To keep the guild alive under the incident we shipped, in order: a self-healing re-hello on sustained <code>stale_frame</code> storms; decide-on-freshest frame consumption (zero client-added backlog); live capability alarms; and a storm shelter that benches the roster while actions are being rejected (stranding deaths stopped at that point). None of these change the underlying measurements above &mdash; they only bound our losses. Everything unwinds automatically once frames arrive fresh.</p>
+
+  <div class="footer">
+    Data sources: our frame/event/error mirror (MariaDB, runs 224&ndash;288), the public spectate API, and the client log. Raw evidence and tick-stamped notes: <span class="mono">server_bugs.md</span> in the bot repo (commits 8e23172, 151c1a1, 3284715). Happy to run any measurement that would help &mdash; the probe tooling is all scripted.
+  </div>
+</main>
