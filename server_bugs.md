@@ -554,3 +554,13 @@ fresh process authenticated immediately (connected t3949338). Net cost: one rest
 cycle, zero manual intervention. First occurrence; if this recurs it suggests the wave
 also corrupts/evicts session-auth state server-side (a third divergence flavor after
 world-state and char-state). Watch frequency before engineering a retry-in-place.
+
+## 2026-08-29 ~22:50 — Bug B accelerating with wave severity
+
+Run-303 census: FOUR chars present at run start (c20092, c20121, c20129, c20140) are
+absent from the public roster with NO death event, while the run's 1 real death
+evented fine. Post-move silent-disappearance tally: c20055 (08-28), c20079 (08-28),
++4 today = ~6, with today's losses concentrated in the deep-wave hours. Consistent
+with a timeout-driven cull mistaking wave-stalled chars for dead (the theory in the
+migration section) — the wave bug and the deletion bug are likely ONE mechanism now.
+Some may be deaths whose events were lost in waves; either flavor is server-side.
